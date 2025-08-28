@@ -1,0 +1,21 @@
+name: Create PR on new synced content
+
+permissions:
+  contents: write
+  pull-requests: write
+
+on:
+  push:
+    branches:
+      - sync
+
+jobs:
+  pull-request:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create PR using CLI
+        env:
+          GH_TOKEN: ${{ github.TOKEN }}
+        run: |
+          gh auth login
+          gh pr create -B main -H sync -t "Sync from private repo" -b "(automatically generated, see complete diff)"
