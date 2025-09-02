@@ -1,0 +1,74 @@
+[build-system]
+requires = ["maturin>=1,<2"]
+build-backend = "maturin"
+
+[project]
+name = "polars-cloud"
+dynamic = ["version"]
+authors = [
+  { name = "Polars", email = "info@polars.tech" },
+]
+description = "Execute your Polars workloads in the cloud"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+classifiers = [
+  "Development Status :: 1 - Planning",
+  "Environment :: Console",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering",
+]
+dependencies = [
+  # uncomment if we want a specific commit
+  # "polars@git+https://github.com/pola-rs/polars.git@dd80ff9be5d9a2a8d56c25deb30fedb8d7ebaebc#subdirectory=py-polars",
+  "polars >= 1.33.0,<1.33.1",
+  # 'polars @ file:///home/jesse/dev/oss/polars/py-polars',
+  # 'polars @ file:///home/ritchie46/code/polars/py-polars',
+  'typing-extensions >= 4.0; python_version <= "3.12"',
+]
+
+[project.scripts]
+pc = "polars_cloud.__main__:cli"
+
+[project.urls]
+Homepage = "https://cloud.pola.rs/"
+
+[tool.mypy]
+files = ["$MYPY_CONFIG_FILE_DIR/polars_cloud", "$MYPY_CONFIG_FILE_DIR/tests"]
+exclude = ["^.+_pb2(_grpc)?\\.py(i)?$"]
+strict = true
+enable_error_code = [
+  "redundant-expr",
+  "truthy-bool",
+  "ignore-without-code",
+]
+
+[[tool.mypy.overrides]]
+module = [
+  "polars_cloud.polars_cloud",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+addopts = [
+  "--tb=short",
+  "--strict-config",
+  "--strict-markers",
+  "--import-mode=importlib",
+  # Default to not running monitoring tests as they are hard to setup locally
+  "-m not monitoring and not barebones",
+]
+markers = [
+  "monitoring: Tests that check if OTEL metrics are collected",
+  "barebones: Test barebones cloudformation workflow",
+]
