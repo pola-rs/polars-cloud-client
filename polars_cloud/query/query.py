@@ -34,6 +34,7 @@ from polars_cloud.context import cache as compute_cache
 from polars_cloud.polars_cloud import PlanFormatPy
 from polars_cloud.query._utils import prepare_query
 from polars_cloud.query.query_info import QueryInfo
+from polars_cloud.query.query_progress import QueryProgress
 from polars_cloud.query.query_result import QueryResult
 from polars_cloud.query.query_status import QueryStatus
 
@@ -199,6 +200,25 @@ class DirectQuery(InProgressQueryRemote):
         )
         return QueryStatus._from_api_schema(status_code)
 
+    def get_progress(self) -> QueryProgress | None:
+        """Get the current progress of the query if available."""
+        self._tag = None
+        return self._get_progress()
+
+    def _get_progress(self) -> QueryProgress | None:
+        progress_py = self._client.get_direct_query_progress(
+            self._query_id,
+            self._tag,
+        )
+
+        if progress_py is None:
+            return None
+
+        self._tag = progress_py.tag
+
+        progress = QueryProgress(self._query_id, progress_py)
+        return progress
+
     def _get_result(
         self, status: QueryStatus, *, raise_on_failure: bool = True
     ) -> QueryResult:
@@ -219,8 +239,40 @@ class DirectQuery(InProgressQueryRemote):
         status = self._poll_status_until_done()
         return self._get_result(status, raise_on_failure=raise_on_failure)
 
+    async def await_progress_async(self) -> QueryProgress:
+        """Await progress for the ongoing query asynchronously."""
+        return await self._poll_progress_until_update_async()
+
+    def await_progress(self) -> QueryProgress:
+        """Block the thread and wait until progress is made on the query."""
+        return self._poll_progress_until_update()
+
     def cancel(self) -> None:
         self._client.cancel_direct_query(self._query_id)
+
+    async def _poll_progress_until_update_async(self) -> QueryProgress:
+        """Poll the progress of the query until there is an update."""
+        i = 0
+        ms = get_timeout()
+        t0 = time()
+        while (progress := self._get_progress()) is None:
+            i += 1
+            await asyncio.sleep(min(1, 0.05 * 1.5 ** min(30, i)))
+            check_timeout(t0, ms)
+
+        return progress
+
+    def _poll_progress_until_update(self) -> QueryProgress:
+        """Poll the progress of the query until there is an update."""
+        i = 0
+        ms = get_timeout()
+        t0 = time()
+        while (progress := self._get_progress()) is None:
+            i += 1
+            sleep(min(1, 0.05 * 1.5 ** min(30, i)))
+            check_timeout(t0, ms)
+
+        return progress
 
     def graph(
         self,

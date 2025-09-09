@@ -26,6 +26,7 @@ from polars_cloud.query import (
     ParquetDst,
     ProxyQuery,
     QueryInfo,
+    QueryProgress,
     QueryResult,
     QueryStatus,
     StageStatistics,

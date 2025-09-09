@@ -19,6 +19,7 @@ if TYPE_CHECKING:
         IpcCompression,
         ParquetCompression,
         ParquetMetadata,
+        PartitioningScheme,
     )
     from polars.interchange import CompatLevel
     from polars.io.cloud import CredentialProviderFunction
@@ -240,7 +241,7 @@ class LazyFrameRemote:
 
     def sink_parquet(
         self,
-        uri: str,
+        uri: str | PartitioningScheme,
         *,
         compression: ParquetCompression = "zstd",
         compression_level: int | None = None,
@@ -381,7 +382,7 @@ class LazyFrameRemote:
 
     def sink_csv(
         self,
-        uri: str,
+        uri: str | PartitioningScheme,
         *,
         include_bom: bool = False,
         include_header: bool = True,
@@ -520,7 +521,7 @@ class LazyFrameRemote:
 
     def sink_ipc(
         self,
-        uri: str,
+        uri: str | PartitioningScheme,
         *,
         compression: IpcCompression | None = "zstd",
         compat_level: CompatLevel | None = None,
@@ -696,7 +697,7 @@ class ExecuteRemote:
 
     def sink_parquet(
         self,
-        uri: str,
+        uri: str | PartitioningScheme,
         *,
         compression: ParquetCompression = "zstd",
         compression_level: int | None = None,
@@ -857,7 +858,7 @@ class ExecuteRemote:
 
     def sink_csv(
         self,
-        uri: str,
+        uri: str | PartitioningScheme,
         *,
         include_bom: bool = False,
         include_header: bool = True,
@@ -1034,7 +1035,7 @@ class ExecuteRemote:
 
     def sink_ipc(
         self,
-        uri: str,
+        uri: str | PartitioningScheme,
         *,
         compression: IpcCompression | None = "zstd",
         compat_level: CompatLevel | None = None,
