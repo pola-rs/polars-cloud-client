@@ -9,6 +9,7 @@ from polars_cloud.query.query import (
     spawn_many_blocking,
 )
 from polars_cloud.query.query_info import QueryInfo
+from polars_cloud.query.query_progress import QueryProgress
 from polars_cloud.query.query_result import QueryResult, StageStatistics
 from polars_cloud.query.query_status import QueryStatus
 
@@ -21,6 +22,7 @@ __all__ = [
     "ParquetDst",
     "ProxyQuery",
     "QueryInfo",
+    "QueryProgress",
     "QueryResult",
     "QueryStatus",
     "StageStatistics",

@@ -3,6 +3,8 @@ from __future__ import annotations
 import contextlib
 from typing import TYPE_CHECKING
 
+import packaging
+import polars as pl
 from polars._utils.cloud import prepare_cloud_plan
 from polars.exceptions import ComputeError, InvalidOperationError
 
@@ -27,6 +29,10 @@ if TYPE_CHECKING:
     from polars_cloud.query.dst import Dst
     from polars_cloud.query.query import DistributionSettings
 
+MIN_VERSION = packaging.version.parse("1.33.1")
+MAX_VERSION = packaging.version.parse("1.33.2")
+PL_VERSION = packaging.version.parse(pl.__version__)
+
 
 def prepare_query(
     lf: LazyFrame,
@@ -43,12 +49,20 @@ def prepare_query(
     optimizations: QueryOptFlags,
 ) -> tuple[bytes, PyQuerySettings]:
     """Parse query inputs as a serialized plan and settings object."""
+    if not (MIN_VERSION <= PL_VERSION < MAX_VERSION):
+        msg = f"this Polars version is not support by the client\n\nConsider installing Polars version: {MIN_VERSION}"
+        raise RuntimeError(msg)
+
     sink_dst: str | Path | None
     if isinstance(dst, (str, Path)):
         sink_dst = dst
-    elif isinstance(dst, (ParquetDst, CsvDst, IpcDst)):
+    elif isinstance(dst, (ParquetDst, CsvDst, IpcDst)) and isinstance(
+        dst.uri, (str | Path)
+    ):
         sink_dst = dst.uri
     elif isinstance(dst, TmpDst):
+        sink_dst = None
+    else:
         sink_dst = None
 
     # Verify that the sink_to_single_file is explicitly set or that the sink
@@ -79,10 +93,10 @@ If you want to:
 """
         raise ValueError(msg)
 
-    sink_path = "placeholder-path"  # Will be discarded and replaced in cloud
     if isinstance(dst, ParquetDst):
+        assert dst.uri is not None
         lf = lf.sink_parquet(
-            sink_path,
+            path=dst.uri,
             compression=dst.compression,
             compression_level=dst.compression_level,
             statistics=dst.statistics,
@@ -98,7 +112,7 @@ If you want to:
         )
     elif isinstance(dst, CsvDst):
         lf = lf.sink_csv(
-            sink_path,
+            path=dst.uri,
             include_bom=dst.include_bom,
             include_header=dst.include_header,
             separator=dst.separator,
@@ -121,7 +135,7 @@ If you want to:
         )
     elif isinstance(dst, IpcDst):
         lf = lf.sink_ipc(
-            sink_path,
+            path=dst.uri,
             compression=dst.compression,
             compat_level=dst.compat_level,
             maintain_order=dst.maintain_order,
@@ -130,9 +144,16 @@ If you want to:
             lazy=True,
             engine=engine,
         )
-    else:
+    elif isinstance(dst, TmpDst):
         lf = lf.sink_parquet(
-            sink_path,
+            "<in-memory>",
+            lazy=True,
+            engine=engine,
+        )
+    else:
+        assert sink_dst is not None
+        lf = lf.sink_parquet(
+            sink_dst,
             credential_provider=None,
             lazy=True,
             engine=engine,
@@ -167,7 +188,6 @@ If you want to:
         partition_by = list(partition_by)
 
     settings = pc_core.serialize_query_settings(
-        dst=sink_dst,
         engine=engine,
         partition_by=partition_by,
         prefer_dot=prefer_dot,

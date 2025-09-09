@@ -1,6 +1,5 @@
 from datetime import datetime
 from enum import Enum
-from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -9,7 +8,6 @@ from polars_cloud.query.query import DistributionSettings
 
 def serialize_query_settings(
     *,
-    dst: str | Path | None,
     engine: str,
     partition_by: list[str] | None = ...,
     distributed: bool | None = ...,
@@ -370,6 +368,13 @@ class ClientOptions:
     tls_private_key: bytes | None
     insecure: bool
 
+class QueryProgressPy:
+    tag: bytes
+    total_stages: int | None
+    phys_plan_explain: str | None
+    phys_plan_dot: str | None
+    data: bytes | None
+
 class OrganizationSchema:
     """Represents an organization schema."""
 
@@ -493,6 +498,9 @@ class SchedulerClient:
         settings: PyQuerySettings,
         labels: list[str] | None = None,
     ) -> UUID: ...
+    def get_direct_query_progress(
+        self, query_id: UUID, tag: bytes | None
+    ) -> QueryProgressPy | None: ...
     def get_direct_query_plan(
         self, query_id: UUID, phys: bool = False, ir: bool = False
     ) -> QueryPlansPy: ...
