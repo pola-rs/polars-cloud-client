@@ -307,7 +307,7 @@ class ComputeContext(ClientContext, ContextDecorator):
         Parameters
         ----------
         wait
-            Wait for the context to be ready before returning.
+            Wait for the compute context to be ready before returning.
             If the `ComputeContext` is in direct connection mode, it will always
             wait until ready.
 

@@ -343,6 +343,9 @@ class NotFoundError(Exception):
 class AuthLoadError(Exception):
     """Exception raised when no authentication could be loaded."""
 
+class EncodedPolarsError(Exception):
+    """Polars Error raised by the compute plane."""
+
 class StageStatsPy:
     num_workers_used: int
 
