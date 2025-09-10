@@ -235,22 +235,7 @@ class QueryResult:
                 # key: "worker_id" or "scheduler"
                 # value: ValueError: msg
 
-                # Split off the error type e.g. 'ValueError'
-                # from the message
-                split = value.split(":", 1)
-                # Evaluate the string to get the class of the error type
-                try:
-                    error_type = guarded_eval(split[0])
-                    msg = split[1]
-
-                    # Recreate the instance e.g. `ValueError(msg)`
-                    error_value = error_type(msg)
-                    assert isinstance(error_value, BaseException)
-                # Fallback if we cannot restore the message
-                except SyntaxError:
-                    error_value = pl.exceptions.ComputeError(
-                        f"spawn failed with: {value}"
-                    )
+                error_value = decode_error(value)
 
                 # Store the errors per worker/scheduler
                 if key not in errors:
@@ -278,6 +263,29 @@ class QueryResult:
 
         except StopIteration:
             raise scheduler_err from None
+
+
+def decode_error(encoded: str) -> BaseException:
+    # This doesn't get passed user input, but only error types,
+    # just to be sure guard the input
+    def guarded_eval(msg: str) -> Any:
+        if msg.isalnum():
+            return eval(msg)
+        return None
+
+    split = encoded.split(":", 1)
+    # Evaluate the string to get the class of the error type
+    try:
+        error_type = guarded_eval(split[0])
+        msg = split[1]
+
+        # Recreate the instance e.g. `ValueError(msg)`
+        error_value = error_type(msg)
+    # Fallback if we cannot restore the message
+    except SyntaxError:
+        error_value = pl.exceptions.ComputeError(f"spawn failed with: {encoded}")
+    assert isinstance(error_value, BaseException)
+    return error_value
 
 
 if sys.version_info >= (3, 11):

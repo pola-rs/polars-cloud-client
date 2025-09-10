@@ -3,7 +3,6 @@ from __future__ import annotations
 import contextlib
 from typing import TYPE_CHECKING
 
-import packaging
 import polars as pl
 from polars._utils.cloud import prepare_cloud_plan
 from polars.exceptions import ComputeError, InvalidOperationError
@@ -29,10 +28,6 @@ if TYPE_CHECKING:
     from polars_cloud.query.dst import Dst
     from polars_cloud.query.query import DistributionSettings
 
-MIN_VERSION = packaging.version.parse("1.33.1")
-MAX_VERSION = packaging.version.parse("1.33.2")
-PL_VERSION = packaging.version.parse(pl.__version__)
-
 
 def prepare_query(
     lf: LazyFrame,
@@ -49,8 +44,8 @@ def prepare_query(
     optimizations: QueryOptFlags,
 ) -> tuple[bytes, PyQuerySettings]:
     """Parse query inputs as a serialized plan and settings object."""
-    if not (MIN_VERSION <= PL_VERSION < MAX_VERSION):
-        msg = f"this Polars version is not support by the client\n\nConsider installing Polars version: {MIN_VERSION}"
+    if pl.get_index_type() == pl.UInt64:
+        msg = "polars[u64-idx] not supported for this client version"
         raise RuntimeError(msg)
 
     sink_dst: str | Path | None

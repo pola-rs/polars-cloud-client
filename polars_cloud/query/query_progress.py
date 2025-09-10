@@ -106,6 +106,8 @@ class QueryProgress:
             maintain_order=True,
         ).agg(
             worker_ids=pl.col("worker_id").unique(),
-            duration=(pl.col("end_time").fill_null(now) - (pl.col("start_time").min())),
+            duration=(
+                pl.col("end_time").fill_null(now).max() - pl.col("start_time").min()
+            ),
             output_rows=pl.col("output_rows").sum(),
         )

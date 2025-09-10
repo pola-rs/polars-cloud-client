@@ -24,6 +24,7 @@ from polars.exceptions import (  # noqa: F401
 )
 from polars.lazyframe.opt_flags import DEFAULT_QUERY_OPT_FLAGS
 
+import polars_cloud.polars_cloud as pcr
 from polars_cloud import constants
 from polars_cloud._utils import run_coroutine
 from polars_cloud.context import (
@@ -35,7 +36,7 @@ from polars_cloud.polars_cloud import PlanFormatPy
 from polars_cloud.query._utils import prepare_query
 from polars_cloud.query.query_info import QueryInfo
 from polars_cloud.query.query_progress import QueryProgress
-from polars_cloud.query.query_result import QueryResult
+from polars_cloud.query.query_result import QueryResult, decode_error
 from polars_cloud.query.query_status import QueryStatus
 
 if TYPE_CHECKING:
@@ -44,7 +45,6 @@ if TYPE_CHECKING:
 
     from polars import LazyFrame
 
-    import polars_cloud.polars_cloud as pcr
     from polars_cloud._typing import (
         Engine,
         PlanType,
@@ -671,7 +671,11 @@ def spawn(
         isinstance(context, ComputeContext) and context.connection_mode == "direct"
     ):
         client: pcr.SchedulerClient = context._get_direct_client()  # type: ignore[assignment]
-        q_id = client.do_query(plan=plan, settings=settings)
+        try:
+            q_id = client.do_query(plan=plan, settings=settings)
+        except pcr.EncodedPolarsError as e:
+            raise decode_error(str(e)) from None
+
         return DirectQuery(q_id, client)
     # Check if we are using the cloud compute context
     elif isinstance(context, ComputeContext):
