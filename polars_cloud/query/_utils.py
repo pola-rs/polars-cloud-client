@@ -44,8 +44,8 @@ def prepare_query(
     optimizations: QueryOptFlags,
 ) -> tuple[bytes, PyQuerySettings]:
     """Parse query inputs as a serialized plan and settings object."""
-    if pl.get_index_type() == pl.UInt64:
-        msg = "polars[u64-idx] not supported for this client version"
+    if pl.get_index_type() == pl.UInt32:
+        msg = "polars[u32-idx] not supported for this client version.\n\nIt is likely that you have two versions of Polars installed. Please run `pip uninstall polars && pip install polars-u64-idx` and try again."
         raise RuntimeError(msg)
 
     sink_dst: str | Path | None
