@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import sphinx_autosummary_accessors
+import sphinx_autosummary_accessors  # type: ignore[import-untyped]
 
 # -- Path setup --------------------------------------------------------------
 
@@ -197,11 +197,11 @@ def _minify_classpaths(s: str) -> str:
 
 
 def process_signature(
-    app: object,
-    what: object,
-    name: object,
-    obj: object,
-    opts: object,
+    app: object,  # noqa: ARG001
+    what: object,  # noqa: ARG001
+    name: object,  # noqa: ARG001
+    obj: object,  # noqa: ARG001
+    opts: object,  # noqa: ARG001
     sig: str,
     ret: str,
 ) -> tuple[str, str]:

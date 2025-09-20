@@ -31,6 +31,9 @@ def start_compute(
         )
         ctx.start(wait=wait)
         print(ctx)
+        print(
+            f"View your compute metrics on: https://cloud.pola.rs/portal/{ctx.workspace.id}/compute/{ctx._compute_id}"
+        )
 
 
 def stop_compute(workspace_name: str, id: UUID, *, wait: bool = False) -> None:
