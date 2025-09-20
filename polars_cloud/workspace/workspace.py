@@ -399,6 +399,41 @@ class Workspace:
         logger.info("workspace setup successful")
         return workspace
 
+    def deploy(self, *, verify: bool = True) -> None:
+        """Deploys an existing workspace.
+
+        Parameters
+        ----------
+        verify
+            Wait for workspace to become active
+
+        Examples
+        --------
+        >>> pc.Workspace("workspace-name").deploy()
+        Please complete the workspace setup process in your browser.
+        Workspace creation may take up to 5 minutes to complete after clicking
+        'Create stack'. If your browser did not open automatically,
+        please go to the following URL:
+        [URL]
+        """
+        if (
+            self.status != WorkspaceStatus.Uninitialized
+            and self.status != WorkspaceStatus.Failed
+        ):
+            msg = f"Only workspaces that are Uninitialized or Failed can be (re)deployed, this workspace is: {self.status.name}"
+            raise RuntimeError(msg)
+
+        setup_urls = constants.API_CLIENT.get_workspace_setup_url(self.id)
+
+        logger.debug("opening web browser")
+        _open_browser(setup_urls.full_setup_url)
+
+        if verify:
+            logger.info("verifying workspace deployment")
+            self.wait_until_active()
+
+        logger.info("workspace deployment successful")
+
     @classmethod
     def list(cls, name: str | None = None) -> list[Workspace]:
         """List all workspaces the user has access to.

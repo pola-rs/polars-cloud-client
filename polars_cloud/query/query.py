@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from time import sleep, time
@@ -38,6 +39,8 @@ from polars_cloud.query.query_info import QueryInfo
 from polars_cloud.query.query_progress import QueryProgress
 from polars_cloud.query.query_result import QueryResult, decode_error
 from polars_cloud.query.query_status import QueryStatus
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -551,7 +554,6 @@ def spawn(
     *,
     dst: Path | str | Dst,
     context: ClientContext | None = None,
-    partitioned_by: None | str | list[str] = None,
     engine: Engine = "auto",
     plan_type: PlanTypePreference = "dot",
     labels: None | list[str] = None,
@@ -579,8 +581,6 @@ def spawn(
 
         1. The compute context cache. This contains the last `Compute` context created.
         2. The default compute context stored in the user profile.
-    partitioned_by
-        Partition query by a key
     engine : {'auto', 'streaming', 'in-memory', 'gpu'}
         Execute the engine that will execute the query.
         GPU mode is not yet supported, consider opening an issue.
@@ -656,7 +656,6 @@ def spawn(
     plan, settings = prepare_query(
         lf=lf,
         dst=dst,
-        partition_by=partitioned_by,
         engine=engine,
         plan_type=plan_type,
         shuffle_compression=shuffle_compression,
@@ -676,6 +675,9 @@ def spawn(
         except pcr.EncodedPolarsError as e:
             raise decode_error(str(e)) from None
 
+        if isinstance(context, ComputeContext):
+            msg = f"View your query metrics on: https://cloud.pola.rs/portal/{context.workspace.id}/{context._compute_id}/queries/{q_id}"
+            logger.debug(msg)
         return DirectQuery(q_id, client)
     # Check if we are using the cloud compute context
     elif isinstance(context, ComputeContext):
@@ -683,6 +685,8 @@ def spawn(
         q_id = constants.API_CLIENT.submit_query(
             context._compute_id, plan, settings, labels
         )
+        msg = f"View your query metrics on: https://cloud.pola.rs/portal/{context.workspace.id}/{context._compute_id}/queries/{q_id}"
+        logger.debug(msg)
         return ProxyQuery(q_id, workspace_id=context.workspace.id)
     else:
         msg = f"Invalid client type: expected ComputeContext/ClusterContext, got: {type(context).__name__}"
@@ -694,7 +698,6 @@ def spawn_blocking(
     *,
     dst: Path | str | Dst,
     context: ClientContext | None = None,
-    partitioned_by: None | str | list[str] = None,
     engine: Engine = "auto",
     plan_type: PlanTypePreference = "dot",
     labels: None | list[str] = None,
@@ -721,8 +724,6 @@ def spawn_blocking(
 
         1. The compute context cache. This contains the last `Compute` context created.
         2. The default compute context stored in the user profile.
-    partitioned_by
-        Partition query by a key
     engine : {'auto', 'streaming', 'in-memory', 'gpu'}
         Execute the engine that will execute the query.
         GPU mode is not yet supported, consider opening an issue.
@@ -770,11 +771,11 @@ def spawn_blocking(
         lf,
         dst=dst,
         context=context,
-        partitioned_by=partitioned_by,
         engine=engine,
         plan_type=plan_type,
         labels=labels,
         shuffle_compression=shuffle_compression,
+        distributed=distributed,
         n_retries=n_retries,
         sink_to_single_file=sink_to_single_file,
         optimizations=optimizations,

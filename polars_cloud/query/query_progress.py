@@ -99,15 +99,26 @@ class QueryProgress:
         if data is None:
             return None
         now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-        return data.group_by(
-            pl.col("stage_number"),
-            pl.col("span_name"),
-            pl.col("end_time").is_not_null().alias("completed"),
-            maintain_order=True,
-        ).agg(
-            worker_ids=pl.col("worker_id").unique(),
-            duration=(
-                pl.col("end_time").fill_null(now).max() - pl.col("start_time").min()
-            ),
-            output_rows=pl.col("output_rows").sum(),
+        return (
+            data.group_by(
+                pl.col("stage_number"),
+                pl.col("span_name"),
+                pl.col("end_time").is_not_null().alias("completed"),
+                maintain_order=True,
+            )
+            .agg(
+                worker_ids=pl.col("worker_id").unique(),
+                duration=(
+                    pl.col("end_time").fill_null(now).max() - pl.col("start_time").min()
+                ),
+                output_rows=pl.col("output_rows").sum(),
+                shuffle_bytes_written=pl.col("shuffle_bytes_written").sum(),
+                shuffle_bytes_read=pl.col("shuffle_bytes_read").sum(),
+                last_update=pl.max_horizontal(
+                    pl.col("end_time").fill_null(datetime.datetime.min),
+                    pl.col("start_time"),
+                ),
+            )
+            .sort("last_update", descending=True)
+            .drop("last_update")
         )

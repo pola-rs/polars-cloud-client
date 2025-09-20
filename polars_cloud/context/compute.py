@@ -347,6 +347,9 @@ class ComputeContext(ClientContext, ContextDecorator):
             idle_timeout_mins=self._idle_timeout_mins,
         )
         self._compute_id = UUID(str_id)
+        msg = f"View your compute metrics on: https://cloud.pola.rs/portal/{self.workspace.id}/compute/{self._compute_id}"
+        logger.info(msg)
+
         if wait:
             _poll_compute_status_until(self, ComputeContextStatus.IDLE)
 
@@ -464,7 +467,7 @@ class ComputeContext(ClientContext, ContextDecorator):
         contexts.sort(key=lambda x: x[1].request_time, reverse=True)
         idx = select_compute_cluster(contexts)
         if idx is not None:
-            ctx, status = cls._from_api_schema(contexts[idx][1])
+            ctx, _status = cls._from_api_schema(contexts[idx][1])
             return ctx
         return None
 
@@ -572,7 +575,7 @@ def _poll_compute_status_until(
     for i in range(max_polls):
         logger.debug("Polling compute status (try %s)", str(i))
         status = compute.get_status()
-        logging.debug("Got compute status %s", status)
+        logger.debug("Got compute status %s", status)
         if status == desired_state:
             return status
         elif status == ComputeContextStatus.FAILED:

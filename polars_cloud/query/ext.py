@@ -51,7 +51,6 @@ class LazyFrameRemote:
     ) -> None:
         self.lf: pl.LazyFrame = lf
         self.context: ComputeContext | None = context
-        self._partition_by: None | str | list[str] = None
         self._engine: Engine = engine
         self._labels: None | list[str] = None
         self._n_retries = n_retries
@@ -120,48 +119,6 @@ class LazyFrameRemote:
         """
         self._labels = [labels] if isinstance(labels, str) else labels
         return self
-
-    def partition_by(
-        self,
-        key: str | list[str],
-        *,
-        shuffle_compression: ShuffleCompression = "auto",
-        shuffle_format: ShuffleFormat = "auto",
-    ) -> ExecuteRemote:
-        """Partition this query by the given key.
-
-        This first partitions the data by the key and then runs this query
-        per unique key. This will lead to ``N`` output results, where ``N``
-        is equal to the number of unique values in ``key``
-
-        This will run on multiple workers.
-
-        Parameters
-        ----------
-        key
-            Key/keys to partition over.
-        shuffle_compression : {'auto', 'lz4', 'zstd', 'uncompressed'}
-            Compress files before shuffling them. Compression reduces disk and network
-            IO, but disables memory mapping.
-            Choose "zstd" for good compression performance.
-            Choose "lz4" for fast compression/decompression.
-            Choose "uncompressed" for memory mapped access at the expense of file size.
-        shuffle_format : {'auto', 'ipc', 'parquet'}
-            File format to use for shuffles.
-        """
-        exec = ExecuteRemote(
-            lf=self.lf,
-            context=self.context,
-            plan_type=self.plan_type,
-            n_retries=self._n_retries,
-            labels=self._labels,
-            engine=self._engine,
-            partition_by=key,
-            shuffle_compression=shuffle_compression,
-            shuffle_format=shuffle_format,
-        )
-
-        return exec
 
     def vertical(self) -> ExecuteRemote:
         """Run this query remotely on a single node."""
@@ -237,7 +194,7 @@ class LazyFrameRemote:
         └───────┘
 
         """
-        return self.vertical().show()
+        return self.vertical().show(n)
 
     def sink_parquet(
         self,
@@ -508,7 +465,7 @@ class LazyFrameRemote:
             quote_char=quote_char,
             batch_size=batch_size,
             datetime_format=datetime_format,
-            date_format=datetime_format,
+            date_format=date_format,
             time_format=time_format,
             float_scientific=float_scientific,
             float_precision=float_precision,
@@ -598,14 +555,12 @@ class ExecuteRemote:
         n_retries: int,
         engine: Engine,
         labels: list[str] | None,
-        partition_by: None | str | list[str] = None,
         shuffle_compression: ShuffleCompression = "auto",
         shuffle_format: ShuffleFormat = "auto",
         distributed_settings: DistributionSettings | None = None,
     ) -> None:
         self.lf: pl.LazyFrame = lf
         self.context: ComputeContext | None = context
-        self._partition_by: None | str | list[str] = partition_by
         self._engine: Engine = engine
         self._labels: None | list[str] = labels
         self._n_retries = n_retries
@@ -633,7 +588,6 @@ class ExecuteRemote:
             lf=self.lf,
             dst=TmpDst(),
             context=self.context,
-            partitioned_by=self._partition_by,
             engine=self._engine,
             plan_type=self.plan_type,
             labels=self._labels,
@@ -835,6 +789,7 @@ class ExecuteRemote:
             statistics=statistics,
             row_group_size=row_group_size,
             data_page_size=data_page_size,
+            maintain_order=maintain_order,
             storage_options=storage_options,
             credential_provider=credential_provider,
             metadata=metadata,
@@ -846,7 +801,6 @@ class ExecuteRemote:
             dst=dst,
             sink_to_single_file=sink_to_single_file,
             context=self.context,
-            partitioned_by=self._partition_by,
             engine=self._engine,
             plan_type=self.plan_type,
             labels=self._labels,
@@ -1021,7 +975,6 @@ class ExecuteRemote:
             lf=self.lf,
             dst=dst,
             context=self.context,
-            partitioned_by=self._partition_by,
             engine=self._engine,
             plan_type=self.plan_type,
             labels=self._labels,
@@ -1126,7 +1079,6 @@ class ExecuteRemote:
             lf=self.lf,
             dst=dst,
             context=self.context,
-            partitioned_by=self._partition_by,
             engine=self._engine,
             plan_type=self.plan_type,
             labels=self._labels,

@@ -33,7 +33,6 @@ def prepare_query(
     lf: LazyFrame,
     *,
     dst: str | Path | Dst,
-    partition_by: None | str | list[str],
     engine: Engine,
     plan_type: PlanTypePreference,
     shuffle_compression: ShuffleCompression,
@@ -179,12 +178,8 @@ If you want to:
         format=shuffle_format, compression=shuffle_compression
     )
 
-    if isinstance(partition_by, str):
-        partition_by = list(partition_by)
-
     settings = pc_core.serialize_query_settings(
         engine=engine,
-        partition_by=partition_by,
         prefer_dot=prefer_dot,
         shuffle_opts=shuffle_opts,
         n_retries=n_retries,

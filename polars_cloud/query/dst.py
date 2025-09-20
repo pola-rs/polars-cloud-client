@@ -144,7 +144,7 @@ class ParquetDst(Dst):
         )
         self.row_group_size: int | None = row_group_size  #: Size of the row groups
         self.data_page_size: int | None = data_page_size  #: Data Page size
-        self.maintain_order: bool = True
+        self.maintain_order: bool = maintain_order
         self.storage_options: dict[str, Any] | None = (
             storage_options  #: Storage options
         )

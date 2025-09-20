@@ -9,7 +9,6 @@ from polars_cloud.query.query import DistributionSettings
 def serialize_query_settings(
     *,
     engine: str,
-    partition_by: list[str] | None = ...,
     distributed: bool | None = ...,
     prefer_dot: bool = ...,
     shuffle_opts: PyShuffleOpts = ...,
