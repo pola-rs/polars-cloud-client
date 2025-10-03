@@ -139,9 +139,7 @@ class ProxyQuery(InProgressQueryRemote):
 
     def get_status(self) -> QueryStatus:
         schema = constants.API_CLIENT.get_query(self._workspace_id, self._query_id)
-        query_status = QueryStatus._from_api_schema(
-            schema.state_timing.last_known_state
-        )
+        query_status = QueryStatus._from_api_schema(schema.state_timing.latest_status)
         return query_status
 
     def _get_result(
@@ -559,6 +557,7 @@ def spawn(
     labels: None | list[str] = None,
     shuffle_compression: ShuffleCompression = "auto",
     shuffle_format: ShuffleFormat = "auto",
+    shuffle_compression_level: int | None = None,
     distributed: DistributionSettings | None | bool = None,
     n_retries: int = 0,
     sink_to_single_file: bool | None = None,
@@ -598,6 +597,8 @@ def spawn(
         Choose "uncompressed" for memory mapped access at the expense of file size.
     shuffle_format : {'auto', 'ipc', 'parquet'}
         File format to use for shuffles.
+    shuffle_compression_level
+        Compression level of shuffle. If set to `None` it is decided by the optimizer.
     distributed
         Run as as distributed query with these settings. This may run partially
         distributed, depending on the operation, optimizer statistics
@@ -660,6 +661,7 @@ def spawn(
         plan_type=plan_type,
         shuffle_compression=shuffle_compression,
         shuffle_format=shuffle_format,
+        shuffle_compression_level=shuffle_compression_level,
         n_retries=n_retries,
         distributed_settings=distributed,
         sink_to_single_file=sink_to_single_file,

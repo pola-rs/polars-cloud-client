@@ -37,6 +37,7 @@ def prepare_query(
     plan_type: PlanTypePreference,
     shuffle_compression: ShuffleCompression,
     shuffle_format: ShuffleFormat,
+    shuffle_compression_level: int | None = None,
     distributed_settings: DistributionSettings | None,
     n_retries: int,
     sink_to_single_file: bool | None = None,
@@ -44,7 +45,7 @@ def prepare_query(
 ) -> tuple[bytes, PyQuerySettings]:
     """Parse query inputs as a serialized plan and settings object."""
     if pl.get_index_type() == pl.UInt32:
-        msg = "polars[u32-idx] not supported for this client version.\n\nIt is likely that you have two versions of Polars installed. Please run `pip uninstall polars && pip install polars-u64-idx` and try again."
+        msg = "polars[idx32] not supported for this client version.\n\n Please run `pip install polars[idx64]`, restart the process and try again."
         raise RuntimeError(msg)
 
     sink_dst: str | Path | None
@@ -175,7 +176,9 @@ If you want to:
         raise ValueError(msg)
 
     shuffle_opts = pc_core.PyShuffleOpts.new(
-        format=shuffle_format, compression=shuffle_compression
+        format=shuffle_format,
+        compression=shuffle_compression,
+        compression_level=shuffle_compression_level,
     )
 
     settings = pc_core.serialize_query_settings(
