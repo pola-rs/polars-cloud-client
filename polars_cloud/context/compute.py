@@ -347,7 +347,7 @@ class ComputeContext(ClientContext, ContextDecorator):
             idle_timeout_mins=self._idle_timeout_mins,
         )
         self._compute_id = UUID(str_id)
-        msg = f"View your compute metrics on: https://cloud.pola.rs/portal/{self.workspace.id}/compute/{self._compute_id}"
+        msg = f"View your compute metrics on: https://cloud.pola.rs/portal/{self.organization.id}/{self.workspace.id}/compute/{self._compute_id}"
         logger.info(msg)
 
         if wait:
@@ -461,8 +461,9 @@ class ComputeContext(ClientContext, ContextDecorator):
         contexts = [
             (w, context)
             for w in workspaces
-            for context in constants.API_CLIENT.get_compute_clusters(w.id)
-            if ComputeContextStatus._from_api_schema(context.status).is_available()
+            for context in constants.API_CLIENT.get_compute_clusters(
+                w.id, available=True
+            )
         ]
         contexts.sort(key=lambda x: x[1].request_time, reverse=True)
         idx = select_compute_cluster(contexts)

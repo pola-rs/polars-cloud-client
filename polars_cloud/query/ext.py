@@ -61,6 +61,7 @@ class LazyFrameRemote:
         *,
         shuffle_compression: ShuffleCompression = "auto",
         shuffle_format: ShuffleFormat = "auto",
+        shuffle_compression_level: int | None = None,
         sort_partitioned: bool = True,
         pre_aggregation: bool = True,
     ) -> ExecuteRemote:
@@ -76,6 +77,9 @@ class LazyFrameRemote:
             Choose "uncompressed" for memory mapped access at the expense of file size.
         shuffle_format : {'auto', 'ipc', 'parquet'}
             File format to use for shuffles.
+        shuffle_compression_level
+            Compression level of shuffle.
+            If set to `None` it is decided by the optimizer.
         sort_partitioned
             Whether group-by and selected aggregations are pre-aggregated
             on worker nodes.
@@ -100,6 +104,7 @@ class LazyFrameRemote:
             engine=self._engine,
             distributed_settings=distributed_settings,
             shuffle_compression=shuffle_compression,
+            shuffle_compression_level=shuffle_compression_level,
             shuffle_format=shuffle_format,
         )
 
@@ -557,6 +562,7 @@ class ExecuteRemote:
         labels: list[str] | None,
         shuffle_compression: ShuffleCompression = "auto",
         shuffle_format: ShuffleFormat = "auto",
+        shuffle_compression_level: int | None = None,
         distributed_settings: DistributionSettings | None = None,
     ) -> None:
         self.lf: pl.LazyFrame = lf
@@ -568,6 +574,7 @@ class ExecuteRemote:
         # Optimizations settings for distributed
         self._shuffle_compression: ShuffleCompression = shuffle_compression
         self._shuffle_format: ShuffleFormat = shuffle_format
+        self._shuffle_compression_level = shuffle_compression_level
         self._distributed_settings: DistributionSettings | None = distributed_settings
 
     def execute(self) -> DirectQuery | ProxyQuery:
@@ -593,6 +600,7 @@ class ExecuteRemote:
             labels=self._labels,
             shuffle_compression=self._shuffle_compression,
             shuffle_format=self._shuffle_format,
+            shuffle_compression_level=self._shuffle_compression_level,
             n_retries=self._n_retries,
             distributed=self._distributed_settings,
             optimizations=pl.QueryOptFlags(),
@@ -805,6 +813,8 @@ class ExecuteRemote:
             plan_type=self.plan_type,
             labels=self._labels,
             shuffle_compression=self._shuffle_compression,
+            shuffle_format=self._shuffle_format,
+            shuffle_compression_level=self._shuffle_compression_level,
             n_retries=self._n_retries,
             distributed=self._distributed_settings,
             optimizations=optimizations,
@@ -980,6 +990,7 @@ class ExecuteRemote:
             labels=self._labels,
             shuffle_compression=self._shuffle_compression,
             shuffle_format=self._shuffle_format,
+            shuffle_compression_level=self._shuffle_compression_level,
             n_retries=self._n_retries,
             distributed=self._distributed_settings,
             sink_to_single_file=sink_to_single_file,
@@ -1084,6 +1095,7 @@ class ExecuteRemote:
             labels=self._labels,
             shuffle_compression=self._shuffle_compression,
             shuffle_format=self._shuffle_format,
+            shuffle_compression_level=self._shuffle_compression_level,
             n_retries=self._n_retries,
             distributed=self._distributed_settings,
             sink_to_single_file=sink_to_single_file,

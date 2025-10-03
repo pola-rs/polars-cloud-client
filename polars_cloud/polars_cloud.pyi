@@ -21,7 +21,9 @@ class PyQuerySettings:
 
 class PyShuffleOpts:
     @staticmethod
-    def new(format: str, compression: str) -> PyShuffleOpts: ...
+    def new(
+        format: str, compression: str, compression_level: int | None
+    ) -> PyShuffleOpts: ...
 
 class WorkspaceStateSchema(Enum):
     """Represents the state of a workspace."""
@@ -141,16 +143,12 @@ class QueryWithStatusSchema:
     """Current status of the query"""
 
 class QueryStateTimingSchema:
-    final_known_state: QueryStatusCodeSchema | None
-    """Last known state for this query"""
-    final_status_time: datetime | None
-    """Time for the final state for this query"""
-    last_known_state: QueryStatusCodeSchema
-    """The last known state that this query has"""
-    last_known_status_time: datetime
-    """Last known status time for this query, belongs to last_known_state"""
-    last_progress_time: datetime | None
-    """Time for the last InProgress time"""
+    latest_status: QueryStatusCodeSchema
+    """Last known status for query"""
+    started_at: datetime | None
+    """When this query last changed to in_progress"""
+    ended_at: datetime | None
+    """When this query reached a done state (failed, canceled, success)"""
 
 class QueryWithStateTimingSchema:
     query: QuerySchema
@@ -459,7 +457,9 @@ class ApiClient:
         log_level: LogLevelSchema | None,
         idle_timeout_mins: int | None,
     ) -> str: ...
-    def get_compute_clusters(self, workspace_id: UUID) -> list[ComputeSchema]: ...
+    def get_compute_clusters(
+        self, workspace_id: UUID, *, available: bool | None = None
+    ) -> list[ComputeSchema]: ...
 
     # Organization methods
     def get_organization(self, organization_id: UUID) -> OrganizationSchema: ...

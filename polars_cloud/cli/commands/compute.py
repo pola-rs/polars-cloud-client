@@ -32,7 +32,7 @@ def start_compute(
         ctx.start(wait=wait)
         print(ctx)
         print(
-            f"View your compute metrics on: https://cloud.pola.rs/portal/{ctx.workspace.id}/compute/{ctx._compute_id}"
+            f"View your compute metrics on: https://cloud.pola.rs/portal/{ctx.organization.id}/{ctx.workspace.id}/compute/{ctx._compute_id}"
         )
 
 
