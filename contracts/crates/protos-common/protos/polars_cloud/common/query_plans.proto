@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package polars_cloud.common;
+
+enum PlanFormat {
+  PLAN_FORMAT_UNSPECIFIED = 0;
+  PLAN_FORMAT_DOT = 1;
+  PLAN_FORMAT_EXPLAIN = 2;
+}
+
+message QueryPlans {
+  PlanFormat format = 1;
+  optional string ir_plan = 2;
+  optional string phys_plan = 3;
+}

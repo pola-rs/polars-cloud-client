@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package polars_cloud.compute_plane.client.v1;
+
+import "polars_cloud/compute_plane/client/v1/cancel_query.proto";
+import "polars_cloud/compute_plane/client/v1/get_query_plans.proto";
+import "polars_cloud/compute_plane/client/v1/get_query_result.proto";
+import "polars_cloud/compute_plane/client/v1/get_query_status.proto";
+import "polars_cloud/compute_plane/client/v1/submit_query.proto";
+
+// Service for interaction between control plane and client.
+service ClientService {
+  rpc SubmitQuery(SubmitQueryRequest) returns (SubmitQueryResponse) {}
+
+  rpc GetQueryResult(GetQueryResultRequest) returns (GetQueryResultResponse) {}
+  rpc GetQueryStatus(GetQueryStatusRequest) returns (GetQueryStatusResponse) {}
+  rpc GetQueryPlans(GetQueryPlansRequest) returns (GetQueryPlansResponse) {}
+
+  rpc CancelQuery(CancelQueryRequest) returns (CancelQueryResponse) {}
+}

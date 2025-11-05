@@ -1,0 +1,33 @@
+[package]
+name = "polars-backend-client"
+version = "0.1.0"
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+bytes = { workspace = true }
+chrono = { workspace = true }
+futures-util = { workspace = true }
+http = { workspace = true }
+polars-axum-models = { workspace = true }
+pyo3 = { workspace = true, optional = true }
+reqwest = { workspace = true, features = ["blocking"] }
+reqwest-middleware = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+uuid = { workspace = true }
+
+[features]
+pyo3 = ["dep:pyo3", "polars-axum-models/pyo3"]
+
+[lints]
+workspace = true

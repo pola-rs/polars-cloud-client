@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package polars_cloud.compute_plane.client.v1;
+
+import "google/protobuf/field_mask.proto";
+import "polars_cloud/common/query_id.proto";
+import "polars_cloud/common/query_plans.proto";
+
+message GetQueryPlansRequest {
+  polars_cloud.common.QueryId query_id = 1;
+  google.protobuf.FieldMask fields = 2;
+}
+
+message GetQueryPlansResponse {
+  polars_cloud.common.QueryPlans plans = 1;
+}

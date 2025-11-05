@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package polars_cloud.compute_plane.client.v1;
+
+import "polars_cloud/common/query_id.proto";
+
+enum QueryStatus {
+  QUERY_STATUS_UNSPECIFIED = 0;
+  QUERY_STATUS_SCHEDULED = 1;
+  QUERY_STATUS_IN_PROGRESS = 2;
+  QUERY_STATUS_SUCCESS = 3;
+  QUERY_STATUS_FAILED = 4;
+  QUERY_STATUS_CANCELED = 5;
+}
+
+message GetQueryStatusRequest {
+  polars_cloud.common.QueryId query_id = 1;
+}
+
+message GetQueryStatusResponse {
+  QueryStatus status = 1;
+}

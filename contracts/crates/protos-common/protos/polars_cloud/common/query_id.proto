@@ -1,0 +1,7 @@
+syntax = "proto3";
+
+package polars_cloud.common;
+
+message QueryId {
+  string query_id = 1;
+}

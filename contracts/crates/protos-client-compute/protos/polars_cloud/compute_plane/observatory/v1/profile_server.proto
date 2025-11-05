@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package polars_cloud.compute_plane.observatory.v1;
+
+import "polars_cloud/compute_plane/observatory/v1/get_query_profile.proto";
+
+// Service for interaction between client and observatory.
+// The client can request the profile of a query while it is running.
+// This endpoint is conditional on the optional QueryProfileRequestProto tag field,
+// profile will only be returned if the requested tag doesn't match the server tag,
+// or the requested tag is not provided.
+service QueryProfileService {
+  rpc GetQueryProfile(GetQueryProfileRequest) returns (GetQueryProfileResponse) {}
+}

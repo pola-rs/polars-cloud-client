@@ -1,0 +1,22 @@
+[package]
+name = "protos-client-compute"
+version = "0.1.0"
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+bytes = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
+protos-common = { workspace = true }
+serde = { workspace = true }
+tonic = { workspace = true }
+trait-variant = { workspace = true }
+
+[build-dependencies]
+build-deps = { workspace = true }
+
+[lints]
+workspace = true

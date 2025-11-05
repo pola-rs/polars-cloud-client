@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package polars_cloud.control_plane.client.v1;
+
+import "polars_cloud/common/query_id.proto";
+import "polars_cloud/common/query_info.proto";
+import "polars_cloud/control_plane/client/v1/compute_id.proto";
+
+message SubmitQueryRequest {
+  ComputeId compute_id = 1;
+  // Query settings, opaque for the control plane
+  bytes settings = 2;
+  // Polars DSL, opaque for the control plane
+  bytes plan = 3;
+  polars_cloud.common.QueryInfo query_info = 4;
+}
+
+message SubmitQueryResponse {
+  polars_cloud.common.QueryId query_id = 1;
+}
