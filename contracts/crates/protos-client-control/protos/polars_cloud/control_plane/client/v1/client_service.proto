@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package polars_cloud.control_plane.client.v1;
+
+import "polars_cloud/control_plane/client/v1/get_query_result.proto";
+import "polars_cloud/control_plane/client/v1/submit_query.proto";
+
+service ClientService {
+  rpc SubmitQuery(SubmitQueryRequest) returns (SubmitQueryResponse) {}
+  rpc GetQueryResult(GetQueryResultRequest) returns (GetQueryResultResponse) {}
+}

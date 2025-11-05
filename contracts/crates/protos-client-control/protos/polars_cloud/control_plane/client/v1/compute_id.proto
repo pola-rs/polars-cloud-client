@@ -1,0 +1,7 @@
+syntax = "proto3";
+
+package polars_cloud.control_plane.client.v1;
+
+message ComputeId {
+  string compute_id = 1;
+}

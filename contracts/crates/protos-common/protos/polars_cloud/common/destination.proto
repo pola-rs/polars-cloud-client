@@ -1,0 +1,7 @@
+syntax = "proto3";
+
+package polars_cloud.common;
+
+message Destination {
+  string destination = 1;
+}

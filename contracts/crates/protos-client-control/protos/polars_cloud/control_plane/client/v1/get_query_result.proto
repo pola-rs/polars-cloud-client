@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package polars_cloud.control_plane.client.v1;
+
+import 'polars_cloud/common/query_id.proto';
+import 'polars_cloud/common/query_result.proto';
+
+message GetQueryResultRequest {
+  polars_cloud.common.QueryId query_id = 1;
+}
+
+message GetQueryResultResponse {
+  polars_cloud.common.QueryResult result = 1;
+}

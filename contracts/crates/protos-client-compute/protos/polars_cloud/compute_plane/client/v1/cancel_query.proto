@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package polars_cloud.compute_plane.client.v1;
+
+import "polars_cloud/common/query_id.proto";
+
+message CancelQueryRequest {
+  polars_cloud.common.QueryId query_id = 1;
+}
+
+message CancelQueryResponse {}

@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package polars_cloud.compute_plane.client.v1;
+
+import "polars_cloud/common/query_id.proto";
+import "polars_cloud/common/query_result.proto";
+
+message GetQueryResultRequest {
+  polars_cloud.common.QueryId query_id = 1;
+}
+
+message StageStatistics {
+  uint32 num_workers_used = 1;
+}
+
+message QueryStageStatistics {
+  map<uint32, StageStatistics> stage_statistics = 1;
+}
+
+message ComputeQueryInfo {
+  oneof head {
+    bytes data = 1;
+    string error = 2;
+  }
+  optional QueryStageStatistics stage_statistics = 3;
+}
+
+message GetQueryResultResponse {
+  polars_cloud.common.QueryResult query_result = 1;
+  ComputeQueryInfo compute_info = 2;
+}

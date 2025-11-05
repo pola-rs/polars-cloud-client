@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package polars_cloud.common;
+
+message Label {
+  string name = 1;
+}
+
+message QueryInfo {
+  repeated Label labels = 1;
+}

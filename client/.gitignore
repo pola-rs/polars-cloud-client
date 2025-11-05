@@ -1,0 +1,9 @@
+# .gitignore specifically for public client
+# In our private repo, these files are already ignore by root .gitignore,
+# but we don't want to expose that
+target/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+.cargo/

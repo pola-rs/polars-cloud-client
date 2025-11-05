@@ -1,0 +1,58 @@
+[package]
+name = "polars_cloud"
+version = "0.4.0"
+edition = "2024"
+homepage = "https://www.pola.rs/"
+license = "MIT"
+repository = "https://github.com/pola-rs/polars"
+
+[lib]
+name = "polars_cloud"
+crate-type = ["cdylib"]
+
+[lints.clippy]
+disallowed_methods = "deny"
+
+[dependencies]
+anyhow = "1.0.95"
+base64 = "0.22.1"
+directories = "6.0.0"
+polars-axum-models = { path = "../contracts/crates/axum-models", features = ["pyo3"] }
+polars-backend-client = { path = "../contracts/crates/control-plane-client", features = ["pyo3"] }
+protos-client-compute = { path = "../contracts/crates/protos-client-compute" }
+protos-client-control = { path = "../contracts/crates/protos-client-control" }
+protos-common = { path = "../contracts/crates/protos-common" }
+pyo3 = { version = "0.26", features = ["extension-module", "abi3-py39", "multiple-pymethods"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+reqwest-middleware = "0.4.1"
+reqwest-retry = "0.7.0"
+serde = { version = "1.0" }
+serde_json = "1.0"
+thiserror = "2.0"
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
+tracing = { version = "0.1" }
+utils = { path = "../contracts/crates/utils" }
+uuid = "1.11.0"
+webbrowser = "1.0.3"
+
+[profile.mindebug-dev]
+inherits = "dev"
+debug = "line-tables-only"
+
+[profile.release]
+lto = "thin"
+debug = "line-tables-only"
+
+[profile.nodebug-release]
+inherits = "release"
+debug = false
+
+[profile.debug-release]
+inherits = "release"
+debug = true
+
+[profile.dist-release]
+inherits = "release"
+codegen-units = 1
+debug = false
+lto = "fat"

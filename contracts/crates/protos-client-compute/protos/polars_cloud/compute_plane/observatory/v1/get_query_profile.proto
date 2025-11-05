@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package polars_cloud.compute_plane.observatory.v1;
+
+import "polars_cloud/common/query_id.proto";
+
+message QueryProfile {
+  bytes tag = 1;
+  optional uint32 total_stages = 2;
+  optional string phys_plan_explain = 3;
+  optional string phys_plan_dot = 4;
+  // IPC encoded dataframe
+  bytes data = 5;
+}
+
+message GetQueryProfileRequest {
+  polars_cloud.common.QueryId identifier = 1;
+  optional bytes tag = 2;
+}
+
+message GetQueryProfileResponse {
+  optional QueryProfile profile = 1;
+}

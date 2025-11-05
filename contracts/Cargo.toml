@@ -1,0 +1,53 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/*",
+]
+default-members = [
+  "crates/*",
+]
+
+[workspace.dependencies]
+anyhow = "1.0.95"
+async-trait = { version = "0.1" }
+axum = { version = "0.8.4", default-features = false, features = ["matched-path"] }
+build-deps = { path = "crates/build-deps" }
+bytes = { version = "1", features = ["serde"] }
+chrono = { version = "0.4.41", features = ["serde"] }
+futures-util = { version = "0.3.31" }
+garde = { version = "0.22.0", features = ["derive", "email", "regex"] }
+http = "1.1"
+opentelemetry-semantic-conventions = { version = "0.30.0" }
+polars-axum-models = { path = "crates/axum-models" }
+prost = "0.13"
+prost-types = "0.13"
+protos-client-compute = { path = "crates/protos-client-compute" }
+protos-common = { path = "crates/protos-common" }
+pyo3 = { version = "0.26.0", features = ["abi3-py39", "chrono", "uuid"] }
+rcgen = { version = "0.13", features = ["pem", "x509-parser"] }
+regex = { version = "1.11" }
+reqwest = { version = "0.12", default-features = false, features = ["json", "http2"] }
+reqwest-middleware = "0.4.1"
+rmp-serde = "1.3.0"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = { version = "1.0" }
+thiserror = "2.0"
+tokio = { version = "1.0", default-features = false }
+tonic = { version = "0.13", features = ["transport", "codegen", "prost", "tls-native-roots", "zstd"] }
+tower = { version = "0.5", default-features = false }
+tower-http = { version = "0.6", default-features = false, features = ["cors", "trace", "request-id"] }
+tracing = "0.1.41"
+trait-variant = "0.1.2"
+utoipa = { version = "5", features = ["chrono", "uuid"] }
+uuid = { version = "1.8.0", features = ["v4", "v7", "serde"] }
+version-number = { path = "crates/version-number" }
+
+[workspace.package]
+version = "0.39.2"
+edition = "2024"
+homepage = "https://www.pola.rs/"
+license = "MIT"
+repository = "https://github.com/pola-rs/polars-cloud-client"
+
+[workspace.lints.clippy]
+needless_return = "allow"

@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package polars_cloud.common;
+
+import "polars_cloud/common/destination.proto";
+
+message QueryOutput {
+  repeated Destination destination = 1;
+  FileType file_type = 2;
+  uint64 n_rows_result = 3;
+}
+
+enum FileType {
+  FILE_TYPE_UNSPECIFIED = 0;
+  FILE_TYPE_PARQUET = 1;
+  FILE_TYPE_IPC = 2;
+  FILE_TYPE_CSV = 3;
+  FILE_TYPE_NDJSON = 4;
+  FILE_TYPE_JSON = 5;
+}
+
+enum ErrorSource {
+  ERROR_SOURCE_UNSPECIFIED = 0;
+  ERROR_SOURCE_SCHEDULER = 1;
+  ERROR_SOURCE_WORKER = 2;
+}
+
+message Error {
+  string message = 1;
+}
+
+message QueryResult {
+  uint32 total_stages = 1;
+  uint32 finished_stages = 2;
+  uint32 failed_stages = 3;
+  repeated Error errors = 4;
+  // If this is set, the query was successful, otherwise it failed
+  optional QueryOutput output = 5;
+}

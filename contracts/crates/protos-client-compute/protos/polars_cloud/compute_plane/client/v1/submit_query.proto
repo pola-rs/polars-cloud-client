@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package polars_cloud.compute_plane.client.v1;
+
+import "polars_cloud/common/query_id.proto";
+
+message SubmitQueryRequest {
+  QuerySettings settings = 1;
+  bytes plan = 2;
+  // Transparently forwarded to control plane
+  bytes query_info = 3;
+}
+
+message SubmitQueryResponse {
+  polars_cloud.common.QueryId query_id = 1;
+}
+
+enum Engine {
+  ENGINE_UNSPECIFIED = 0;
+  ENGINE_AUTO = 1;
+  ENGINE_STREAMING = 2;
+  ENGINE_IN_MEMORY = 3;
+  ENGINE_GPU = 4;
+}
+
+enum ShuffleCompression {
+  SHUFFLE_COMPRESSION_UNSPECIFIED = 0;
+  SHUFFLE_COMPRESSION_AUTO = 1;
+  SHUFFLE_COMPRESSION_LZ4 = 2;
+  SHUFFLE_COMPRESSION_ZSTD = 3;
+  SHUFFLE_COMPRESSION_UNCOMPRESSED = 4;
+}
+
+enum ShuffleFormat {
+  SHUFFLE_FORMAT_UNSPECIFIED = 0;
+  SHUFFLE_FORMAT_AUTO = 1;
+  SHUFFLE_FORMAT_IPC = 2;
+  SHUFFLE_FORMAT_PARQUET = 3;
+}
+
+message ShuffleOpts {
+  ShuffleFormat format = 1;
+  ShuffleCompression compression = 2;
+  optional int32 compression_level = 3;
+}
+
+message SingleOpts {}
+
+message DistributedOpts {
+  ShuffleOpts shuffle_opts = 1;
+  bool allow_pre_aggregation = 2;
+  bool allow_partitioned_sort = 3;
+  uint64 allow_equi_join_broadcast_limit = 4;
+}
+
+enum GraphFormat {
+  GRAPH_FORMAT_UNSPECIFIED = 0;
+  GRAPH_FORMAT_AUTO = 1;
+  GRAPH_FORMAT_DOT = 2;
+  GRAPH_FORMAT_EXPLAIN = 3;
+}
+
+message QuerySettings {
+  reserved 3; // Deprecated `query_type` variant `PartitionedByKeyOpts
+  // partitioned_by_key`
+
+  Engine engine = 1;
+  oneof query_type {
+    SingleOpts single = 2;
+    DistributedOpts distributed = 4;
+  }
+  GraphFormat preferred_graph_format = 5;
+  uint32 n_retries = 6;
+}
