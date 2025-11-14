@@ -1,9 +1,9 @@
 #![allow(clippy::result_large_err)]
 
 use polars_axum_models::{
-    ClusterModeSchema, ComputeClusterPublicInfoSchema, ComputeSchema, ComputeStatusSchema,
-    ComputeTokenSchema, DBClusterModeSchema, GetClusterFilterParams, InstanceSpecsSchema,
-    LogLevelSchema, ManifestQuery, ManifestSchema, Pagination, PythonVersion,
+    ClusterModeSchema, ComputeClusterNodeInfoSchema, ComputeClusterPublicInfoSchema, ComputeSchema,
+    ComputeStatusSchema, ComputeTokenSchema, DBClusterModeSchema, GetClusterFilterParams,
+    InstanceSpecsSchema, LogLevelSchema, ManifestQuery, ManifestSchema, Pagination, PythonVersion,
     RegisterComputeClusterArgs, StartComputeClusterArgs, StartComputeClusterManifestArgs,
 };
 use polars_backend_client::client::ApiClient;
@@ -74,6 +74,22 @@ impl WrappedAPIClient {
     ) -> Result<ComputeTokenSchema, ApiError> {
         self.call(py, |client: &ApiClient| {
             client.get_compute_cluster_token(workspace_id, compute_id)
+        })
+    }
+    pub fn get_compute_cluster_nodes(
+        &mut self,
+        py: Python,
+        workspace_id: Uuid,
+        compute_id: Uuid,
+    ) -> Result<Vec<ComputeClusterNodeInfoSchema>, ApiError> {
+        self.call_paginated(py, |client: &ApiClient, page: i64| {
+            // TODO: offset is overridden later by (page - 1) * limit, confusing
+            let pagination = Pagination {
+                page,
+                limit: 1000,
+                offset: 0,
+            };
+            client.get_compute_cluster_nodes(workspace_id, compute_id, pagination)
         })
     }
 

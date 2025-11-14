@@ -31,7 +31,7 @@ classifiers = [
 dependencies = [
   # uncomment if we want a specific commit
   # "polars@git+https://github.com/pola-rs/polars.git@b9d05c48d58f611b19451ef5c6df60f55be6e444#subdirectory=py-polars",
-  "polars[rt64,cloudpickle] == 1.35.1",
+  "polars[rt64,cloudpickle] == 1.35.2",
   # 'polars @ file:///home/jesse/dev/oss/polars/py-polars',
   # 'polars @ file:///home/ritchie46/code/polars/py-polars',
   'typing-extensions >= 4.0; python_version <= "3.12"',
