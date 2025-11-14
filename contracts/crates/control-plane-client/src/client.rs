@@ -268,6 +268,21 @@ impl ApiClient {
             .await
     }
 
+    pub async fn patch_compute_cluster_manifest(
+        &self,
+        workspace_id: Uuid,
+        manifest_id: Uuid,
+        params: PatchManifestArgs,
+    ) -> Result<ManifestSchema> {
+        self.patch(&format!(
+            "/api/v1/workspace/{workspace_id}/manifest/{manifest_id}"
+        ))
+        .json(params)
+        .await?
+        .json()
+        .await
+    }
+
     pub async fn get_compute_clusters(
         &self,
         workspace_id: Uuid,
@@ -1004,6 +1019,21 @@ impl ApiClient {
         ))
         .await?
         .empty()
+        .await
+    }
+
+    pub async fn get_compute_cluster_nodes(
+        &self,
+        workspace_id: Uuid,
+        compute_id: Uuid,
+        pagination: Pagination,
+    ) -> Result<Paginated<ComputeClusterNodeInfoSchema>> {
+        self.get(&format!(
+            "/api/v1/workspace/{workspace_id}/compute/{compute_id}/node"
+        ))
+        .pagination(&pagination)
+        .await?
+        .json()
         .await
     }
 

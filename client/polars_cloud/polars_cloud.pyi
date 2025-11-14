@@ -85,6 +85,15 @@ class WorkspaceSchema:
 
     def __init__(self, id: UUID, name: str, status: WorkspaceStateSchema) -> None: ...
 
+class ComputeClusterNodeInfoSchema:
+    """Represents a single node within a compute cluster."""
+
+    cluster_id: UUID
+    private_address: str | None
+    cpus: int | None
+    memory_mb: int | None
+    storage_mb: int | None
+
 class DefaultComputeSpecs:
     """Represents the default compute specifications."""
 
@@ -286,6 +295,9 @@ class ManifestSchema:
 
     python_version: str
     """Version of python the manifest was created with."""
+
+    requirements_txt: str | None
+    """Requirements.txt file contents."""
 
 class ComputeSchema:
     """Represents the schema for a compute cluster."""
@@ -587,6 +599,9 @@ class ApiClient:
     def get_compute_cluster_token(
         self, workspace_id: UUID, compute_id: UUID
     ) -> ComputeTokenSchema: ...
+    def get_compute_cluster_nodes(
+        self, workspace_id: UUID, compute_id: UUID
+    ) -> list[ComputeClusterNodeInfoSchema]: ...
 
     # Organization methods
     def get_organization(self, organization_id: UUID) -> OrganizationSchema: ...

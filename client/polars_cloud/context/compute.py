@@ -268,7 +268,8 @@ class ComputeContext(ClientContext, ContextDecorator):
                 msg = f"locally installed polars version ({self._polars_version}) does not match polars version specified in manifest ({m.polars_version})"
                 raise ComputeClusterMisspecified(msg)
 
-            if python_version := pcr.python_version() != m.python_version:
+            python_version = pcr.python_version()
+            if python_version != m.python_version:
                 msg = f"locally installed python version ({python_version}) does not match python version specified in manifest ({m.python_version})"
                 raise ComputeClusterMisspecified(msg)
 
@@ -372,7 +373,7 @@ class ComputeContext(ClientContext, ContextDecorator):
         >>> ctx = pc.ComputeContext(workspace="workspace-name", cpus=24, memory=24)
         >>> ctx.register("my-cluster")
         >>> ctx.start()
-        >>> ctx = pc.ComputeContext(name="my-cluster")
+        >>> ctx = pc.ComputeContext(workspace="workspace-name", name="my-cluster")
         >>> ctx.start()
         """
         self._name = name
@@ -687,11 +688,16 @@ class ComputeContext(ClientContext, ContextDecorator):
 def _poll_compute_status_until(
     compute: ComputeContext,
     desired_state: ComputeContextStatus,
-    start_delay: int = 60,
+    start_delay: int = 30,
     interval: int = 3,
     timeout: int = 300,
 ) -> ComputeContextStatus:
     """Poll the compute status until the compute context is in desired_state."""
+    # Poll at least once for fast response
+    status = compute.get_status()
+    if status == desired_state:
+        return status
+
     max_polls = int((timeout - start_delay) / interval)
     time.sleep(start_delay)
     for i in range(max_polls):
