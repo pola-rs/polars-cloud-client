@@ -172,7 +172,18 @@ impl WrappedAPIClient {
         })
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature=(workspace_id, name))]
+    pub fn unregister_compute_cluster_manifest(
+        &mut self,
+        py: Python<'_>,
+        workspace_id: Uuid,
+        name: String,
+    ) -> Result<(), ApiError> {
+        self.call(py, |client: &ApiClient| {
+            client.unregister_compute_cluster_manifest(workspace_id, name)
+        })
+    }
+
     #[pyo3(signature=(workspace_id, name))]
     pub fn start_compute_cluster_manifest(
         &mut self,

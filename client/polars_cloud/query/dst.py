@@ -12,11 +12,11 @@ if TYPE_CHECKING:
         IpcCompression,
         ParquetCompression,
         ParquetMetadata,
-        PartitioningScheme,
     )
     from polars.interchange import CompatLevel
     from polars.io.cloud import CredentialProviderFunction
     from polars.io.parquet import ParquetFieldOverwrites
+    from polars.io.partition import _SinkDirectory
 
 
 class Dst: ...
@@ -25,7 +25,7 @@ class Dst: ...
 class ParquetDst(Dst):
     def __init__(
         self,
-        uri: str | Path | PartitioningScheme,
+        uri: str | Path | _SinkDirectory,
         *,
         compression: ParquetCompression = "zstd",
         compression_level: int | None = None,
@@ -134,7 +134,7 @@ class ParquetDst(Dst):
                 at any point without it being considered a breaking change.
 
         """
-        self.uri: str | Path | None | PartitioningScheme = (
+        self.uri: str | Path | None | _SinkDirectory = (
             uri  #: Path to which the output should be written
         )
         self.compression: ParquetCompression = compression  #: Compression algorithm
@@ -163,7 +163,7 @@ class ParquetDst(Dst):
 class CsvDst(Dst):
     def __init__(
         self,
-        uri: str | PartitioningScheme,
+        uri: str | _SinkDirectory,
         *,
         include_bom: bool = False,
         include_header: bool = True,
@@ -283,7 +283,7 @@ class CsvDst(Dst):
                 This functionality is considered **unstable**. It may be changed
                 at any point without it being considered a breaking change.
         """
-        self.uri: str | PartitioningScheme = uri
+        self.uri: str | _SinkDirectory = uri
         self.include_bom: bool = include_bom
         self.include_header: bool = include_header
         self.separator: str = separator
@@ -308,7 +308,7 @@ class CsvDst(Dst):
 class IpcDst(Dst):
     def __init__(
         self,
-        uri: str | PartitioningScheme,
+        uri: str | _SinkDirectory,
         *,
         compression: IpcCompression | None = "zstd",
         compat_level: CompatLevel | None = None,

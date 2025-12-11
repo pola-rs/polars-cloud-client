@@ -322,6 +322,18 @@ impl ApiClient {
             .await
     }
 
+    pub async fn unregister_compute_cluster_manifest(
+        &self,
+        workspace_id: Uuid,
+        name: String,
+    ) -> Result<()> {
+        self.delete(&format!("/api/v1/workspace/{workspace_id}/manifest"))
+            .parameter("name", name)
+            .await?
+            .empty()
+            .await
+    }
+
     pub async fn start_compute_cluster_manifest(
         &self,
         workspace_id: Uuid,

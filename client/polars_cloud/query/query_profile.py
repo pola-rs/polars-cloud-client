@@ -88,7 +88,7 @@ class QueryProfile:
 
     @cached_property
     def data(self) -> pl.DataFrame | None:
-        """Get the raw progress data."""
+        """Get the raw profile data."""
         data = self.inner.data
         return pl.read_ipc(data) if data else None
 

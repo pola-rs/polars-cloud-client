@@ -7,6 +7,7 @@ import polars as pl
 from polars._utils.cloud import prepare_cloud_plan
 from polars.exceptions import ComputeError, InvalidOperationError
 
+from polars_cloud.constants import ALLOW_LOCAL_SCANS
 from polars_cloud.query.dst import CsvDst, IpcDst, ParquetDst, TmpDst
 
 with contextlib.suppress(ImportError):  # Module not available when building docs
@@ -156,7 +157,7 @@ If you want to:
 
     try:
         plan = prepare_cloud_plan(
-            lf, optimizations=optimizations, allow_local_scans=False
+            lf, optimizations=optimizations, allow_local_scans=ALLOW_LOCAL_SCANS
         )
     except (ComputeError, InvalidOperationError) as exc:
         msg = f"invalid cloud plan: {exc}"
