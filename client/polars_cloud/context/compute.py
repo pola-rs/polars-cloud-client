@@ -396,6 +396,17 @@ class ComputeContext(ClientContext, ContextDecorator):
             idle_timeout_mins=self._idle_timeout_mins,
         )
 
+    def unregister(self) -> None:
+        if self._name is None:
+            msg = "can't unregister ComputeContext without name"
+            raise RuntimeError(msg)
+
+        constants.API_CLIENT.unregister_compute_cluster_manifest(
+            workspace_id=self.workspace.id, name=self._name
+        )
+
+        self._name = None
+
     def start(self, *, wait: bool = False) -> None:
         """Start the compute context.
 

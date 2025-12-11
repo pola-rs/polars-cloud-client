@@ -20,11 +20,11 @@ if TYPE_CHECKING:
         IpcCompression,
         ParquetCompression,
         ParquetMetadata,
-        PartitioningScheme,
     )
     from polars.interchange import CompatLevel
     from polars.io.cloud import CredentialProviderFunction
     from polars.io.parquet import ParquetFieldOverwrites
+    from polars.io.partition import _SinkDirectory
 
     from polars_cloud._typing import (
         Engine,
@@ -101,6 +101,10 @@ class LazyFrameRemote:
         >>> ctx = pc.ComputeContext(cluster_size=10)
         >>> query.remote(ctx).distributed().sink_parquet(...)
         """
+        if self._engine == "in-memory":
+            msg = "engine 'in-memory' not supported for distributed queries"
+            raise ValueError(msg)
+
         distributed_settings = DistributionSettings(
             sort_partitioned=sort_partitioned,
             pre_aggregation=pre_aggregation,
@@ -231,7 +235,7 @@ class LazyFrameRemote:
 
     def sink_parquet(
         self,
-        uri: str | PartitioningScheme,
+        uri: str | _SinkDirectory,
         *,
         compression: ParquetCompression = "zstd",
         compression_level: int | None = None,
@@ -372,7 +376,7 @@ class LazyFrameRemote:
 
     def sink_csv(
         self,
-        uri: str | PartitioningScheme,
+        uri: str | _SinkDirectory,
         *,
         include_bom: bool = False,
         include_header: bool = True,
@@ -511,7 +515,7 @@ class LazyFrameRemote:
 
     def sink_ipc(
         self,
-        uri: str | PartitioningScheme,
+        uri: str | _SinkDirectory,
         *,
         compression: IpcCompression | None = "zstd",
         compat_level: CompatLevel | None = None,
@@ -687,7 +691,7 @@ class ExecuteRemote:
 
     def sink_parquet(
         self,
-        uri: str | PartitioningScheme,
+        uri: str | _SinkDirectory,
         *,
         compression: ParquetCompression = "zstd",
         compression_level: int | None = None,
@@ -850,7 +854,7 @@ class ExecuteRemote:
 
     def sink_csv(
         self,
-        uri: str | PartitioningScheme,
+        uri: str | _SinkDirectory,
         *,
         include_bom: bool = False,
         include_header: bool = True,
@@ -1027,7 +1031,7 @@ class ExecuteRemote:
 
     def sink_ipc(
         self,
-        uri: str | PartitioningScheme,
+        uri: str | _SinkDirectory,
         *,
         compression: IpcCompression | None = "zstd",
         compat_level: CompatLevel | None = None,

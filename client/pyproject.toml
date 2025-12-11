@@ -10,7 +10,7 @@ authors = [
 ]
 description = "Execute your Polars workloads in the cloud"
 readme = "README.md"
-license = "MIT"
+license = { file = "LICENSE" }
 requires-python = ">=3.9"
 classifiers = [
   "Development Status :: 1 - Planning",
@@ -30,8 +30,9 @@ classifiers = [
 ]
 dependencies = [
   # uncomment if we want a specific commit
-  # "polars@git+https://github.com/pola-rs/polars.git@b9d05c48d58f611b19451ef5c6df60f55be6e444#subdirectory=py-polars",
-  "polars[rt64,cloudpickle] == 1.35.2",
+  # "polars[rt64, cloudpickle]@git+https://github.com/pola-rs/polars.git@4cbceea4edcb70df5c9be7f9968b0cf56e5f2f45#subdirectory=py-polars",
+  # "polars-runtime-64@git+https://github.com/pola-rs/polars.git@4cbceea4edcb70df5c9be7f9968b0cf56e5f2f45#subdirectory=py-polars/runtime",
+  "polars[rt64,cloudpickle] == 1.36.1",
   # 'polars @ file:///home/jesse/dev/oss/polars/py-polars',
   # 'polars @ file:///home/ritchie46/code/polars/py-polars',
   'typing-extensions >= 4.0; python_version <= "3.12"',

@@ -573,6 +573,11 @@ class ApiClient:
         log_level: LogLevelSchema | None,
         idle_timeout_mins: int | None,
     ) -> ManifestSchema: ...
+    def unregister_compute_cluster_manifest(
+        self,
+        workspace_id: UUID,
+        name: str,
+    ) -> None: ...
     def start_compute_cluster_manifest(
         self, workspace_id: UUID, name: str
     ) -> ComputeSchema: ...

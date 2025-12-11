@@ -11,5 +11,5 @@ Result Types
    direct_query
    query_result
    query_status
-   query_progress
+   query_profile
    stage_statistics

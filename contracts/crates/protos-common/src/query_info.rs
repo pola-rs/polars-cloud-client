@@ -78,6 +78,7 @@ impl From<Option<FileType>> for common::FileType {
     }
 }
 
+#[derive(Default)]
 pub struct QueryResult {
     pub total_stages: u32,
     pub finished_stages: u32,

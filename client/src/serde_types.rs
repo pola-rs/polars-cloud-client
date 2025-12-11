@@ -172,12 +172,12 @@ pub struct QueryProfilePy {
     pub data: Py<PyBytes>,
 }
 
-pub(crate) fn query_profile_to_py(py: Python, progress: QueryProfile) -> QueryProfilePy {
+pub(crate) fn query_profile_to_py(py: Python, profile: QueryProfile) -> QueryProfilePy {
     QueryProfilePy {
-        tag: PyBytes::new(py, progress.tag.as_ref()).unbind(),
-        total_stages: progress.total_stages,
-        phys_plan_explain: progress.phys_plan_explain,
-        phys_plan_dot: progress.phys_plan_dot,
-        data: PyBytes::new(py, &progress.data).unbind(),
+        tag: PyBytes::new(py, profile.tag.as_ref()).unbind(),
+        total_stages: profile.total_stages,
+        phys_plan_explain: profile.phys_plan_explain,
+        phys_plan_dot: profile.phys_plan_dot,
+        data: PyBytes::new(py, &profile.data).unbind(),
     }
 }
