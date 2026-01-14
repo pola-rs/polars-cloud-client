@@ -26,6 +26,7 @@ from polars.exceptions import (  # noqa: F401
 from polars.lazyframe.opt_flags import DEFAULT_QUERY_OPT_FLAGS
 
 import polars_cloud.polars_cloud as pcr
+from polars_cloud import config as pc_cfg
 from polars_cloud import constants
 from polars_cloud._utils import run_coroutine
 from polars_cloud.context import (
@@ -174,7 +175,9 @@ class ProxyQuery(InProgressQueryRemote):
 class DistributionSettings:
     sort_partitioned: bool = True
     pre_aggregation: bool = True
+    cost_based_planner: bool = False
     equi_join_broadcast_limit: int = 256 * 1024**2
+    partitions_per_worker: int | None = None
 
 
 class DirectQuery(InProgressQueryRemote):
@@ -202,6 +205,8 @@ class DirectQuery(InProgressQueryRemote):
         self._client = client
         self._cluster = cluster
         self._tag: bytes | None = None
+
+        assert cluster._compute_id is not None
 
     def get_status(self) -> QueryStatus:
         status_code = self._client.get_direct_query_status(
@@ -692,7 +697,10 @@ def spawn(
         else:
             token = None
         try:
-            q_id = client.do_query(plan=plan, settings=settings, token=token)
+            username = pc_cfg.Config.get(pc_cfg._USER_NAME)
+            q_id = client.do_query(
+                plan=plan, settings=settings, token=token, username=username
+            )
         except pcr.EncodedPolarsError as e:
             raise decode_error(str(e)) from None
 

@@ -100,13 +100,15 @@ impl AuthToken {
 
         // Look for a valid access token on disk, refresh if necessary
         let mut token = Self::read_tokens_from_disk()?;
-        token.refresh(connection_pool).await?;
+        if let Some(new_token) = token.refresh(connection_pool).await? {
+            token = new_token;
+        }
         Ok(token)
     }
     pub async fn refresh(
-        &mut self,
+        &self,
         connection_pool: reqwest_middleware::ClientWithMiddleware,
-    ) -> Result<(), AuthError> {
+    ) -> Result<Option<AuthToken>, AuthError> {
         match self {
             AuthToken::EnvVar(token) => {
                 if is_token_expired(token, None)? {
@@ -114,7 +116,7 @@ impl AuthToken {
                         "Token provided in environment variable is expired.",
                     ))
                 } else {
-                    Ok(())
+                    Ok(None)
                 }
             },
             AuthToken::ServiceAccount {
@@ -123,25 +125,30 @@ impl AuthToken {
                 token,
             } => {
                 if !is_token_expired(token, None)? {
-                    return Ok(());
+                    return Ok(None);
                 }
                 let refreshed_token =
                     get_access_token_for_service_account(client_id, client_secret, connection_pool)
                         .await?;
-                *token = refreshed_token;
-                Ok(())
+                Ok(Some(AuthToken::ServiceAccount {
+                    client_id: client_id.clone(),
+                    client_secret: client_secret.clone(),
+                    token: refreshed_token,
+                }))
             },
             AuthToken::AccessToken {
                 token,
                 refresh_token,
             } => {
                 if !is_token_expired_user_friendly_error(token, None)? {
-                    return Ok(());
+                    return Ok(None);
                 }
                 let tokens = use_refresh_token(refresh_token, connection_pool).await?;
-                *token = tokens.access_token;
-                *refresh_token = tokens.refresh_token;
-                Ok(())
+
+                Ok(Some(AuthToken::AccessToken {
+                    token: tokens.access_token,
+                    refresh_token: tokens.refresh_token,
+                }))
             },
         }
     }

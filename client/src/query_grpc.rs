@@ -1,5 +1,6 @@
 #![allow(clippy::result_large_err)]
 
+use std::str::FromStr;
 use std::time::Duration;
 
 use polars_axum_models::QueryStatusCodeSchema;
@@ -12,20 +13,22 @@ use protos_client_compute::observatory::{
     GetQueryProfileRequest, QueryProfile, QueryProfileServiceClient,
 };
 use protos_common::tonic::codegen::http::uri::Scheme;
+use protos_common::tonic::metadata::{MetadataKey, MetadataValue};
 use protos_common::tonic::service::interceptor::InterceptedService;
 use protos_common::tonic::transport::{Certificate, Channel, ClientTlsConfig, Identity, Uri};
 use protos_common::tonic::{self, Code, Request};
 use protos_common::{
     MAX_MESSAGE_LENGTH_UNLIMITED, PlanFormat, QueryIdentifier, QueryInfo, QueryPlans,
 };
-use pyo3::exceptions::PyRuntimeError;
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::{PyErr, Python, pyclass, pymethods};
 use reqwest::header::AUTHORIZATION;
-use utils::{Backoff, Fixed, retry};
+use utils::{Backoff, Exponential, retry};
 use uuid::Uuid;
 
 use crate::VERSIONS;
 use crate::constants::RUNTIME;
+use crate::entry::EnterRustExt;
 use crate::error::{ApiError, Result};
 use crate::query_settings::PyQuerySettings;
 use crate::serde_types::{QueryInfoPy, QueryProfilePy, query_profile_to_py, query_result_to_py};
@@ -38,6 +41,7 @@ type ObservatoryClient = QueryProfileServiceClient<
 >;
 
 #[pyclass]
+#[derive(Clone)]
 pub struct SchedulerClient {
     scheduler_client: SchedulerGRPCClient,
     observability_client: ObservatoryClient,
@@ -61,15 +65,11 @@ pub struct QueryPlansPy {
 impl SchedulerClient {
     #[new]
     pub fn new(
-        py: Python<'_>,
         address: &str,
         client_options: ClientOptions,
     ) -> std::result::Result<SchedulerClient, PyErr> {
         let channel =
-            RUNTIME.block_on(
-                py,
-                async move { get_channel(address, client_options).await },
-            )??;
+            RUNTIME.block_on(async move { get_channel(address, client_options).await })??;
         let scheduler_client =
             ClientServiceClient::with_interceptor(channel.clone(), version_interceptor as _)
                 .max_encoding_message_size(MAX_MESSAGE_LENGTH_UNLIMITED)
@@ -88,33 +88,38 @@ impl SchedulerClient {
 
     pub fn cancel_direct_query(
         &mut self,
-        py: Python<'_>,
+        py: Python,
         query_id: Uuid,
         token: Option<String>,
     ) -> Result<()> {
-        RUNTIME.block_on(py, async move {
-            let query_id = QueryIdentifier::from(query_id);
-            let mut req = Request::new(query_id.into());
-            req = insert_auth_token(req, token);
-            let _result = self.scheduler_client.cancel_query(req).await?;
-            Ok(())
-        })?
+        let _ = py.enter_rust(|| {
+            RUNTIME.block_on(async move {
+                let query_id = QueryIdentifier::from(query_id);
+                let mut req = Request::new(query_id.into());
+                req = insert_auth_token(req, token);
+                self.scheduler_client.cancel_query(req).await
+            })
+        })?;
+        Ok(())
     }
 
     pub fn get_direct_query_status(
         &mut self,
-        py: Python<'_>,
+        py: Python,
         query_id: Uuid,
         token: Option<String>,
     ) -> Result<QueryStatusCodeSchema> {
-        let query_id = QueryIdentifier::from(query_id);
+        let result = py.enter_rust(|| {
+            let query_id = QueryIdentifier::from(query_id);
 
-        let result = RUNTIME.block_on(py, async move {
-            let mut req = Request::new(query_id.into());
-            req = insert_auth_token(req, token);
-            let result = self.scheduler_client.get_query_status(req).await?;
-            Ok::<_, ApiError>(QueryStatus::from(result.into_inner()))
+            RUNTIME.block_on(async move {
+                let mut req = Request::new(query_id.into());
+                req = insert_auth_token(req, token);
+                let result = self.scheduler_client.get_query_status(req).await?;
+                Ok::<_, ApiError>(QueryStatus::from(result.into_inner()))
+            })
         })??;
+
         match result {
             QueryStatus::Unspecified => Err(ApiError::PyErr(PyRuntimeError::new_err(
                 "Server returned unknown query status code",
@@ -133,48 +138,57 @@ impl SchedulerClient {
         query_id: Uuid,
         token: Option<String>,
     ) -> Result<QueryInfoPy> {
-        let query_id = QueryIdentifier::from(query_id);
-
-        RUNTIME
-            .block_on(py, async move {
+        py.enter_rust(|| {
+            let query_id = QueryIdentifier::from(query_id);
+            RUNTIME.block_on(async move {
                 let mut req = Request::new(query_id.into());
                 req = insert_auth_token(req, token);
                 let result = self.scheduler_client.get_query_result(req).await?;
                 Ok(result.into_inner().into())
-            })?
-            .map(
-                |GetQueryResultResponse {
-                     result,
-                     compute_info,
-                 }| query_result_to_py(py, result, Some(compute_info)),
-            )
+            })
+        })?
+        .map(
+            |GetQueryResultResponse {
+                 result,
+                 compute_info,
+             }| query_result_to_py(py, result, Some(compute_info)),
+        )
     }
 
-    #[pyo3(signature = (plan, settings, token, labels=None))]
+    #[pyo3(signature = (plan, settings, token, username=None, labels=None))]
     pub fn do_query(
         &mut self,
         py: Python<'_>,
         plan: Vec<u8>,
         settings: PyQuerySettings,
         token: Option<String>,
+        username: Option<String>,
         labels: Option<Vec<String>>,
     ) -> Result<Uuid> {
-        let request = SubmitQueryRequest {
-            query_info: QueryInfo {
-                labels: labels.unwrap_or_default(),
-            },
-            plan: plan.into(),
-            query_settings: settings.into(),
-        };
+        py.enter_rust(|| {
+            let request = SubmitQueryRequest {
+                query_info: QueryInfo {
+                    labels: labels.unwrap_or_default(),
+                },
+                plan: plan.into(),
+                query_settings: settings.into(),
+            };
 
-        RUNTIME
-            .block_on(py, async move {
+            RUNTIME.block_on(async move {
                 let mut req = Request::new(request.into());
+                if let Some(username) = username {
+                    let shortened_username: String = username.chars().take(64).collect();
+                    let metadata = MetadataValue::from_str(&shortened_username)
+                        .map_err(|_e| PyValueError::new_err("Invalid username"))?;
+                    let metadatakey = MetadataKey::from_str("x-polars-user").unwrap();
+                    let _ = req.metadata_mut().insert(metadatakey, metadata);
+                }
                 req = insert_auth_token(req, token);
                 let result = self.scheduler_client.submit_query(req).await?;
                 Ok(result.into_inner())
-            })?
-            .map(|response| QueryIdentifier::from(response).inner)
+            })
+        })?
+        .map(|response| QueryIdentifier::from(response).inner)
     }
 
     pub fn get_direct_query_profile(
@@ -184,8 +198,8 @@ impl SchedulerClient {
         tag: Option<Vec<u8>>,
         token: Option<String>,
     ) -> Result<Option<QueryProfilePy>> {
-        RUNTIME
-            .block_on(py, async move {
+        py.enter_rust(|| {
+            RUNTIME.block_on(async move {
                 let query_id = QueryIdentifier::from(query_id);
 
                 let mut req = Request::new(
@@ -198,10 +212,11 @@ impl SchedulerClient {
                 req = insert_auth_token(req, token);
                 let response = self.observability_client.get_query_profile(req).await?;
                 Ok(response.into_inner().into())
-            })?
-            .map(|response: Option<QueryProfile>| {
-                response.map(|profile| query_profile_to_py(py, profile))
             })
+        })?
+        .map(|response: Option<QueryProfile>| {
+            response.map(|profile| query_profile_to_py(py, profile))
+        })
     }
 
     #[pyo3(signature = (query_id, token,  phys = false, ir = false))]
@@ -213,31 +228,34 @@ impl SchedulerClient {
         phys: bool,
         ir: bool,
     ) -> Result<QueryPlansPy> {
-        let plans = PlanSelection { ir, phys };
-        let query_plans: QueryPlans = RUNTIME
-            .block_on(py, async move {
-                retry!(
-                    Fixed::new(Duration::from_millis(50)),
-                    async {
-                        let mut req = Request::new(
-                            GetQueryPlansRequest {
-                                query_id: query_id.into(),
-                                plan_selection: Some(plans),
+        let query_plans: QueryPlans = py
+            .enter_rust(|| {
+                let plans = PlanSelection { ir, phys };
+                RUNTIME.block_on(async move {
+                    retry!(
+                        Exponential::new(Duration::from_millis(50))
+                            .maximum(Duration::from_millis(250)),
+                        async {
+                            let mut req = Request::new(
+                                GetQueryPlansRequest {
+                                    query_id: query_id.into(),
+                                    plan_selection: Some(plans),
+                                }
+                                .into(),
+                            );
+                            req = insert_auth_token(req, token.clone());
+                            match self.scheduler_client.get_query_plans(req).await {
+                                Ok(r) => utils::OperationResult::Ok(r),
+                                Err(s) if s.code() == Code::Unavailable => {
+                                    utils::OperationResult::Retry(s)
+                                },
+                                Err(s) => utils::OperationResult::Err(s),
                             }
-                            .into(),
-                        );
-                        req = insert_auth_token(req, token.clone());
-                        match self.scheduler_client.get_query_plans(req).await {
-                            Ok(r) => utils::OperationResult::Ok(r),
-                            Err(s) if s.code() == Code::Unavailable => {
-                                utils::OperationResult::Retry(s)
-                            },
-                            Err(s) => utils::OperationResult::Err(s),
-                        }
-                    },
-                    tokio::time::sleep
-                )
-                .await
+                        },
+                        tokio::time::sleep
+                    )
+                    .await
+                })
             })??
             .into_inner()
             .into();
@@ -258,7 +276,7 @@ impl SchedulerClient {
     }
 }
 
-fn insert_auth_token<T>(mut req: Request<T>, token: Option<String>) -> Request<T> {
+pub(super) fn insert_auth_token<T>(mut req: Request<T>, token: Option<String>) -> Request<T> {
     if let Some(token) = token {
         req.metadata_mut().insert(
             AUTHORIZATION.as_str(),

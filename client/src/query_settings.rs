@@ -70,7 +70,9 @@ pub enum PyQueryType {
         shuffle_opts: PyShuffleOpts,
         pre_aggregation: bool,
         sort_partitioned: bool,
+        cost_based_planner: bool,
         equi_join_broadcast_limit: u64,
+        partitions_per_worker: Option<u32>,
     },
 }
 
@@ -157,12 +159,16 @@ impl From<PyQueryType> for QueryType {
                 shuffle_opts,
                 pre_aggregation,
                 sort_partitioned,
+                cost_based_planner,
                 equi_join_broadcast_limit,
+                partitions_per_worker,
             } => Self::Distributed {
                 shuffle_opts: shuffle_opts.into(),
                 pre_aggregation,
                 sort_partitioned,
+                cost_based_planner,
                 equi_join_broadcast_limit,
+                partitions_per_worker,
             },
         }
     }

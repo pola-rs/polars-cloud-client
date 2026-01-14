@@ -237,7 +237,9 @@ pub enum QueryType {
         shuffle_opts: ShuffleOpts,
         pre_aggregation: bool,
         sort_partitioned: bool,
+        cost_based_planner: bool,
         equi_join_broadcast_limit: u64,
+        partitions_per_worker: Option<u32>,
     },
 }
 
@@ -249,12 +251,16 @@ impl From<QueryType> for proto::QueryType {
                 shuffle_opts,
                 pre_aggregation,
                 sort_partitioned,
+                cost_based_planner,
                 equi_join_broadcast_limit,
+                partitions_per_worker,
             } => proto::QueryType::Distributed(proto::DistributedOpts {
                 shuffle_opts: proto::ShuffleOpts::from(shuffle_opts).into(),
                 allow_pre_aggregation: pre_aggregation,
                 allow_partitioned_sort: sort_partitioned,
                 allow_equi_join_broadcast_limit: equi_join_broadcast_limit,
+                cost_based_planner,
+                partitions_per_worker,
             }),
         }
     }
@@ -269,13 +275,17 @@ impl From<proto::QueryType> for QueryType {
                     allow_pre_aggregation,
                     allow_partitioned_sort,
                     allow_equi_join_broadcast_limit,
+                    cost_based_planner,
                     shuffle_opts,
+                    partitions_per_worker,
                 } = opts;
                 Self::Distributed {
                     shuffle_opts: shuffle_opts.unwrap_or_default().into(),
                     pre_aggregation: allow_pre_aggregation,
                     sort_partitioned: allow_partitioned_sort,
+                    cost_based_planner,
                     equi_join_broadcast_limit: allow_equi_join_broadcast_limit,
+                    partitions_per_worker,
                 }
             },
         }
@@ -505,12 +515,13 @@ impl From<QueryIdentifier> for proto::GetQueryResultRequest {
     }
 }
 
+#[derive(Debug)]
 pub struct GetQueryPlansRequest {
     pub query_id: QueryIdentifier,
     pub plan_selection: Option<PlanSelection>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct PlanSelection {
     pub ir: bool,
     pub phys: bool,

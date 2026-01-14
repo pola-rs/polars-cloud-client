@@ -34,7 +34,7 @@ pub enum ApiError {
     #[error("{0}")]
     GRPCTransportError(#[from] tonic::transport::Error),
     #[error("{0}")]
-    GRPCError(#[from] Status),
+    GRPCError(Box<Status>),
     #[error("{0}")]
     UuidParsingError(#[from] uuid::Error),
 }
@@ -46,6 +46,12 @@ impl ApiError {
             ApiError::StatusError { status, .. } => Some(*status),
             _ => None,
         }
+    }
+}
+
+impl From<Status> for ApiError {
+    fn from(value: Status) -> Self {
+        Self::GRPCError(Box::new(value))
     }
 }
 

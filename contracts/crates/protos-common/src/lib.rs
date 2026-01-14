@@ -44,14 +44,14 @@ mod identifier {
     pub enum ComputeIdKind {}
 
     /// Compile-time query identifier kind. Can't be instantiated on purpose.
-    #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
+    #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
     pub enum QueryIdKind {}
 
     /// Compile-time task identifier kind. Can't be instantiated on purpose.
     #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
     pub enum TaskIdKind {}
 
-    #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
+    #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
     pub struct Identifier<Kind> {
         pub inner: Uuid,
         pub _kind: PhantomData<Kind>,

@@ -107,7 +107,7 @@ class QueryProfile:
                 maintain_order=True,
             )
             .agg(
-                worker_ids=pl.col("worker_id").unique(),
+                worker_ids=pl.col("node_id").unique(),
                 duration=(
                     pl.col("end_time").fill_null(now).max() - pl.col("start_time").min()
                 ),

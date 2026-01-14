@@ -9,17 +9,15 @@ impl Runtime {
         Self(tokio::runtime::Runtime::new().unwrap())
     }
 
-    pub fn block_on<F: Future + Send>(&self, py: Python<'_>, future: F) -> Result<F::Output, PyErr>
+    pub fn block_on<F: Future + Send>(&self, future: F) -> Result<F::Output, PyErr>
     where
         <F as Future>::Output: Send,
     {
-        py.detach(|| {
-            self.0.block_on(async {
-                tokio::select! {
-                    res = check_signals() => Err(res),
-                    res = future => Ok(res)
-                }
-            })
+        self.0.block_on(async {
+            tokio::select! {
+                res = check_signals() => Err(res),
+                res = future => Ok(res)
+            }
         })
     }
 }

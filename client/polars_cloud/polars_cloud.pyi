@@ -125,7 +125,7 @@ class QuerySchema:
     """The virtual machine it is sent to."""
 
     user_id: UUID
-    """The user account that started the instance."""
+    """The user account that started the query."""
 
     request_time: datetime
     """The time the query was requested."""
@@ -618,9 +618,6 @@ class ApiClient:
     def get_query(
         self, workspace_id: UUID, query_id: UUID
     ) -> QueryWithStateTimingAndResultSchema: ...
-    def get_query_plans(
-        self, workspace_id: UUID, query_id: UUID
-    ) -> QueryPlansSchema: ...
     def cancel_proxy_query(self, workspace_id: UUID, query_id: UUID) -> None: ...
     def get_queries(self, workspace_id: UUID) -> list[QueryWithStateTimingSchema]: ...
 
@@ -658,6 +655,7 @@ class SchedulerClient:
         plan: bytes,
         settings: PyQuerySettings,
         token: str | None,
+        username: str | None = None,
         labels: list[str] | None = None,
     ) -> UUID: ...
     def get_direct_query_profile(

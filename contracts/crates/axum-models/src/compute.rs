@@ -177,6 +177,13 @@ pub struct ComputeClusterNodeInfoSchema {
     pub storage_mb: Option<i32>,
 }
 
+#[derive(Deserialize, Serialize, Debug)]
+#[cfg_attr(feature = "server", derive(ToSchema))]
+pub struct SupportedVersionsSchema {
+    #[cfg_attr(feature="server", schema(value_type = Vec<String>))]
+    pub polars: Vec<VersionNumber>,
+}
+
 impl EntityOrdering for ComputeClusterNodeInfoSchema {
     fn order_fields() -> &'static [&'static str] {
         &["cpus", "memory_mb", "storage_mb"]

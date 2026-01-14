@@ -2,6 +2,7 @@ mod aws;
 pub mod client;
 mod compute;
 mod constants;
+mod entry;
 mod error;
 mod organization;
 mod query;
@@ -69,9 +70,9 @@ pl_version = version("polars")
         Some(&locals),
     )?;
     let polars_cloud_version: Bound<'_, PyString> =
-        locals.get_item("pc_version")?.unwrap().downcast_into()?;
+        locals.get_item("pc_version")?.unwrap().cast_into()?;
     let polars_version: Bound<'_, PyString> =
-        locals.get_item("pl_version")?.unwrap().downcast_into()?;
+        locals.get_item("pl_version")?.unwrap().cast_into()?;
     let polars_cloud_version = polars_cloud_version.to_cow()?;
     let polars_version = polars_version.to_cow()?;
     Ok(Versions {

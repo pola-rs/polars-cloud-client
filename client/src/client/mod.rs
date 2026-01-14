@@ -3,8 +3,9 @@ mod auth;
 mod error;
 mod grpc;
 mod login;
-mod utils;
+pub mod utils;
 
+pub use api_client::CLIENT_GLOBAL;
 pub(crate) use api_client::WrappedAPIClient;
 pub(crate) use auth::{AuthMethod, AuthToken};
 pub use error::AuthError;

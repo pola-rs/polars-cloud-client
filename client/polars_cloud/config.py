@@ -18,18 +18,20 @@ if TYPE_CHECKING:
         from typing_extensions import Self, Unpack
 
 _SINGLE_NODE = "POLARS_CLOUD_SINGLE_NODE"
+_USER_NAME = "POLARS_CLOUD_USER_NAME"
 
 # note: register all Config-specific environment variable names here; need to constrain
 # which 'POLARS_CLOUD_' environment variables are recognized, as there may be
 # other lower-level and/or unstable settings that should not be saved or reset
 # with the Config vars.
-_POLARS_CLOUD_CFG_ENV_VARS = {_SINGLE_NODE}
+_POLARS_CLOUD_CFG_ENV_VARS = {_SINGLE_NODE, _USER_NAME}
 
 
 class ConfigParameters(TypedDict, total=False):
     """Parameters supported by the Polars Cloud Config."""
 
     single_node: bool | None
+    username: str | None
 
 
 # vars that set the rust env directly should declare themselves here as the Config
@@ -338,6 +340,19 @@ class Config(contextlib.ContextDecorator):
         else:
             os.environ[_SINGLE_NODE] = str(int(active))
         return cls
+
+    @classmethod
+    def set_user_name(cls, name: str) -> type[Config]:
+        """Set the username for user identification in insecure cluster environments."""
+        if name is None:
+            os.environ.pop(_USER_NAME, None)
+        else:
+            os.environ[_USER_NAME] = name
+        return cls
+
+    @classmethod
+    def get(cls, name: str) -> str | None:
+        return os.environ.get(name)
 
     @classmethod
     def _is_set(cls, attr: str, expected: str) -> bool:

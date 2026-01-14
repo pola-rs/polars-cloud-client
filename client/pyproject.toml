@@ -5,9 +5,7 @@ build-backend = "maturin"
 [project]
 name = "polars-cloud"
 dynamic = ["version"]
-authors = [
-  { name = "Polars", email = "info@polars.tech" },
-]
+authors = [{ name = "Polars", email = "info@polars.tech" }]
 description = "Execute your Polars workloads in the cloud"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -30,9 +28,9 @@ classifiers = [
 ]
 dependencies = [
   # uncomment if we want a specific commit
-  # "polars[rt64, cloudpickle]@git+https://github.com/pola-rs/polars.git@4cbceea4edcb70df5c9be7f9968b0cf56e5f2f45#subdirectory=py-polars",
-  # "polars-runtime-64@git+https://github.com/pola-rs/polars.git@4cbceea4edcb70df5c9be7f9968b0cf56e5f2f45#subdirectory=py-polars/runtime",
-  "polars[rt64,cloudpickle] == 1.36.1",
+  # "polars[rt64, cloudpickle]@git+https://github.com/pola-rs/polars.git@86323eebc9bb44bbb234200bce339de5ebf48f5f#subdirectory=py-polars",
+  # "polars-runtime-64@git+https://github.com/pola-rs/polars.git@86323eebc9bb44bbb234200bce339de5ebf48f5f#subdirectory=py-polars/runtime",
+  "polars[rt64,cloudpickle] == 1.37.1",
   # 'polars @ file:///home/jesse/dev/oss/polars/py-polars',
   # 'polars @ file:///home/ritchie46/code/polars/py-polars',
   'typing-extensions >= 4.0; python_version <= "3.12"',
@@ -48,16 +46,10 @@ Homepage = "https://cloud.pola.rs/"
 files = ["$MYPY_CONFIG_FILE_DIR/polars_cloud", "$MYPY_CONFIG_FILE_DIR/tests"]
 exclude = ["^.+_pb2(_grpc)?\\.py(i)?$"]
 strict = true
-enable_error_code = [
-  "redundant-expr",
-  "truthy-bool",
-  "ignore-without-code",
-]
+enable_error_code = ["redundant-expr", "truthy-bool", "ignore-without-code"]
 
 [[tool.mypy.overrides]]
-module = [
-  "polars_cloud.polars_cloud",
-]
+module = ["polars_cloud.polars_cloud"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

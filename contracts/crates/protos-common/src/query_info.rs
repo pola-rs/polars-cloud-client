@@ -1,10 +1,42 @@
 use std::fmt;
+use std::str::FromStr;
 
 use prost::Message;
 pub use prost::bytes::Bytes;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::common;
+
+#[derive(Debug, Clone)]
+pub struct User {
+    pub id: Uuid,
+    pub name: String,
+}
+
+impl User {
+    pub fn new(id: Uuid, name: String) -> Self {
+        Self { id, name }
+    }
+}
+
+impl From<User> for common::User {
+    fn from(value: User) -> Self {
+        Self {
+            id: value.id.to_string(),
+            name: value.name,
+        }
+    }
+}
+
+impl From<common::User> for User {
+    fn from(value: common::User) -> Self {
+        Self {
+            id: Uuid::from_str(&value.id).unwrap(),
+            name: value.name,
+        }
+    }
+}
 
 #[derive(Default, Clone)]
 pub struct QueryInfo {
