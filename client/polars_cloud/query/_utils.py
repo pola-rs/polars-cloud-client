@@ -141,11 +141,16 @@ If you want to:
             engine=engine,
         )
     elif isinstance(dst, TmpDst):
-        lf = lf.sink_parquet(
-            "<in-memory>",
-            lazy=True,
-            engine=engine,
-        )
+        if hasattr(lf._ldf, "_node_name") and lf._ldf._node_name() == "SinkMultiple":
+            # This is the `pl.collect_all(..., lazy=True)` branch.
+            # This uses the sinks in the plan.
+            pass
+        else:
+            lf = lf.sink_parquet(
+                "<in-memory>",
+                lazy=True,
+                engine=engine,
+            )
     else:
         assert sink_dst is not None
         lf = lf.sink_parquet(

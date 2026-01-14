@@ -7,6 +7,13 @@ from typing import TYPE_CHECKING, Callable, overload
 
 import polars as pl
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from polars_cloud._typing import (
+        PlanType,
+    )
+
 # needed for eval
 from polars.exceptions import (  # noqa: F401
     ColumnNotFoundError,
@@ -284,6 +291,72 @@ class QueryResult:
 
         except StopIteration:
             raise scheduler_err from None
+
+    def graph(
+        self,
+        plan_type: PlanType = "physical",
+        *,
+        show: bool = True,
+        output_path: str | Path | None = None,
+        raw_output: bool = False,
+        figsize: tuple[float, float] = (16.0, 12.0),
+    ) -> str | None:
+        """Return the query plan as dot diagram.
+
+        .. note::
+            This can only be called in 'direct' mode.
+
+        Parameters
+        ----------
+        plan_type: {'physical', 'ir'}
+            Plan visualization to return.
+
+            * physical: The executed physical plan/stages.
+            * ir: The optimized query plan before execution.
+        show
+            Show the figure.
+        output_path
+            Write the figure to disk.
+        raw_output
+            Return dot syntax. This cannot be combined with `show` and/or `output_path`.
+        figsize
+            Passed to matplotlib if `show == True`.
+        """
+        if self._query is None:
+            msg = "cannot call 'QueryResult.graph' in proxy mode"
+            raise ComputeError(msg)
+
+        return self._query.graph(
+            plan_type=plan_type,
+            show=show,
+            output_path=output_path,
+            raw_output=raw_output,
+            figsize=figsize,
+        )
+
+    def plan(
+        self,
+        plan_type: PlanType = "physical",
+    ) -> str:
+        """Return the executed plan in string format.
+
+        .. note::
+            This can only be called in 'direct' mode.
+
+        Parameters
+        ----------
+        plan_type: {'physical', 'ir'}
+            Plan visualization to return.
+
+            * physical: The executed physical plan/stages.
+            * ir: The optimized query plan before execution.
+
+        """
+        if self._query is None:
+            msg = "cannot call 'QueryResult.plan' in proxy mode"
+            raise ComputeError(msg)
+
+        return self._query.plan(plan_type=plan_type)
 
 
 def decode_error(encoded: str) -> BaseException:

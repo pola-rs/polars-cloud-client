@@ -1,3 +1,4 @@
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use bytes::{BufMut, Bytes, BytesMut};
@@ -20,7 +21,7 @@ use crate::middleware::RetryTransientMiddleware;
 pub struct ApiClient {
     pub client: reqwest_middleware::ClientWithMiddleware,
     pub address: String,
-    pub auth_header: String,
+    pub auth_header: Arc<RwLock<String>>,
 }
 
 #[derive(Clone)]
@@ -101,7 +102,7 @@ impl ApiClientBuilder {
         ApiClient {
             client: client_builder.build(),
             address,
-            auth_header,
+            auth_header: Arc::new(RwLock::new(auth_header)),
         }
     }
 }
@@ -132,12 +133,12 @@ impl ApiClient {
         Self {
             client: self.client.clone(),
             address: self.address.clone(),
-            auth_header: format!("Bearer {bearer_token}"),
+            auth_header: Arc::new(RwLock::new(format!("Bearer {bearer_token}"))),
         }
     }
 
-    pub fn set_auth_header(&mut self, auth_header: String) {
-        self.auth_header = auth_header;
+    pub fn set_auth_header(&self, auth_header: String) {
+        *self.auth_header.write().unwrap() = auth_header;
     }
 
     pub fn get(&self, endpoint: &str) -> ApiRequestBuilder<'_> {
@@ -145,7 +146,7 @@ impl ApiClient {
             &self.client,
             http::Method::GET,
             format!("{}{endpoint}", self.address),
-            self.auth_header.clone(),
+            self.auth_header.read().unwrap().clone(),
         )
     }
 
@@ -154,7 +155,7 @@ impl ApiClient {
             &self.client,
             http::Method::POST,
             format!("{}{endpoint}", self.address),
-            self.auth_header.clone(),
+            self.auth_header.read().unwrap().clone(),
         )
     }
 
@@ -163,7 +164,7 @@ impl ApiClient {
             &self.client,
             http::Method::PUT,
             format!("{}{endpoint}", self.address),
-            self.auth_header.clone(),
+            self.auth_header.read().unwrap().clone(),
         )
     }
 
@@ -172,7 +173,7 @@ impl ApiClient {
             &self.client,
             http::Method::DELETE,
             format!("{}{endpoint}", self.address),
-            self.auth_header.clone(),
+            self.auth_header.read().unwrap().clone(),
         )
     }
 
@@ -181,7 +182,7 @@ impl ApiClient {
             &self.client,
             http::Method::PATCH,
             format!("{}{endpoint}", self.address),
-            self.auth_header.clone(),
+            self.auth_header.read().unwrap().clone(),
         )
     }
 
@@ -538,12 +539,13 @@ impl ApiClient {
     }
 
     pub async fn put_organization_avatar(&self, organization_id: Uuid, image: Bytes) -> Result<()> {
+        let auth_header = self.auth_header.read().unwrap().clone();
         self.client
             .put(format!(
                 "{}/api/v1/organization/{organization_id}/avatar",
                 self.address
             ))
-            .header(AUTHORIZATION, self.auth_header.clone())
+            .header(AUTHORIZATION, auth_header)
             .body(image)
             .send()
             .await?
@@ -553,12 +555,13 @@ impl ApiClient {
     }
 
     pub async fn delete_organization_avatar(&self, organization_id: Uuid) -> Result<()> {
+        let auth_header = self.auth_header.read().unwrap().clone();
         self.client
             .delete(format!(
                 "{}/api/v1/organization/{organization_id}/avatar",
                 self.address
             ))
-            .header(AUTHORIZATION, self.auth_header.clone())
+            .header(AUTHORIZATION, auth_header)
             .send()
             .await?
             .error_for_status()?;
@@ -891,9 +894,10 @@ impl ApiClient {
     }
 
     pub async fn put_user_avatar(&self, image: Bytes) -> Result<()> {
+        let auth_header = self.auth_header.read().unwrap().clone();
         self.client
             .put(format!("{}/api/v1/user/avatar", self.address))
-            .header(AUTHORIZATION, self.auth_header.clone())
+            .header(AUTHORIZATION, auth_header)
             .body(image)
             .send()
             .await?
@@ -903,9 +907,10 @@ impl ApiClient {
     }
 
     pub async fn delete_user_avatar(&self) -> Result<()> {
+        let auth_header = self.auth_header.read().unwrap().clone();
         self.client
             .delete(format!("{}/api/v1/user/avatar", self.address))
-            .header(AUTHORIZATION, self.auth_header.clone())
+            .header(AUTHORIZATION, auth_header)
             .send()
             .await?
             .error_for_status()?;

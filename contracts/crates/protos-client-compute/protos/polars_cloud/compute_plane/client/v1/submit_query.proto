@@ -51,6 +51,8 @@ message DistributedOpts {
   bool allow_pre_aggregation = 2;
   bool allow_partitioned_sort = 3;
   uint64 allow_equi_join_broadcast_limit = 4;
+  optional uint32 partitions_per_worker = 5;
+  bool cost_based_planner = 6;
 }
 
 enum GraphFormat {

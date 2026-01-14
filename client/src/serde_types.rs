@@ -11,11 +11,34 @@ use pyo3::types::PyBytes;
 
 use crate::query_settings::{PyEngine, PyQuerySettings, PyQueryType, PyShuffleOpts};
 
-#[derive(FromPyObject)]
 pub struct DistributedSettings {
     sort_partitioned: bool,
     pre_aggregation: bool,
+    cost_based_planner: bool,
     equi_join_broadcast_limit: u64,
+    partitions_per_worker: Option<u32>,
+}
+
+// Manually derive, as the derive utility will use the default value instead of raising if a field
+// is missing. This leads to silently ignoring arguments.
+impl<'a, 'py> FromPyObject<'a, 'py> for DistributedSettings {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        let sort_partitioned = obj.getattr("sort_partitioned")?.extract()?;
+        let pre_aggregation = obj.getattr("pre_aggregation")?.extract()?;
+        let cost_based_planner = obj.getattr("cost_based_planner")?.extract()?;
+        let equi_join_broadcast_limit = obj.getattr("equi_join_broadcast_limit")?.extract()?;
+        let partitions_per_worker = obj.getattr("partitions_per_worker")?.extract()?;
+
+        Ok(DistributedSettings {
+            sort_partitioned,
+            pre_aggregation,
+            cost_based_planner,
+            equi_join_broadcast_limit,
+            partitions_per_worker,
+        })
+    }
 }
 
 #[allow(clippy::needless_lifetimes)]
@@ -35,7 +58,9 @@ pub fn serialize_query_settings(
             shuffle_opts,
             pre_aggregation: settings.pre_aggregation,
             sort_partitioned: settings.sort_partitioned,
+            cost_based_planner: settings.cost_based_planner,
             equi_join_broadcast_limit: settings.equi_join_broadcast_limit,
+            partitions_per_worker: settings.partitions_per_worker,
         },
     };
 

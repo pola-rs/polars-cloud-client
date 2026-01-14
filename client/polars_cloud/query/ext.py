@@ -69,6 +69,8 @@ class LazyFrameRemote:
         sort_partitioned: bool = True,
         pre_aggregation: bool = True,
         equi_join_broadcast_limit: int = 256 * 1024**2,
+        partitions_per_worker: int | None = None,
+        cost_based_planner: bool = False,
     ) -> ExecuteRemote:
         """Whether the query should run in a distributed fashion.
 
@@ -95,6 +97,12 @@ class LazyFrameRemote:
             Whether equi joins are allowed to be converted from partitioned to
             broadcasted. The passed value is the maximum size in bytes to broadcasted.
             Set to 0 to disable broadcasting.
+        partitions_per_worker
+            Into how many parts to split the data when distributing work over workers.
+            A higher number means less peak memory usage, but might mean slightly
+            less performant execution.
+        cost_based_planner
+            Switch to the experimental cost-based planner.
 
         Examples
         --------
@@ -108,7 +116,9 @@ class LazyFrameRemote:
         distributed_settings = DistributionSettings(
             sort_partitioned=sort_partitioned,
             pre_aggregation=pre_aggregation,
+            cost_based_planner=cost_based_planner,
             equi_join_broadcast_limit=equi_join_broadcast_limit,
+            partitions_per_worker=partitions_per_worker,
         )
         exec = ExecuteRemote(
             lf=self.lf,
