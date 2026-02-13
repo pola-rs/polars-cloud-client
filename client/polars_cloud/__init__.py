@@ -13,6 +13,7 @@ from polars_cloud.context import (
     ComputeContext,
     ComputeContextStatus,
     set_compute_context,
+    show_versions,
 )
 from polars_cloud.organization import (
     Organization,
@@ -71,6 +72,7 @@ __all__ = [
     "exceptions",
     "login",
     "set_compute_context",
+    "show_versions",
     "spawn",
     "spawn_blocking",
     "spawn_many",

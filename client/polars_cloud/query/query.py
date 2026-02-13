@@ -175,6 +175,7 @@ class ProxyQuery(InProgressQueryRemote):
 class DistributionSettings:
     sort_partitioned: bool = True
     pre_aggregation: bool = True
+    expression_extraction: bool = True
     cost_based_planner: bool = False
     equi_join_broadcast_limit: int = 256 * 1024**2
     partitions_per_worker: int | None = None
@@ -670,9 +671,21 @@ def spawn(
         else:
             context = ComputeContext()
 
-    # Do not check status to avoid network call
-    if context._compute_id is None and isinstance(context, ComputeContext):
-        context.start()
+    # Do not call get_status() to avoid network call
+    if isinstance(context, ComputeContext):
+        # The actual cluster status can change at any time
+        # so this is at best an educated guess
+        if (
+            context._last_known_status.is_stopped()
+            or context._last_known_status.is_failed()
+        ):
+            msg = (
+                f"cannot execute query, context status is {context._last_known_status}"
+            )
+            raise RuntimeError(msg)
+
+        if context._compute_id is None:
+            context.start()
 
     plan, settings = prepare_query(
         lf=lf,

@@ -214,6 +214,36 @@ pub struct TimeWindowOpt {
 }
 
 #[cfg_attr(feature = "pyo3", pyclass(eq, eq_int))]
+#[cfg_attr(feature = "server", derive(ToSchema, Validate))]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum DBCPUArchitectureSchema {
+    X86_64,
+    Arm64,
+}
+
+#[cfg_attr(feature = "pyo3", pyo3::pymethods)]
+#[cfg(feature = "pyo3")]
+impl DBCPUArchitectureSchema {
+    #[staticmethod]
+    fn from_str(s: Option<&str>) -> PyResult<Self> {
+        match s {
+            Some("x86_64") | None => Ok(Self::X86_64),
+            Some("arm64") => Ok(Self::Arm64),
+            Some(s) => Err(PyValueError::new_err(format!(
+                "Invalid DBCPUArchitecture: '{s}'. Expected 'x86_64' or 'arm64'"
+            ))),
+        }
+    }
+
+    fn as_str(&self) -> &str {
+        match self {
+            DBCPUArchitectureSchema::X86_64 => "x86_64",
+            DBCPUArchitectureSchema::Arm64 => "arm64",
+        }
+    }
+}
+
+#[cfg_attr(feature = "pyo3", pyclass(eq, eq_int))]
 #[cfg_attr(feature = "server", derive(ToSchema))]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum DBClusterModeSchema {
@@ -266,6 +296,8 @@ pub struct GetClusterFilterParams {
     #[serde(default)]
     #[serde(deserialize_with = "csv_vec_opt")]
     pub status: Option<Vec<ComputeStatusSchema>>,
+    #[serde(default)]
+    pub current_user_only: bool,
 }
 
 #[cfg_attr(feature = "pyo3", pyclass(get_all))]
@@ -285,6 +317,7 @@ pub struct ComputeSchema {
     pub workspace_id: Uuid,
     pub name: Option<String>,
     pub instance_type: Option<String>,
+    pub cpu_architectures: Option<Vec<DBCPUArchitectureSchema>>,
     pub req_ram_gb: Option<u32>,
     pub req_cpu_cores: Option<u32>,
     pub req_storage: Option<i32>,
@@ -303,6 +336,7 @@ pub struct ComputeSchema {
     pub polars_version: VersionNumber,
     pub status: ComputeStatusSchema,
     pub log_level: LogLevelSchema,
+    pub tunnel_addr: Option<String>,
 }
 
 impl EntityOrdering for ComputeSchema {
@@ -344,6 +378,11 @@ impl ComputeSchema {
     #[getter]
     pub fn instance_type(&self) -> pyo3::PyResult<Option<&str>> {
         Ok(self.instance_type.as_deref())
+    }
+
+    #[getter]
+    pub fn cpu_architectures(&self) -> pyo3::PyResult<Option<Vec<DBCPUArchitectureSchema>>> {
+        Ok(self.cpu_architectures.clone())
     }
 
     #[getter]
@@ -424,6 +463,11 @@ impl ComputeSchema {
     #[getter]
     pub fn log_level(&self) -> pyo3::PyResult<LogLevelSchema> {
         Ok(self.log_level.clone())
+    }
+
+    #[getter]
+    pub fn tunnel_addr(&self) -> pyo3::PyResult<Option<&str>> {
+        Ok(self.tunnel_addr.as_deref())
     }
 }
 

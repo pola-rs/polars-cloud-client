@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package polars_cloud.compute_plane.client.v1;
+
+import "polars_cloud/common/compute_versions.proto";
+
+message GetComputeVersionsRequest {}
+
+message GetComputeVersionsResponse {
+  polars_cloud.common.ComputeVersions versions = 1;
+}

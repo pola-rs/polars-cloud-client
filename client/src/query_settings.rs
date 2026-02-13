@@ -1,5 +1,6 @@
 use protos_client_compute::client::{
-    Engine, GraphFormat, QuerySettings, QueryType, ShuffleCompression, ShuffleFormat, ShuffleOpts,
+    DistributedOpts, Engine, GraphFormat, QuerySettings, QueryType, ShuffleCompression,
+    ShuffleFormat, ShuffleOpts,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::{PyResult, pyclass};
@@ -69,6 +70,7 @@ pub enum PyQueryType {
     Distributed {
         shuffle_opts: PyShuffleOpts,
         pre_aggregation: bool,
+        expression_extraction: bool,
         sort_partitioned: bool,
         cost_based_planner: bool,
         equi_join_broadcast_limit: u64,
@@ -102,6 +104,7 @@ pub struct PyQuerySettings {
     pub prefer_dot: bool,
     /// Number of retries on failed tasks
     pub n_retries: u32,
+    pub optimization_flags: Option<u32>,
 }
 
 impl From<PyQuerySettings> for QuerySettings {
@@ -115,6 +118,7 @@ impl From<PyQuerySettings> for QuerySettings {
             },
             n_retries: value.n_retries,
             query_type: value.query_type.into(),
+            optimization_flags: value.optimization_flags,
         }
     }
 }
@@ -158,18 +162,20 @@ impl From<PyQueryType> for QueryType {
             PyQueryType::Distributed {
                 shuffle_opts,
                 pre_aggregation,
+                expression_extraction,
                 sort_partitioned,
                 cost_based_planner,
                 equi_join_broadcast_limit,
                 partitions_per_worker,
-            } => Self::Distributed {
+            } => Self::Distributed(DistributedOpts {
                 shuffle_opts: shuffle_opts.into(),
                 pre_aggregation,
+                expression_extraction,
                 sort_partitioned,
                 cost_based_planner,
                 equi_join_broadcast_limit,
                 partitions_per_worker,
-            },
+            }),
         }
     }
 }

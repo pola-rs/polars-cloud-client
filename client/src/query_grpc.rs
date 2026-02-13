@@ -7,7 +7,8 @@ use polars_axum_models::QueryStatusCodeSchema;
 use polars_backend_client::client::user_agent;
 use protos_client_compute::client::client::SubmitQueryRequest;
 use protos_client_compute::client::{
-    ClientServiceClient, GetQueryPlansRequest, GetQueryResultResponse, PlanSelection, QueryStatus,
+    ClientServiceClient, GetComputeVersionsRequest, GetQueryPlansRequest, GetQueryResultResponse,
+    PlanSelection, QueryStatus,
 };
 use protos_client_compute::observatory::{
     GetQueryProfileRequest, QueryProfile, QueryProfileServiceClient,
@@ -18,7 +19,8 @@ use protos_common::tonic::service::interceptor::InterceptedService;
 use protos_common::tonic::transport::{Certificate, Channel, ClientTlsConfig, Identity, Uri};
 use protos_common::tonic::{self, Code, Request};
 use protos_common::{
-    MAX_MESSAGE_LENGTH_UNLIMITED, PlanFormat, QueryIdentifier, QueryInfo, QueryPlans,
+    ComputeVersions, MAX_MESSAGE_LENGTH_UNLIMITED, PlanFormat, QueryIdentifier, QueryInfo,
+    QueryPlans,
 };
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::{PyErr, Python, pyclass, pymethods};
@@ -59,6 +61,13 @@ pub struct QueryPlansPy {
     pub format: PlanFormatPy,
     pub ir_plan: Option<String>,
     pub phys_plan: Option<String>,
+}
+
+#[pyclass(get_all)]
+pub struct ComputeVersionsPy {
+    pub compute_plane_version: String,
+    pub polars_python_version: String,
+    pub polars_rust_revision: String,
 }
 
 #[pymethods]
@@ -272,6 +281,29 @@ impl SchedulerClient {
             },
             ir_plan: query_plans.ir_plan,
             phys_plan: query_plans.phys_plan,
+        })
+    }
+
+    pub fn get_compute_versions(
+        &mut self,
+        py: Python<'_>,
+        token: Option<String>,
+    ) -> Result<ComputeVersionsPy> {
+        let versions: ComputeVersions = py
+            .enter_rust(|| {
+                RUNTIME.block_on(async move {
+                    let mut req = Request::new(GetComputeVersionsRequest {}.into());
+                    req = insert_auth_token(req, token);
+                    self.scheduler_client.get_compute_versions(req).await
+                })
+            })??
+            .into_inner()
+            .into();
+
+        Ok(ComputeVersionsPy {
+            compute_plane_version: versions.compute_plane_version,
+            polars_python_version: versions.polars_python_version,
+            polars_rust_revision: versions.polars_rust_revision,
         })
     }
 }

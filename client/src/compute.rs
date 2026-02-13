@@ -2,9 +2,10 @@
 
 use polars_axum_models::{
     ClusterModeSchema, ComputeClusterNodeInfoSchema, ComputeClusterPublicInfoSchema, ComputeSchema,
-    ComputeStatusSchema, ComputeTokenSchema, DBClusterModeSchema, GetClusterFilterParams,
-    InstanceSpecsSchema, LogLevelSchema, ManifestQuery, ManifestSchema, Pagination, PythonVersion,
-    RegisterComputeClusterArgs, StartComputeClusterArgs, StartComputeClusterManifestArgs,
+    ComputeStatusSchema, ComputeTokenSchema, DBCPUArchitectureSchema, DBClusterModeSchema,
+    GetClusterFilterParams, InstanceSpecsSchema, LogLevelSchema, ManifestQuery, ManifestSchema,
+    Pagination, PythonVersion, RegisterComputeClusterArgs, StartComputeClusterArgs,
+    StartComputeClusterManifestArgs,
 };
 use polars_backend_client::client::ApiClient;
 use pyo3::exceptions::PyValueError;
@@ -104,7 +105,7 @@ impl WrappedAPIClient {
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature=(workspace_id, name, cluster_size, mode, cpus, ram_gb, instance_type, storage, big_instance_type, big_instance_multiplier,  big_instance_storage, requirements_txt, labels, log_level, idle_timeout_mins))]
+    #[pyo3(signature=(workspace_id, name, cluster_size, mode, cpus, ram_gb, cpu_architectures, instance_type, storage, big_instance_type, big_instance_multiplier,  big_instance_storage, requirements_txt, labels, log_level, idle_timeout_mins))]
     pub fn register_compute_cluster_manifest(
         &self,
         py: Python,
@@ -114,6 +115,7 @@ impl WrappedAPIClient {
         mode: DBClusterModeSchema,
         cpus: Option<u32>,
         ram_gb: Option<u32>,
+        cpu_architectures: Option<Vec<DBCPUArchitectureSchema>>,
         instance_type: Option<String>,
         storage: Option<u32>,
         big_instance_type: Option<String>,
@@ -150,18 +152,19 @@ impl WrappedAPIClient {
                 ))?;
             }
 
-            let instance = match (instance_type, cpus, ram_gb) {
-                (Some(instance_type), None, None) => InstanceSpecsSchema::InstanceType {
+            let instance = match (instance_type, cpus, ram_gb, cpu_architectures) {
+                (Some(instance_type), None, None, None) => InstanceSpecsSchema::InstanceType {
                     standard: instance_type,
                     big: big_instance_type,
                 },
-                (None, Some(cpus), Some(ram_gb)) => InstanceSpecsSchema::Specs {
+                (None, Some(cpus), Some(ram_gb), Some(cpu_architectures)) => InstanceSpecsSchema::Specs {
                     cpus,
                     ram_gb,
                     multiplier: big_instance_multiplier,
+                    cpu_architectures,
                 },
                 _ => Err(PyValueError::new_err(
-                    "Invalid parameters: either (cpu & memory) or instance type must be specified.",
+                    "Invalid parameters: either (cpu & memory & cpu_architectures) or instance type must be specified.",
                 ))?,
             };
 
@@ -232,7 +235,7 @@ impl WrappedAPIClient {
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature=(workspace_id, cluster_size, mode, cpus, ram_gb, instance_type, storage, big_instance_type, big_instance_multiplier,  big_instance_storage, requirements_txt, labels, log_level, idle_timeout_mins))]
+    #[pyo3(signature=(workspace_id, cluster_size, mode, cpus, ram_gb, cpu_architectures, instance_type, storage, big_instance_type, big_instance_multiplier,  big_instance_storage, requirements_txt, labels, log_level, idle_timeout_mins))]
     pub fn start_compute(
         &self,
         py: Python<'_>,
@@ -241,6 +244,7 @@ impl WrappedAPIClient {
         mode: DBClusterModeSchema,
         cpus: Option<u32>,
         ram_gb: Option<u32>,
+        cpu_architectures: Option<Vec<DBCPUArchitectureSchema>>,
         instance_type: Option<String>,
         storage: Option<u32>,
         big_instance_type: Option<String>,
@@ -277,15 +281,18 @@ impl WrappedAPIClient {
                 ))?;
             }
 
-            let instance = match (instance_type, cpus, ram_gb) {
-                (Some(instance_type), None, None) => InstanceSpecsSchema::InstanceType {
+            let instance = match (instance_type, cpus, ram_gb, cpu_architectures) {
+                (Some(instance_type), None, None, None) => InstanceSpecsSchema::InstanceType {
                     standard: instance_type,
                     big: big_instance_type,
                 },
-                (None, Some(cpus), Some(ram_gb)) => InstanceSpecsSchema::Specs {
-                    cpus,
-                    ram_gb,
-                    multiplier: big_instance_multiplier,
+                (None, Some(cpus), Some(ram_gb), Some(cpu_architectures)) => {
+                    InstanceSpecsSchema::Specs {
+                        cpus,
+                        ram_gb,
+                        multiplier: big_instance_multiplier,
+                        cpu_architectures,
+                    }
                 },
                 _ => Err(PyValueError::new_err(
                     "Invalid parameters: either (cpu & memory) or instance type must be specified.",
@@ -331,6 +338,7 @@ impl WrappedAPIClient {
                     workspace_id,
                     GetClusterFilterParams {
                         status: status.clone(),
+                        current_user_only: false,
                     },
                     pagination,
                 )

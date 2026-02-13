@@ -9,7 +9,7 @@ authors = [{ name = "Polars", email = "info@polars.tech" }]
 description = "Execute your Polars workloads in the cloud"
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 classifiers = [
   "Development Status :: 1 - Planning",
   "Environment :: Console",
@@ -19,18 +19,18 @@ classifiers = [
   "Programming Language :: Python",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Scientific/Engineering",
 ]
 dependencies = [
   # uncomment if we want a specific commit
   # "polars[rt64, cloudpickle]@git+https://github.com/pola-rs/polars.git@86323eebc9bb44bbb234200bce339de5ebf48f5f#subdirectory=py-polars",
   # "polars-runtime-64@git+https://github.com/pola-rs/polars.git@86323eebc9bb44bbb234200bce339de5ebf48f5f#subdirectory=py-polars/runtime",
-  "polars[rt64,cloudpickle] == 1.37.1",
+  "polars[rt64,cloudpickle] == 1.38.1",
   # 'polars @ file:///home/jesse/dev/oss/polars/py-polars',
   # 'polars @ file:///home/ritchie46/code/polars/py-polars',
   'typing-extensions >= 4.0; python_version <= "3.12"',
@@ -65,4 +65,5 @@ markers = [
   "monitoring: Tests that check if OTEL metrics are collected",
   "barebones: Test barebones cloudformation workflow",
   "auth: Test JWT token authorization",
+  "cf_tunnel: Test cloudflare tunnel to observatory API",
 ]

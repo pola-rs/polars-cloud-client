@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     import sys
 
     from polars_cloud import Workspace
+    from polars_cloud._typing import CPUArchitecture
 
     if sys.version_info >= (3, 11):
         pass
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
 class ComputeContextSpecs:
     cpus: int | None = None
     memory: int | None = None
+    cpu_architectures: list[CPUArchitecture] | None = None
     instance_type: str | None = None
     big_instance_type: str | None = None
     big_instance_multiplier: int | None = None
@@ -32,6 +34,7 @@ def resolve_compute_context_specs(
     workspace: Workspace,
     cpus: int | None = None,
     memory: int | None = None,
+    cpu_architectures: list[CPUArchitecture] | None = None,
     instance_type: str | None = None,
     storage: int | None = None,
     big_instance_type: str | None = None,
@@ -44,8 +47,10 @@ def resolve_compute_context_specs(
     Resolve all compute instance specs either they are fully specified or
     we need to get the defaults for the workspace.
     """
-    if instance_type is not None and (cpus is not None or memory is not None):
-        msg = "cannot specify both `instance_type` AND (`memory` or `cpus`)"
+    if instance_type is not None and (
+        cpus is not None or memory is not None or cpu_architectures is not None
+    ):
+        msg = "cannot specify both `instance_type` AND (`memory` or `cpus` or `cpu_architectures`)"
         raise ComputeClusterMisspecified(msg)
 
     if memory is not None and cpus is None:
@@ -67,6 +72,11 @@ def resolve_compute_context_specs(
     if (cpus is not None or memory is not None) and big_instance_type is not None:
         msg = "cannot specify both (`memory` or `cpus`) AND `big_instance_type`"
         raise ComputeClusterMisspecified(msg)
+
+    if instance_type is None and (
+        cpu_architectures is None or len(cpu_architectures) == 0
+    ):
+        cpu_architectures = ["x86_64"]
 
     if memory is None and cpus is None and instance_type is None:
         defaults = workspace.defaults
@@ -93,6 +103,7 @@ def resolve_compute_context_specs(
     specs = ComputeContextSpecs(
         cpus=cpus,
         memory=memory,
+        cpu_architectures=cpu_architectures,
         instance_type=instance_type,
         big_instance_type=big_instance_type,
         big_instance_multiplier=big_instance_multiplier,

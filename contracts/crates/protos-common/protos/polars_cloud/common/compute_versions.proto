@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package polars_cloud.common;
+
+message ComputeVersions {
+  string compute_plane_version = 1;
+  string polars_python_version = 2;
+  string polars_rust_revision = 3;
+}

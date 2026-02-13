@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use bytes::Bytes;
 use prost::Message;
 use prost_types::FieldMask;
-use protos_common::{QueryIdentifier, QueryPlans, QueryResult, map_trait};
+use protos_common::{ComputeVersions, QueryIdentifier, QueryPlans, QueryResult, map_trait};
 use serde::{Deserialize, Serialize};
 use tonic::{Request, Response, Status};
 
@@ -48,6 +48,11 @@ pub trait ClientService {
         &self,
         request: Request<GetQueryPlansRequest>,
     ) -> Result<Response<QueryPlans>, Self::Error>;
+
+    async fn get_compute_versions(
+        &self,
+        request: Request<GetComputeVersionsRequest>,
+    ) -> Result<Response<ComputeVersions>, Self::Error>;
 }
 
 map_trait! {
@@ -57,6 +62,7 @@ map_trait! {
         get_query_status(proto::GetQueryStatusRequest) -> proto::GetQueryStatusResponse;
         get_query_plans(proto::GetQueryPlansRequest) -> proto::GetQueryPlansResponse;
         cancel_query(proto::CancelQueryRequest) -> proto::CancelQueryResponse;
+        get_compute_versions(proto::GetComputeVersionsRequest) -> proto::GetComputeVersionsResponse;
     }
 }
 
@@ -126,6 +132,7 @@ impl From<QuerySettings> for proto::QuerySettings {
             preferred_graph_format: proto::GraphFormat::from(value.preferred_graph_format).into(),
             n_retries: value.n_retries,
             query_type: Some(value.query_type.into()),
+            optimization_flags: value.optimization_flags,
         }
     }
 }
@@ -137,6 +144,7 @@ impl From<proto::QuerySettings> for QuerySettings {
             preferred_graph_format: value.preferred_graph_format().into(),
             n_retries: value.n_retries,
             query_type: value.query_type.unwrap().into(),
+            optimization_flags: value.optimization_flags,
         }
     }
 }
@@ -233,35 +241,71 @@ impl From<proto::ShuffleOpts> for ShuffleOpts {
 pub enum QueryType {
     #[default]
     Single,
-    Distributed {
-        shuffle_opts: ShuffleOpts,
-        pre_aggregation: bool,
-        sort_partitioned: bool,
-        cost_based_planner: bool,
-        equi_join_broadcast_limit: u64,
-        partitions_per_worker: Option<u32>,
-    },
+    Distributed(DistributedOpts),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
+pub struct DistributedOpts {
+    pub shuffle_opts: ShuffleOpts,
+    pub pre_aggregation: bool,
+    pub expression_extraction: bool,
+    pub sort_partitioned: bool,
+    pub cost_based_planner: bool,
+    pub equi_join_broadcast_limit: u64,
+    pub partitions_per_worker: Option<u32>,
+}
+
+impl From<DistributedOpts> for proto::DistributedOpts {
+    fn from(value: DistributedOpts) -> Self {
+        let DistributedOpts {
+            shuffle_opts,
+            pre_aggregation,
+            expression_extraction,
+            sort_partitioned,
+            cost_based_planner,
+            equi_join_broadcast_limit,
+            partitions_per_worker,
+        } = value;
+        Self {
+            shuffle_opts: proto::ShuffleOpts::from(shuffle_opts).into(),
+            allow_pre_aggregation: pre_aggregation,
+            allow_expression_extraction: expression_extraction,
+            allow_partitioned_sort: sort_partitioned,
+            allow_equi_join_broadcast_limit: equi_join_broadcast_limit,
+            cost_based_planner,
+            partitions_per_worker,
+        }
+    }
+}
+
+impl From<proto::DistributedOpts> for DistributedOpts {
+    fn from(value: proto::DistributedOpts) -> Self {
+        let proto::DistributedOpts {
+            allow_pre_aggregation,
+            allow_expression_extraction,
+            allow_partitioned_sort,
+            allow_equi_join_broadcast_limit,
+            cost_based_planner,
+            shuffle_opts,
+            partitions_per_worker,
+        } = value;
+        Self {
+            shuffle_opts: shuffle_opts.unwrap_or_default().into(),
+            pre_aggregation: allow_pre_aggregation,
+            expression_extraction: allow_expression_extraction,
+            sort_partitioned: allow_partitioned_sort,
+            cost_based_planner,
+            equi_join_broadcast_limit: allow_equi_join_broadcast_limit,
+            partitions_per_worker,
+        }
+    }
 }
 
 impl From<QueryType> for proto::QueryType {
     fn from(value: QueryType) -> Self {
         match value {
             QueryType::Single => proto::QueryType::Single(proto::SingleOpts {}),
-            QueryType::Distributed {
-                shuffle_opts,
-                pre_aggregation,
-                sort_partitioned,
-                cost_based_planner,
-                equi_join_broadcast_limit,
-                partitions_per_worker,
-            } => proto::QueryType::Distributed(proto::DistributedOpts {
-                shuffle_opts: proto::ShuffleOpts::from(shuffle_opts).into(),
-                allow_pre_aggregation: pre_aggregation,
-                allow_partitioned_sort: sort_partitioned,
-                allow_equi_join_broadcast_limit: equi_join_broadcast_limit,
-                cost_based_planner,
-                partitions_per_worker,
-            }),
+            QueryType::Distributed(opts) => proto::QueryType::Distributed(opts.into()),
         }
     }
 }
@@ -270,24 +314,7 @@ impl From<proto::QueryType> for QueryType {
     fn from(value: proto::QueryType) -> Self {
         match value {
             proto::QueryType::Single(proto::SingleOpts {}) => Self::Single,
-            proto::QueryType::Distributed(opts) => {
-                let proto::DistributedOpts {
-                    allow_pre_aggregation,
-                    allow_partitioned_sort,
-                    allow_equi_join_broadcast_limit,
-                    cost_based_planner,
-                    shuffle_opts,
-                    partitions_per_worker,
-                } = opts;
-                Self::Distributed {
-                    shuffle_opts: shuffle_opts.unwrap_or_default().into(),
-                    pre_aggregation: allow_pre_aggregation,
-                    sort_partitioned: allow_partitioned_sort,
-                    cost_based_planner,
-                    equi_join_broadcast_limit: allow_equi_join_broadcast_limit,
-                    partitions_per_worker,
-                }
-            },
+            proto::QueryType::Distributed(opts) => Self::Distributed(opts.into()),
         }
     }
 }
@@ -357,6 +384,7 @@ pub struct QuerySettings {
     pub preferred_graph_format: GraphFormat,
     pub n_retries: u32,
     pub query_type: QueryType,
+    pub optimization_flags: Option<u32>,
 }
 
 impl QuerySettings {
@@ -599,5 +627,36 @@ impl From<proto::GetQueryPlansResponse> for QueryPlans {
 impl From<QueryPlans> for proto::GetQueryPlansResponse {
     fn from(value: QueryPlans) -> Self {
         Self { plans: Some(value) }
+    }
+}
+
+#[derive(Debug)]
+pub struct GetComputeVersionsRequest {}
+
+impl From<GetComputeVersionsRequest> for proto::GetComputeVersionsRequest {
+    fn from(GetComputeVersionsRequest {}: GetComputeVersionsRequest) -> Self {
+        Self {}
+    }
+}
+
+impl From<proto::GetComputeVersionsRequest> for GetComputeVersionsRequest {
+    fn from(proto::GetComputeVersionsRequest {}: proto::GetComputeVersionsRequest) -> Self {
+        GetComputeVersionsRequest {}
+    }
+}
+
+impl From<proto::GetComputeVersionsResponse> for ComputeVersions {
+    fn from(
+        proto::GetComputeVersionsResponse { versions }: proto::GetComputeVersionsResponse,
+    ) -> Self {
+        versions.unwrap()
+    }
+}
+
+impl From<ComputeVersions> for proto::GetComputeVersionsResponse {
+    fn from(value: ComputeVersions) -> Self {
+        Self {
+            versions: Some(value),
+        }
     }
 }

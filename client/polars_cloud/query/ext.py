@@ -11,11 +11,11 @@ from polars_cloud.query.dst import CsvDst, IpcDst, ParquetDst, TmpDst
 from polars_cloud.query.query import DistributionSettings, spawn
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
     from typing import Literal
 
     from polars import DataFrame, QueryOptFlags
     from polars._typing import (
+        ArrowSchemaExportable,
         CsvQuoteStyle,
         IpcCompression,
         ParquetCompression,
@@ -23,8 +23,7 @@ if TYPE_CHECKING:
     )
     from polars.interchange import CompatLevel
     from polars.io.cloud import CredentialProviderFunction
-    from polars.io.parquet import ParquetFieldOverwrites
-    from polars.io.partition import _SinkDirectory
+    from polars.io.partition import PartitionBy
 
     from polars_cloud._typing import (
         Engine,
@@ -68,9 +67,10 @@ class LazyFrameRemote:
         shuffle_compression_level: int | None = None,
         sort_partitioned: bool = True,
         pre_aggregation: bool = True,
+        expression_extraction: bool = False,
         equi_join_broadcast_limit: int = 256 * 1024**2,
         partitions_per_worker: int | None = None,
-        cost_based_planner: bool = False,
+        cost_based_planner: bool = True,
     ) -> ExecuteRemote:
         """Whether the query should run in a distributed fashion.
 
@@ -88,11 +88,18 @@ class LazyFrameRemote:
             Compression level of shuffle.
             If set to `None` it is decided by the optimizer.
         sort_partitioned
-            Whether group-by and selected aggregations are pre-aggregated
-            on worker nodes.
+            Whether sort operations can be executed on multiple workers.
         pre_aggregation
             Whether group-by and selected aggregations are pre-aggregated on
             worker nodes if possible.
+        expression_extraction
+            Whether sub-expressions are extracted into a form amenable to distributed
+            processing. For example `filter(pl.col.x < pl.col.y.mean())`, here the
+            `mean` would be pre-aggregated if the option is set to `True`.
+
+            .. warning::
+                This functionality is experimental. It may be
+                changed at any point without it being considered a breaking change.
         equi_join_broadcast_limit
             Whether equi joins are allowed to be converted from partitioned to
             broadcasted. The passed value is the maximum size in bytes to broadcasted.
@@ -116,6 +123,7 @@ class LazyFrameRemote:
         distributed_settings = DistributionSettings(
             sort_partitioned=sort_partitioned,
             pre_aggregation=pre_aggregation,
+            expression_extraction=expression_extraction,
             cost_based_planner=cost_based_planner,
             equi_join_broadcast_limit=equi_join_broadcast_limit,
             partitions_per_worker=partitions_per_worker,
@@ -245,7 +253,7 @@ class LazyFrameRemote:
 
     def sink_parquet(
         self,
-        uri: str | _SinkDirectory,
+        uri: str | PartitionBy,
         *,
         compression: ParquetCompression = "zstd",
         compression_level: int | None = None,
@@ -258,10 +266,7 @@ class LazyFrameRemote:
         | Literal["auto"]
         | None = "auto",
         metadata: ParquetMetadata | None = None,
-        field_overwrites: ParquetFieldOverwrites
-        | Sequence[ParquetFieldOverwrites]
-        | Mapping[str, ParquetFieldOverwrites]
-        | None = None,
+        arrow_schema: ArrowSchemaExportable | None = None,
         optimizations: QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
     ) -> DirectQuery | ProxyQuery:
         """Start executing the query and write the result to parquet.
@@ -348,21 +353,16 @@ class LazyFrameRemote:
             .. warning::
                 This functionality is considered **experimental**. It may be removed or
                 changed at any point without it being considered a breaking change.
-        field_overwrites
-            Property overwrites for individual Parquet fields.
-
-            This allows more control over the writing process to the granularity of a
-            Parquet field.
+        arrow_schema
+            Provide a custom arrow schema to write to the file. This allows
+            setting custom schema and field-level metadata. Names and dtypes
+            must match.
 
             .. warning::
-                This functionality is considered **unstable**. It may be changed
-                at any point without it being considered a breaking change.
+                This functionality is considered **unstable**. It may be changed at any
+                point without it being considered a breaking change.
         optimizations
             The optimization passes done during query optimization.
-
-            .. warning::
-                This functionality is considered **unstable**. It may be changed
-                at any point without it being considered a breaking change.
 
         Examples
         --------
@@ -380,13 +380,13 @@ class LazyFrameRemote:
             storage_options=storage_options,
             credential_provider=credential_provider,
             metadata=metadata,
-            field_overwrites=field_overwrites,
+            arrow_schema=arrow_schema,
             optimizations=optimizations,
         )
 
     def sink_csv(
         self,
-        uri: str | _SinkDirectory,
+        uri: str | PartitionBy,
         *,
         include_bom: bool = False,
         include_header: bool = True,
@@ -406,6 +406,7 @@ class LazyFrameRemote:
         credential_provider: CredentialProviderFunction
         | Literal["auto"]
         | None = "auto",
+        optimizations: QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
     ) -> DirectQuery | ProxyQuery:
         """Start executing the query and write the result to csv.
 
@@ -497,6 +498,8 @@ class LazyFrameRemote:
             .. warning::
                 This functionality is considered **unstable**. It may be changed
                 at any point without it being considered a breaking change.
+        optimizations
+            The optimization passes done during query optimization.
 
         Examples
         --------
@@ -521,11 +524,12 @@ class LazyFrameRemote:
             quote_style=quote_style,
             storage_options=storage_options,
             credential_provider=credential_provider,
+            optimizations=optimizations,
         )
 
     def sink_ipc(
         self,
-        uri: str | _SinkDirectory,
+        uri: str | PartitionBy,
         *,
         compression: IpcCompression | None = "zstd",
         compat_level: CompatLevel | None = None,
@@ -533,6 +537,7 @@ class LazyFrameRemote:
         credential_provider: CredentialProviderFunction
         | Literal["auto"]
         | None = "auto",
+        optimizations: QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
     ) -> DirectQuery | ProxyQuery:
         """Start executing the query and write the result to ipc.
 
@@ -576,6 +581,8 @@ class LazyFrameRemote:
             .. warning::
                 This functionality is considered **unstable**. It may be changed
                 at any point without it being considered a breaking change.
+        optimizations
+            The optimization passes done during query optimization.
 
         Examples
         --------
@@ -588,6 +595,7 @@ class LazyFrameRemote:
             compat_level=compat_level,
             storage_options=storage_options,
             credential_provider=credential_provider,
+            optimizations=optimizations,
         )
 
 
@@ -619,10 +627,18 @@ class ExecuteRemote:
         self._shuffle_compression_level = shuffle_compression_level
         self._distributed_settings: DistributionSettings | None = distributed_settings
 
-    def execute(self) -> DirectQuery | ProxyQuery:
+    def execute(
+        self,
+        optimizations: QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
+    ) -> DirectQuery | ProxyQuery:
         """Start executing the query and store an intermediate result.
 
         This is useful for direct connect workloads to cache the results of a query.
+
+        Parameters
+        ----------
+        optimizations
+            The optimization passes done during query optimization.
 
         Examples
         --------
@@ -645,7 +661,7 @@ class ExecuteRemote:
             shuffle_compression_level=self._shuffle_compression_level,
             n_retries=self._n_retries,
             distributed=self._distributed_settings,
-            optimizations=pl.QueryOptFlags(),
+            optimizations=optimizations,
         )
 
     def await_and_scan(self) -> pl.LazyFrame:
@@ -701,7 +717,7 @@ class ExecuteRemote:
 
     def sink_parquet(
         self,
-        uri: str | _SinkDirectory,
+        uri: str | PartitionBy,
         *,
         compression: ParquetCompression = "zstd",
         compression_level: int | None = None,
@@ -714,10 +730,7 @@ class ExecuteRemote:
         | Literal["auto"]
         | None = "auto",
         metadata: ParquetMetadata | None = None,
-        field_overwrites: ParquetFieldOverwrites
-        | Sequence[ParquetFieldOverwrites]
-        | Mapping[str, ParquetFieldOverwrites]
-        | None = None,
+        arrow_schema: ArrowSchemaExportable | None = None,
         sink_to_single_file: None | bool = None,
         optimizations: QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
     ) -> DirectQuery | ProxyQuery:
@@ -805,15 +818,14 @@ class ExecuteRemote:
             .. warning::
                 This functionality is considered **experimental**. It may be removed or
                 changed at any point without it being considered a breaking change.
-        field_overwrites
-            Property overwrites for individual Parquet fields.
-
-            This allows more control over the writing process to the granularity of a
-            Parquet field.
+        arrow_schema
+            Provide a custom arrow schema to write to the file. This allows
+            setting custom schema and field-level metadata. Names and dtypes
+            must match.
 
             .. warning::
-                This functionality is considered **unstable**. It may be changed
-                at any point without it being considered a breaking change.
+                This functionality is considered **unstable**. It may be changed at any
+                point without it being considered a breaking change.
         sink_to_single_file
             Perform the sink into a single file.
 
@@ -822,10 +834,6 @@ class ExecuteRemote:
             slower.
         optimizations
             The optimization passes done during query optimization.
-
-            .. warning::
-                This functionality is considered **unstable**. It may be changed
-                at any point without it being considered a breaking change.
 
         Examples
         --------
@@ -843,7 +851,7 @@ class ExecuteRemote:
             storage_options=storage_options,
             credential_provider=credential_provider,
             metadata=metadata,
-            field_overwrites=field_overwrites,
+            arrow_schema=arrow_schema,
         )
 
         return spawn(
@@ -864,7 +872,7 @@ class ExecuteRemote:
 
     def sink_csv(
         self,
-        uri: str | _SinkDirectory,
+        uri: str | PartitionBy,
         *,
         include_bom: bool = False,
         include_header: bool = True,
@@ -1041,7 +1049,7 @@ class ExecuteRemote:
 
     def sink_ipc(
         self,
-        uri: str | _SinkDirectory,
+        uri: str | PartitionBy,
         *,
         compression: IpcCompression | None = "zstd",
         compat_level: CompatLevel | None = None,

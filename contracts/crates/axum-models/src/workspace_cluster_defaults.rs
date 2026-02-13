@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "server")]
 use utoipa::ToSchema;
 
+use crate::DBCPUArchitectureSchema;
+
 #[cfg_attr(feature = "pyo3", pyclass)]
 #[derive(Clone, Deserialize, Serialize, Debug, PartialEq)]
 #[cfg_attr(feature = "server", derive(Validate, ToSchema))]
@@ -14,6 +16,10 @@ pub struct Specs {
     pub cpus: u32,
     #[cfg_attr(feature = "server", garde(range(min = 1)))]
     pub ram_gb: u32,
+}
+
+fn default_cpu_architectures() -> Vec<DBCPUArchitectureSchema> {
+    vec![DBCPUArchitectureSchema::X86_64]
 }
 
 #[cfg_attr(feature = "pyo3", pyclass(get_all))]
@@ -32,6 +38,9 @@ pub enum InstanceSpecsSchema {
         cpus: u32,
         #[cfg_attr(feature = "server", garde(range(min = 1)))]
         ram_gb: u32,
+        #[serde(default = "default_cpu_architectures")]
+        #[cfg_attr(feature = "server", garde(dive))]
+        cpu_architectures: Vec<DBCPUArchitectureSchema>,
         #[cfg_attr(feature = "server", garde(range(min = 1)))]
         multiplier: Option<u32>,
     },

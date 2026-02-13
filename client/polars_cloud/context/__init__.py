@@ -5,6 +5,7 @@ from polars_cloud.context.compute import (
     ClientContext,
     ClusterContext,
     ComputeContext,
+    show_versions,
 )
 from polars_cloud.context.compute_status import ComputeContextStatus
 
@@ -14,4 +15,5 @@ __all__ = [
     "ComputeContext",
     "ComputeContextStatus",
     "set_compute_context",
+    "show_versions",
 ]

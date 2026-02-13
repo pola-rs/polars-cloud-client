@@ -31,6 +31,7 @@ impl From<String> for common::Destination {
 
 pub type PlanFormat = common::PlanFormat;
 pub type QueryPlans = common::QueryPlans;
+pub type ComputeVersions = common::ComputeVersions;
 
 mod identifier {
     use super::*;
@@ -108,6 +109,12 @@ impl From<QueryIdentifier> for common::QueryId {
         common::QueryId {
             query_id: value.into_string(),
         }
+    }
+}
+
+impl From<&common::QueryId> for QueryIdentifier {
+    fn from(value: &common::QueryId) -> Self {
+        Self::from_str(&value.query_id).expect("invalid query identifier")
     }
 }
 
