@@ -20,11 +20,12 @@ use std::sync::OnceLock;
 use client::{polars_version, py_is_token_expired, python_version};
 use polars_axum_models::{
     ComputeClusterPublicInfoSchema, ComputeSchema, ComputeStatusSchema, ComputeTokenSchema,
-    DBClusterModeSchema, DeleteWorkspaceSchema, FileTypeSchema, LogLevelSchema, OrganizationSchema,
-    QueryPlansSchema, QuerySchema, QueryStateTimingSchema, QueryStatusCodeSchema,
-    QueryWithStateTimingAndResultSchema, QueryWithStateTimingSchema, QueryWithStatusSchema,
-    ResultSchema, StatusSchema, TerminationReasonSchema, TerminationSchema, VersionNumber,
-    WorkspaceSchema, WorkspaceSetupUrlSchema, WorkspaceStateSchema, WorkspaceWithUrlSchema,
+    DBCPUArchitectureSchema, DBClusterModeSchema, DeleteWorkspaceSchema, FileTypeSchema,
+    LogLevelSchema, OrganizationSchema, QueryPlansSchema, QuerySchema, QueryStateTimingSchema,
+    QueryStatusCodeSchema, QueryWithStateTimingAndResultSchema, QueryWithStateTimingSchema,
+    QueryWithStatusSchema, ResultSchema, StatusSchema, TerminationReasonSchema, TerminationSchema,
+    VersionNumber, WorkspaceSchema, WorkspaceSetupUrlSchema, WorkspaceStateSchema,
+    WorkspaceWithUrlSchema,
 };
 use polars_backend_client::client::Versions as VersionHeaders;
 use pyo3::exceptions::PyRuntimeError;
@@ -123,6 +124,7 @@ fn polars_cloud(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<TerminationReasonSchema>().unwrap();
     m.add_class::<TerminationSchema>().unwrap();
     m.add_class::<DBClusterModeSchema>().unwrap();
+    m.add_class::<DBCPUArchitectureSchema>().unwrap();
     m.add_class::<ComputeSchema>().unwrap();
     m.add_class::<ComputeClusterPublicInfoSchema>().unwrap();
     m.add_class::<ComputeStatusSchema>().unwrap();
@@ -139,6 +141,7 @@ fn polars_cloud(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
 
     m.add_class::<QueryPlansPy>().unwrap();
     m.add_class::<PlanFormatPy>().unwrap();
+    m.add_class::<ComputeVersionsPy>().unwrap();
 
     m.add("NotFoundError", m.py().get_type::<NotFoundError>())
         .unwrap();

@@ -53,6 +53,7 @@ message DistributedOpts {
   uint64 allow_equi_join_broadcast_limit = 4;
   optional uint32 partitions_per_worker = 5;
   bool cost_based_planner = 6;
+  bool allow_expression_extraction = 7;
 }
 
 enum GraphFormat {
@@ -64,8 +65,6 @@ enum GraphFormat {
 
 message QuerySettings {
   reserved 3; // Deprecated `query_type` variant `PartitionedByKeyOpts
-  // partitioned_by_key`
-
   Engine engine = 1;
   oneof query_type {
     SingleOpts single = 2;
@@ -73,4 +72,5 @@ message QuerySettings {
   }
   GraphFormat preferred_graph_format = 5;
   uint32 n_retries = 6;
+  optional uint32 optimization_flags = 7;
 }

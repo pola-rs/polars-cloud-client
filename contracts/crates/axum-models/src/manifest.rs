@@ -13,7 +13,8 @@ use version_number::VersionNumber;
 #[cfg(feature = "server")]
 use crate::common::validate_alphanumeric_name;
 use crate::{
-    DBClusterModeSchema, EntityOrdering, InstanceSpecsSchema, LogLevelSchema, PythonVersion,
+    DBCPUArchitectureSchema, DBClusterModeSchema, EntityOrdering, InstanceSpecsSchema,
+    LogLevelSchema, PythonVersion,
 };
 
 #[derive(Default, Debug, Deserialize)]
@@ -35,6 +36,7 @@ pub struct ManifestSchema {
     pub workspace_id: Uuid,
     pub name: String,
     pub instance_type: Option<String>,
+    pub cpu_architectures: Option<Vec<DBCPUArchitectureSchema>>,
     pub big_instance_type: Option<String>,
     pub req_ram_gb: Option<u32>,
     pub req_cpu_cores: Option<u32>,
@@ -49,6 +51,8 @@ pub struct ManifestSchema {
     pub python_version: String,
     pub log_level: LogLevelSchema,
     pub requirements_txt: Option<String>,
+    /// ID of the cluster for this manifest if one is active
+    pub live_cluster_id: Option<Uuid>,
 }
 
 #[cfg_attr(feature = "pyo3", pyo3::pymethods)]
@@ -82,6 +86,11 @@ impl ManifestSchema {
     #[getter]
     pub fn req_cpu_cores(&self) -> pyo3::PyResult<Option<u32>> {
         Ok(self.req_cpu_cores)
+    }
+
+    #[getter]
+    pub fn cpu_architectures(&self) -> pyo3::PyResult<Option<Vec<DBCPUArchitectureSchema>>> {
+        Ok(self.cpu_architectures.clone())
     }
 
     #[getter]
@@ -137,6 +146,11 @@ impl ManifestSchema {
     #[getter]
     pub fn requirements_txt(&self) -> pyo3::PyResult<Option<String>> {
         Ok(self.requirements_txt.clone())
+    }
+
+    #[getter]
+    pub fn live_cluster_id(&self) -> pyo3::PyResult<Option<Uuid>> {
+        Ok(self.live_cluster_id)
     }
 }
 

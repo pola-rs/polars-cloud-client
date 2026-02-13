@@ -102,7 +102,7 @@ If you want to:
             storage_options=dst.storage_options,
             credential_provider=dst.credential_provider,
             metadata=dst.metadata,
-            field_overwrites=dst.field_overwrites,
+            arrow_schema=dst.arrow_schema,
             lazy=True,
             engine=engine,
         )
@@ -164,6 +164,13 @@ If you want to:
         plan = prepare_cloud_plan(
             lf, optimizations=optimizations, allow_local_scans=ALLOW_LOCAL_SCANS
         )
+
+        if isinstance(plan, tuple):
+            plan = plan[0]
+            optimization_flags = plan[1]
+        else:
+            optimization_flags = None
+
     except (ComputeError, InvalidOperationError) as exc:
         msg = f"invalid cloud plan: {exc}"
         raise ValueError(msg) from exc
@@ -195,6 +202,7 @@ If you want to:
         shuffle_opts=shuffle_opts,
         n_retries=n_retries,
         distributed_settings=distributed_settings,
+        optimization_flags=optimization_flags,
     )
 
     return plan, settings

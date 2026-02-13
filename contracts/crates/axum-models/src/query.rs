@@ -45,6 +45,18 @@ pub struct QueryPlansSchema {
 
 #[cfg_attr(feature = "pyo3", pyclass(get_all))]
 #[cfg_attr(feature = "server", derive(ToSchema))]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+pub struct ComputeVersionsSchema {
+    /// Compute Plane Version
+    pub compute_plane_version: String,
+    /// Polars Python Version
+    pub polars_python_version: String,
+    /// Polars Rust Revision
+    pub polars_rust_revision: String,
+}
+
+#[cfg_attr(feature = "pyo3", pyclass(get_all))]
+#[cfg_attr(feature = "server", derive(ToSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct StatusSchema {
     /// Start time for the status

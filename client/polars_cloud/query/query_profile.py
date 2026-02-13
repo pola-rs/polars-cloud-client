@@ -113,7 +113,6 @@ class QueryProfile:
                 ),
                 output_rows=pl.col("output_rows").sum(),
                 shuffle_bytes_written=pl.col("shuffle_bytes_written").sum(),
-                shuffle_bytes_read=pl.col("shuffle_bytes_read").sum(),
                 last_update=pl.max_horizontal(
                     pl.col("end_time").fill_null(datetime.datetime.min),
                     pl.col("start_time"),

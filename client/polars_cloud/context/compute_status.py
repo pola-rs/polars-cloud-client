@@ -55,6 +55,12 @@ class ComputeContextStatus(Enum):
     def is_failed(self) -> bool:
         return self == ComputeContextStatus.FAILED
 
+    def is_terminal(self) -> bool:
+        return self in [
+            ComputeContextStatus.STOPPED,
+            ComputeContextStatus.FAILED,
+        ]
+
     @classmethod
     def _from_api_schema(cls, status: pcr.ComputeStatusSchema) -> Self:
         if status == pcr.ComputeStatusSchema.Starting:

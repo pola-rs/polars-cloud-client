@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID
 
-from polars_cloud._typing import ConnectionMode, FileType, LogLevel
+from polars_cloud._typing import ConnectionMode, CPUArchitecture, FileType, LogLevel
 from polars_cloud.query.query import DistributionSettings
 
 def serialize_query_settings(
@@ -14,6 +14,7 @@ def serialize_query_settings(
     shuffle_opts: PyShuffleOpts = ...,
     n_retries: int = ...,
     distributed_settings: DistributionSettings | None = ...,
+    optimization_flags: int | None,
 ) -> PyQuerySettings: ...
 def py_is_token_expired(
     token: str, reject_tokens_expiring_in_less_than: timedelta | None
@@ -245,6 +246,16 @@ class DBClusterModeSchema(Enum):
     Proxy: int
     Direct: int
 
+class DBCPUArchitectureSchema(Enum):
+    """CPU Architecture."""
+
+    @staticmethod
+    def from_str(s: CPUArchitecture | None) -> DBCPUArchitectureSchema: ...
+    def as_str(self) -> CPUArchitecture: ...
+
+    X86_64: int
+    Arm64: int
+
 class ManifestSchema:
     """Represents the schema for a compute cluster manifest."""
 
@@ -265,6 +276,9 @@ class ManifestSchema:
 
     req_cpu_cores: int | None
     """Requested number of CPU cores."""
+
+    cpu_architectures: list[DBCPUArchitectureSchema] | None
+    """Requested cpu_architectures for the compute cluster."""
 
     req_storage: int | None
     """Requested disk storage in GiB."""
@@ -299,6 +313,9 @@ class ManifestSchema:
     requirements_txt: str | None
     """Requirements.txt file contents."""
 
+    live_cluster_id: UUID | None
+    """"ID of the cluster for this manifest if one is active"""
+
 class ComputeSchema:
     """Represents the schema for a compute cluster."""
 
@@ -316,6 +333,9 @@ class ComputeSchema:
 
     instance_type: str | None
     """Type of instance (e.g., instance type string)."""
+
+    cpu_architectures: list[DBCPUArchitectureSchema] | None
+    """Requested cpu_architectures for the compute cluster."""
 
     req_ram_gb: int | None
     """Requested RAM in GiB."""
@@ -361,6 +381,9 @@ class ComputeSchema:
 
     polars_version: str
     """The version of polars running on the cluster."""
+
+    tunnel_addr: str | None
+    """Address for the compute cluster tunnel."""
 
     created_at: datetime
     """Timestamp when the compute cluster was created."""
@@ -563,6 +586,7 @@ class ApiClient:
         mode: DBClusterModeSchema,
         cpus: int | None,
         ram_gb: int | None,
+        cpu_architectures: list[DBCPUArchitectureSchema] | None,
         instance_type: str | None,
         big_instance_type: str | None,
         big_instance_multiplier: int | None,
@@ -588,6 +612,7 @@ class ApiClient:
         mode: DBClusterModeSchema,
         cpus: int | None,
         ram_gb: int | None,
+        cpu_architectures: list[DBCPUArchitectureSchema] | None,
         instance_type: str | None,
         big_instance_type: str | None,
         big_instance_multiplier: int | None,
@@ -664,6 +689,7 @@ class SchedulerClient:
     def get_direct_query_plan(
         self, query_id: UUID, token: str | None, phys: bool = False, ir: bool = False
     ) -> QueryPlansPy: ...
+    def get_compute_versions(self, token: str | None) -> ComputeVersionsPy: ...
 
 class PlanFormatPy(Enum):
     Dot: int
@@ -673,3 +699,8 @@ class QueryPlansPy:
     format: PlanFormatPy
     ir_plan: str | None
     phys_plan: str | None
+
+class ComputeVersionsPy:
+    compute_plane_version: str
+    polars_python_version: str
+    polars_rust_revision: str

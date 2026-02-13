@@ -3,9 +3,10 @@ from __future__ import annotations
 import datetime
 import logging
 import time
+import warnings
 from contextlib import ContextDecorator
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 import polars_cloud
@@ -28,7 +29,7 @@ if TYPE_CHECKING:
     import sys
     from types import TracebackType
 
-    from polars_cloud._typing import ConnectionMode, LogLevel
+    from polars_cloud._typing import ConnectionMode, CPUArchitecture, LogLevel
     from polars_cloud.organization import Organization
 
     if sys.version_info >= (3, 11):
@@ -36,6 +37,7 @@ if TYPE_CHECKING:
     else:
         from typing_extensions import Self
 
+_deprecation_sentinel = object()
 DEFAULT_SCHEDULER_PORT = 5051
 
 
@@ -56,6 +58,32 @@ class ClientContext:
 
     def _get_token(self) -> str | None:
         return None
+
+    def show_versions(self) -> None:
+        """Print the versions of the compute plane components.
+
+        Raises
+        ------
+        RuntimeError
+            If the compute context is not accessible or not in direct connection mode.
+
+        Examples
+        --------
+        >>> ctx = pc.ClusterContext(compute_address="localhost")
+        >>> ctx.show_versions()
+        Compute Plane Version: 0.1.0
+        Polars Python Version: 1.38.1
+        Polars Rust Revision: c1764bcd298d3d2cfab4629eb0a5c36be412786e
+        """
+        client = self._get_direct_client()
+        if client is None:
+            msg = "Cannot show versions, no direct client available"
+            raise RuntimeError(msg)
+
+        versions = client.get_compute_versions(token=self._get_token())
+        print(f"Compute Plane Version: {versions.compute_plane_version}")
+        print(f"Polars Python Version: {versions.polars_python_version}")
+        print(f"Polars Rust Revision: {versions.polars_rust_revision}")
 
 
 class ClusterContext(ClientContext):
@@ -109,6 +137,9 @@ class ComputeContext(ClientContext, ContextDecorator):
     memory
         The amount of RAM (in GB) each instance in the compute context
         should have access to. This acts as a lower bound, see `cpus`.
+    cpu_architectures
+        The cpu architectures to consider. Defaults currently to x86 for compatibility
+        reasons. In the future include arm64 as well in the default list.
     instance_type
         The instance type to use.
     storage
@@ -210,6 +241,7 @@ class ComputeContext(ClientContext, ContextDecorator):
         name: str | None = None,
         cpus: int | None = None,
         memory: int | None = None,
+        cpu_architectures: list[CPUArchitecture] | None = None,
         instance_type: str | None = None,
         storage: int | None = None,
         cluster_size: int | None = None,
@@ -228,11 +260,13 @@ class ComputeContext(ClientContext, ContextDecorator):
         self._compute_token: str | None = None
         self._requirements_txt: str | None
         self._name: str | None = None
+        self._last_known_status: ComputeContextStatus
 
         if name is not None:
             if (
                 cpus is not None
                 or memory is not None
+                or cpu_architectures is not None
                 or instance_type is not None
                 or storage is not None
                 or cluster_size is not None
@@ -251,12 +285,29 @@ class ComputeContext(ClientContext, ContextDecorator):
             self._specs = ComputeContextSpecs(
                 cpus=m.req_cpu_cores,
                 memory=m.req_ram_gb,
+                cpu_architectures=[
+                    cpu_architectures.as_str()
+                    for cpu_architectures in m.cpu_architectures
+                ]
+                if m.cpu_architectures is not None
+                else None,
                 instance_type=m.instance_type,
                 storage=m.req_storage,
                 big_instance_type=m.big_instance_type,
                 big_instance_multiplier=m.req_big_instance_multiplier,
                 cluster_size=m.cluster_size,
             )
+            if m.live_cluster_id is None:
+                self._last_known_status = ComputeContextStatus.UNINITIALIZED
+            else:
+                cluster = constants.API_CLIENT.get_compute_cluster(
+                    self.workspace.id, m.live_cluster_id
+                )
+                self._compute_id = cluster.id
+                self._last_known_status = ComputeContextStatus._from_api_schema(
+                    cluster.status
+                )
+
             # TODO: Get the labels as well
             self._labels = None
             self._connection_mode: pcr.DBClusterModeSchema = m.mode
@@ -278,6 +329,7 @@ class ComputeContext(ClientContext, ContextDecorator):
                 self._workspace,
                 cpus=cpus,
                 memory=memory,
+                cpu_architectures=cpu_architectures,
                 instance_type=instance_type,
                 storage=storage,
                 cluster_size=cluster_size,
@@ -288,6 +340,7 @@ class ComputeContext(ClientContext, ContextDecorator):
             self._log_level = pcr.LogLevelSchema.from_str(log_level)
             self._idle_timeout_mins = idle_timeout_mins
             self._polars_version = pcr.polars_version()
+            self._last_known_status = ComputeContextStatus.UNINITIALIZED
 
             if requirements is not None:
                 if isinstance(requirements, (str, Path)):
@@ -310,6 +363,7 @@ class ComputeContext(ClientContext, ContextDecorator):
             f"id={self._compute_id}, "
             f"cpus={self._specs.cpus!r}, "
             f"memory={self._specs.memory!r}, "
+            f"cpu_architectures={self._specs.cpu_architectures!r}, "
             f"instance_type={self._specs.instance_type!r}, "
             f"storage={self._specs.storage!r}, "
             f"cluster_size={self._specs.cluster_size!r}, "
@@ -321,12 +375,13 @@ class ComputeContext(ClientContext, ContextDecorator):
         )
 
     @classmethod
-    def _from_api_schema(
-        cls, schema: pcr.ComputeSchema
-    ) -> tuple[Self, ComputeContextStatus]:
+    def _from_api_schema(cls, schema: pcr.ComputeSchema) -> Self:
         self = cls(
             cpus=schema.req_cpu_cores,
             memory=schema.req_ram_gb,
+            cpu_architectures=[a.as_str() for a in schema.cpu_architectures]
+            if schema.cpu_architectures
+            else None,
             cluster_size=schema.cluster_size,
             instance_type=schema.instance_type,
             storage=schema.req_storage,
@@ -338,7 +393,8 @@ class ComputeContext(ClientContext, ContextDecorator):
         )
         self._compute_id = schema.id
         self._polars_version = schema.polars_version
-        return self, ComputeContextStatus._from_api_schema(schema.status)
+        self._last_known_status = ComputeContextStatus._from_api_schema(schema.status)
+        return self
 
     def get_status(self) -> ComputeContextStatus:
         """Get the status of the compute context.
@@ -351,17 +407,22 @@ class ComputeContext(ClientContext, ContextDecorator):
         """
         if self._compute_id is None:
             return ComputeContextStatus.UNINITIALIZED
-        else:
+
+        # When unnamed the _last_known_state is only correct about terminal states.
+        # When named it might have been started in the meantime, but we don't recheck
+        if not self._last_known_status.is_terminal():
             status = constants.API_CLIENT.get_compute_cluster(
                 self.workspace.id, self._compute_id
             ).status
-            return ComputeContextStatus._from_api_schema(status)
+            self._last_known_status = ComputeContextStatus._from_api_schema(status)
+
+        return self._last_known_status
 
     def register(self, name: str) -> None:
         """Register the compute cluster specs under the given name.
 
         This does not start the compute cluster, instead allows the cluster to be
-        started with this name in future.
+        started with this name in the future.
 
         Parameters
         ----------
@@ -385,6 +446,12 @@ class ComputeContext(ClientContext, ContextDecorator):
             mode=self._connection_mode,
             cpus=self._specs.cpus,
             ram_gb=self._specs.memory,
+            cpu_architectures=[
+                pcr.DBCPUArchitectureSchema.from_str(a)
+                for a in self._specs.cpu_architectures
+            ]
+            if self._specs.cpu_architectures
+            else None,
             instance_type=self._specs.instance_type,
             storage=self._specs.storage,
             big_instance_type=self._specs.big_instance_type,
@@ -443,6 +510,12 @@ class ComputeContext(ClientContext, ContextDecorator):
                 mode=self._connection_mode,
                 cpus=self._specs.cpus,
                 ram_gb=self._specs.memory,
+                cpu_architectures=[
+                    pcr.DBCPUArchitectureSchema.from_str(a)
+                    for a in self._specs.cpu_architectures
+                ]
+                if self._specs.cpu_architectures
+                else None,
                 instance_type=self._specs.instance_type,
                 storage=self._specs.storage,
                 big_instance_type=self._specs.big_instance_type,
@@ -455,6 +528,8 @@ class ComputeContext(ClientContext, ContextDecorator):
             )
             self._compute_id = compute.id
 
+        self._last_known_status = ComputeContextStatus.STARTING
+
         msg = f"View your compute metrics on: https://cloud.pola.rs/portal/{self.organization.id}/{self.workspace.id}/compute/{self._compute_id}"
         logger.info(msg)
 
@@ -462,28 +537,40 @@ class ComputeContext(ClientContext, ContextDecorator):
         if wait:
             _poll_compute_status_until(self, ComputeContextStatus.IDLE)
 
-    def stop(self, *, wait: bool = False) -> None:
+    def stop(self, *, wait: Any = _deprecation_sentinel) -> None:
         """Stop the compute context.
 
         Parameters
         ----------
         wait
-            If True, this will block this thread until context is stopped.
+            Deprecated. This parameter no longer affects behavior.
 
         Examples
         --------
         >>> ctx = pc.ComputeContext(workspace="workspace-name", cpus=24, memory=24)
         >>> ctx.stop()
         """
+        if wait is not _deprecation_sentinel:
+            warnings.warn(
+                "The 'wait' parameter is deprecated and will be removed in a future version. "
+                "Please remove it from your function call.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         if self._compute_id is None:
             msg = "nothing to stop, context is not running"
             raise RuntimeError(msg)
 
-        constants.API_CLIENT.stop_compute_cluster(self.workspace.id, self._compute_id)
-        if wait:
-            _poll_compute_status_until(self, ComputeContextStatus.STOPPED, 10, 5, 100)
+        if self._last_known_status.is_stopped() or self._last_known_status.is_failed():
+            logger.warning(
+                "The context was already in a stopped state: Status=%s",
+                self._last_known_status,
+            )
+            return
 
-        self._compute_id = None
+        constants.API_CLIENT.stop_compute_cluster(self.workspace.id, self._compute_id)
+        self._last_known_status = ComputeContextStatus.STOPPED
         self._direct_client = None
 
     @classmethod
@@ -506,7 +593,12 @@ class ComputeContext(ClientContext, ContextDecorator):
         """
         w = Workspace._parse(workspace)
         compute_contexts = constants.API_CLIENT.get_compute_clusters(w.id)
-        return [cls._from_api_schema(c) for c in compute_contexts]
+
+        result = []
+        for c in compute_contexts:
+            ctx = cls._from_api_schema(c)
+            result.append((ctx, ctx._last_known_status))
+        return result
 
     @classmethod
     def connect(
@@ -533,9 +625,9 @@ class ComputeContext(ClientContext, ContextDecorator):
         compute_uuid = compute_id if isinstance(compute_id, UUID) else UUID(compute_id)
         workspace = Workspace._parse(workspace)
         details = constants.API_CLIENT.get_compute_cluster(workspace.id, compute_uuid)
-        ctx, status = cls._from_api_schema(details)
-        if not status.is_available():
-            msg = f"Context is in an incorrect state: {status}"
+        ctx = cls._from_api_schema(details)
+        if not ctx._last_known_status.is_available():
+            msg = f"Context is in an incorrect state: {ctx._last_known_status}"
             raise RuntimeError(msg)
         return ctx
 
@@ -582,8 +674,7 @@ class ComputeContext(ClientContext, ContextDecorator):
         contexts.sort(key=lambda x: x[1].request_time, reverse=True)
         idx = select_compute_cluster(contexts)
         if idx is not None:
-            ctx, _status = cls._from_api_schema(contexts[idx][1])
-            return ctx
+            return cls._from_api_schema(contexts[idx][1])
         return None
 
     @property
@@ -595,6 +686,11 @@ class ComputeContext(ClientContext, ContextDecorator):
     def memory(self) -> int | None:
         """The amount of RAM (in GB) each instance has access to."""
         return self._specs.memory
+
+    @property
+    def cpu_architectures(self) -> list[CPUArchitecture] | None:  # type: ignore[valid-type]
+        """The cpu_architectures of the compute context."""
+        return self._specs.cpu_architectures
 
     @property
     def instance_type(self) -> str | None:
@@ -694,6 +790,45 @@ class ComputeContext(ClientContext, ContextDecorator):
     ) -> bool | None:
         self.stop()
         return self._cm.__exit__(exc_type, exc_value, traceback)
+
+
+def show_versions(
+    context: ComputeContext | ClientContext | None = None,
+) -> None:
+    """Print the versions of the compute plane components.
+
+    Parameters
+    ----------
+    context
+        The compute context to query. If not provided, uses the current
+        cached context set via `set_compute_context`.
+
+    Raises
+    ------
+    RuntimeError
+        If no context is provided and no cached context exists,
+        or if the context is not started or not in direct connection mode.
+
+    Examples
+    --------
+    >>> ctx = pc.ComputeContext(workspace="workspace-name", cpus=24, memory=24)
+    >>> ctx.start()
+    >>> pc.set_compute_context(ctx)
+    >>> pc.show_versions()
+    Compute Plane Version: 0.1.0
+    Polars Python Version: 1.38.1
+    Polars Rust Revision: c1764bcd298d3d2cfab4629eb0a5c36be412786e
+    """
+    from polars_cloud.context import cache as compute_cache
+
+    if context is None:
+        context = compute_cache.cached_context
+
+    if context is None:
+        msg = "No compute context provided and no cached context available"
+        raise RuntimeError(msg)
+
+    context.show_versions()
 
 
 def _poll_compute_status_until(

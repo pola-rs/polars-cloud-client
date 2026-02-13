@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
     from pathlib import Path
     from typing import Literal
 
     from polars._typing import (
+        ArrowSchemaExportable,
         CsvQuoteStyle,
         IpcCompression,
         ParquetCompression,
@@ -15,8 +15,7 @@ if TYPE_CHECKING:
     )
     from polars.interchange import CompatLevel
     from polars.io.cloud import CredentialProviderFunction
-    from polars.io.parquet import ParquetFieldOverwrites
-    from polars.io.partition import _SinkDirectory
+    from polars.io.partition import PartitionBy
 
 
 class Dst: ...
@@ -25,7 +24,7 @@ class Dst: ...
 class ParquetDst(Dst):
     def __init__(
         self,
-        uri: str | Path | _SinkDirectory,
+        uri: str | Path | PartitionBy,
         *,
         compression: ParquetCompression = "zstd",
         compression_level: int | None = None,
@@ -38,10 +37,7 @@ class ParquetDst(Dst):
         | Literal["auto"]
         | None = "auto",
         metadata: ParquetMetadata | None = None,
-        field_overwrites: ParquetFieldOverwrites
-        | Sequence[ParquetFieldOverwrites]
-        | Mapping[str, ParquetFieldOverwrites]
-        | None = None,
+        arrow_schema: ArrowSchemaExportable | None = None,
     ) -> None:
         """Parquet destination arguments.
 
@@ -123,18 +119,17 @@ class ParquetDst(Dst):
             .. warning::
                 This functionality is considered **experimental**. It may be removed or
                 changed at any point without it being considered a breaking change.
-        field_overwrites
-            Property overwrites for individual Parquet fields.
-
-            This allows more control over the writing process to the granularity of a
-            Parquet field.
+        arrow_schema
+            Provide a custom arrow schema to write to the file. This allows
+            setting custom schema and field-level metadata. Names and dtypes
+            must match.
 
             .. warning::
-                This functionality is considered **unstable**. It may be changed
-                at any point without it being considered a breaking change.
+                This functionality is considered **unstable**. It may be changed at any
+                point without it being considered a breaking change.
 
         """
-        self.uri: str | Path | None | _SinkDirectory = (
+        self.uri: str | Path | None | PartitionBy = (
             uri  #: Path to which the output should be written
         )
         self.compression: ParquetCompression = compression  #: Compression algorithm
@@ -152,18 +147,13 @@ class ParquetDst(Dst):
             CredentialProviderFunction | Literal["auto"] | None
         ) = credential_provider  #: Credential provider
         self.metadata: ParquetMetadata | None = metadata
-        self.field_overwrites: (
-            ParquetFieldOverwrites
-            | Sequence[ParquetFieldOverwrites]
-            | Mapping[str, ParquetFieldOverwrites]
-            | None
-        ) = field_overwrites
+        self.arrow_schema: ArrowSchemaExportable | None = arrow_schema
 
 
 class CsvDst(Dst):
     def __init__(
         self,
-        uri: str | _SinkDirectory,
+        uri: str | PartitionBy,
         *,
         include_bom: bool = False,
         include_header: bool = True,
@@ -283,7 +273,7 @@ class CsvDst(Dst):
                 This functionality is considered **unstable**. It may be changed
                 at any point without it being considered a breaking change.
         """
-        self.uri: str | _SinkDirectory = uri
+        self.uri: str | PartitionBy = uri
         self.include_bom: bool = include_bom
         self.include_header: bool = include_header
         self.separator: str = separator
@@ -308,7 +298,7 @@ class CsvDst(Dst):
 class IpcDst(Dst):
     def __init__(
         self,
-        uri: str | _SinkDirectory,
+        uri: str | PartitionBy,
         *,
         compression: IpcCompression | None = "zstd",
         compat_level: CompatLevel | None = None,
