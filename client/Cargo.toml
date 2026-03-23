@@ -1,36 +1,48 @@
-[package]
-name = "polars_cloud"
-version = "0.5.0"
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+default-members = ["crates/*"]
+
+[profile.opt-dev]
+inherits = "dev"
+opt-level = 1
+
+[workspace.package]
+version = "0.6.0"
 edition = "2024"
 homepage = "https://www.pola.rs/"
 license = "MIT"
 repository = "https://github.com/pola-rs/polars"
 
-[lib]
-name = "polars_cloud"
-crate-type = ["cdylib"]
-
-[lints.clippy]
+[workspace.lints.clippy]
 disallowed_methods = "deny"
 
-[dependencies]
+[workspace.dependencies]
 anyhow = "1.0.95"
 base64 = "0.22.1"
+clap = { version = "4", features = ["derive"] }
+client-cli = { path = "crates/cli" }
+client-core = { path = "crates/core" }
+comfy-table = "7.2"
 directories = "6.0.0"
+pc-observatory-models = { path = "../contracts/crates/pc-observatory-models" }
 polars-axum-models = { path = "../contracts/crates/axum-models", features = ["pyo3"] }
 polars-backend-client = { path = "../contracts/crates/control-plane-client", features = ["pyo3"] }
 protos-client-compute = { path = "../contracts/crates/protos-client-compute" }
 protos-client-control = { path = "../contracts/crates/protos-client-control" }
 protos-common = { path = "../contracts/crates/protos-common" }
-pyo3 = { version = "0.27.2", features = ["extension-module", "abi3-py310", "multiple-pymethods"] }
+pyo3 = { version = "0.28.0", features = ["abi3-py310", "multiple-pymethods"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 reqwest-middleware = "0.4.1"
 reqwest-retry = "0.7.0"
+rstest = "0.25.0"
 serde = { version = "1.0" }
 serde_json = "1.0"
+testresult = "0.4.1"
 thiserror = "2.0"
-tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "signal"] }
 tracing = { version = "0.1" }
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 utils = { path = "../contracts/crates/utils" }
 uuid = "1.11.0"
 webbrowser = "1.0.3"

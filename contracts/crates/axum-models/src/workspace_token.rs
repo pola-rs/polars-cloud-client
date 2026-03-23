@@ -3,9 +3,9 @@ use chrono::{DateTime, Utc};
 use garde::Validate;
 #[cfg(feature = "pyo3")]
 use pyo3::pyclass;
-use serde::{Deserialize, Serialize};
 #[cfg(feature = "server")]
-use utoipa::ToSchema;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::EntityOrdering;
@@ -13,8 +13,8 @@ use crate::EntityOrdering;
 use crate::common::validate_alphanumeric_name;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "server", derive(Validate, ToSchema))]
-pub struct WorkSpaceTokenBody {
+#[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
+pub struct WorkSpaceTokenBodyArgs {
     #[cfg_attr(
         feature = "server",
         garde(length(min = 1, max = 32), custom(validate_alphanumeric_name))
@@ -25,9 +25,9 @@ pub struct WorkSpaceTokenBody {
 }
 
 #[derive(Serialize, Debug, Deserialize)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
-#[cfg_attr(feature = "pyo3", pyclass(get_all))]
-pub struct WorkspaceAPIToken {
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
+pub struct WorkspaceAPITokenModel {
     pub id: Uuid,
     pub username: Uuid,
     pub api_secret: String,
@@ -37,9 +37,9 @@ pub struct WorkspaceAPIToken {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
-#[cfg_attr(feature = "pyo3", pyclass(get_all))]
-pub struct WorkspaceApiTokenWithNameSchema {
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
+pub struct WorkspaceApiTokenWithNameModel {
     /// Workspace token id
     pub id: Uuid,
     /// Workspace ID
@@ -52,7 +52,7 @@ pub struct WorkspaceApiTokenWithNameSchema {
     pub name: String,
 }
 
-impl EntityOrdering for WorkspaceApiTokenWithNameSchema {
+impl EntityOrdering for WorkspaceApiTokenWithNameModel {
     fn order_fields() -> &'static [&'static str] {
         &["created_at"]
     }

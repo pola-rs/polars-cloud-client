@@ -2,31 +2,21 @@
 use garde::Validate;
 #[cfg(feature = "pyo3")]
 use pyo3::pyclass;
-use serde::{Deserialize, Serialize};
 #[cfg(feature = "server")]
-use utoipa::ToSchema;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
-use crate::DBCPUArchitectureSchema;
+use crate::DBCPUArchitectureModel;
 
-#[cfg_attr(feature = "pyo3", pyclass)]
-#[derive(Clone, Deserialize, Serialize, Debug, PartialEq)]
-#[cfg_attr(feature = "server", derive(Validate, ToSchema))]
-pub struct Specs {
-    #[cfg_attr(feature = "server", garde(range(min = 1)))]
-    pub cpus: u32,
-    #[cfg_attr(feature = "server", garde(range(min = 1)))]
-    pub ram_gb: u32,
+fn default_cpu_architectures() -> Vec<DBCPUArchitectureModel> {
+    vec![DBCPUArchitectureModel::X86_64]
 }
 
-fn default_cpu_architectures() -> Vec<DBCPUArchitectureSchema> {
-    vec![DBCPUArchitectureSchema::X86_64]
-}
-
-#[cfg_attr(feature = "pyo3", pyclass(get_all))]
-#[cfg_attr(feature = "server", derive(ToSchema, Validate))]
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all))]
+#[cfg_attr(feature = "server", derive(JsonSchema, Validate))]
 #[derive(Clone, Deserialize, Serialize, Debug, PartialEq)]
 #[serde(rename_all = "snake_case")]
-pub enum InstanceSpecsSchema {
+pub enum InstanceSpecsModel {
     InstanceType {
         #[cfg_attr(feature = "server", garde(skip))]
         standard: String,
@@ -40,19 +30,19 @@ pub enum InstanceSpecsSchema {
         ram_gb: u32,
         #[serde(default = "default_cpu_architectures")]
         #[cfg_attr(feature = "server", garde(dive))]
-        cpu_architectures: Vec<DBCPUArchitectureSchema>,
+        cpu_architectures: Vec<DBCPUArchitectureModel>,
         #[cfg_attr(feature = "server", garde(range(min = 1)))]
         multiplier: Option<u32>,
     },
 }
 
-#[cfg_attr(feature = "pyo3", pyclass(get_all))]
-#[cfg_attr(feature = "server", derive(Validate, ToSchema))]
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all))]
+#[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
 #[derive(Clone, Deserialize, Serialize, Debug, PartialEq)]
-pub struct WorkspaceClusterDefaultsSchema {
+pub struct WorkspaceClusterDefaultsModel {
     /// Instance specifications
     #[cfg_attr(feature = "server", garde(dive))]
-    pub instance_specs: InstanceSpecsSchema,
+    pub instance_specs: InstanceSpecsModel,
     /// Amount of disk storage (in GiB)
     #[cfg_attr(feature = "server", garde(range(min = 16)))]
     pub storage: Option<i32>,

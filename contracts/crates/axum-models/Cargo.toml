@@ -8,20 +8,21 @@ repository.workspace = true
 
 [lib]
 path = "src/lib.rs"
+doctest = false
 
 [dependencies]
 chrono = { workspace = true }
 garde = { workspace = true, optional = true }
 pyo3 = { workspace = true, optional = true }
 regex = { workspace = true, optional = true }
+schemars = { workspace = true, optional = true }
 serde = { workspace = true }
-utoipa = { workspace = true, optional = true }
 uuid = { workspace = true }
 version-number = { workspace = true }
 
 [features]
 pyo3 = ["dep:pyo3"]
-server = ["dep:garde", "dep:utoipa", "dep:regex"]
+server = ["dep:garde", "dep:schemars", "dep:regex"]
 
 [lints]
 workspace = true

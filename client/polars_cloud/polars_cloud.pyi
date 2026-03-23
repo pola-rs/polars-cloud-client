@@ -21,11 +21,12 @@ def py_is_token_expired(
 ) -> bool: ...
 def polars_version() -> str: ...
 def python_version() -> str: ...
+def cli_main() -> None: ...
 
 class PyQuerySettings:
     pass
 
-class ComputeTokenSchema:
+class ComputeTokenModel:
     id: UUID
     """Compute id"""
 
@@ -38,7 +39,7 @@ class PyShuffleOpts:
         format: str, compression: str, compression_level: int | None
     ) -> PyShuffleOpts: ...
 
-class WorkspaceStateSchema(Enum):
+class WorkspaceStateModel(Enum):
     """Represents the state of a workspace."""
 
     Uninitialized: int
@@ -47,8 +48,8 @@ class WorkspaceStateSchema(Enum):
     Failed: int
     Deleted: int
 
-class WorkspaceSchema:
-    """Represents a workspace schema."""
+class WorkspaceModel:
+    """Represents a workspace model."""
 
     id: UUID
     """Workspace ID (UUID v7)."""
@@ -65,7 +66,7 @@ class WorkspaceSchema:
     creator_id: UUID
     """User who owns the Workspace."""
 
-    status: WorkspaceStateSchema
+    status: WorkspaceStateModel
     """Status of the Workspace."""
 
     cloud_resources_url: str | None
@@ -84,9 +85,9 @@ class WorkspaceSchema:
     deleted_at: datetime | None
     """Timestamp of the last deletion."""
 
-    def __init__(self, id: UUID, name: str, status: WorkspaceStateSchema) -> None: ...
+    def __init__(self, id: UUID, name: str, status: WorkspaceStateModel) -> None: ...
 
-class ComputeClusterNodeInfoSchema:
+class ComputeClusterNodeInfoModel:
     """Represents a single node within a compute cluster."""
 
     cluster_id: UUID
@@ -113,8 +114,8 @@ class DefaultComputeSpecs:
     cluster_size: int
     """Number of compute nodes."""
 
-class QuerySchema:
-    """Represents the schema for a query."""
+class QueryModel:
+    """Represents the model for a query."""
 
     id: UUID
     """Query ID."""
@@ -140,7 +141,7 @@ class QuerySchema:
     deleted_at: datetime | None
     """Timestamp of the last deletion."""
 
-class QueryStatusCodeSchema(Enum):
+class QueryStatusCodeModel(Enum):
     """Represents the status codes for a query."""
 
     Queued: int
@@ -150,61 +151,61 @@ class QueryStatusCodeSchema(Enum):
     Failed: int
     Canceled: int
 
-class StatusSchema:
+class StatusModel:
     """Represents the status information for a query."""
 
     status_time: datetime
     """Start time for the status."""
 
-    code: QueryStatusCodeSchema
+    code: QueryStatusCodeModel
     """Status code."""
 
-class QueryWithStatusSchema:
+class QueryWithStatusModel:
     """Represents a query with its associated status."""
 
-    query: QuerySchema
+    query: QueryModel
     """Details of the query."""
 
-    status: StatusSchema
+    status: StatusModel
     """Current status of the query"""
 
-class QueryStateTimingSchema:
-    latest_status: QueryStatusCodeSchema
+class QueryStateTimingModel:
+    latest_status: QueryStatusCodeModel
     """Last known status for query"""
     started_at: datetime | None
     """When this query last changed to in_progress"""
     ended_at: datetime | None
     """When this query reached a done state (failed, canceled, success)"""
 
-class QueryWithStateTimingSchema:
-    query: QuerySchema
+class QueryWithStateTimingModel:
+    query: QueryModel
     """Details of the query."""
-    state_timing: QueryStateTimingSchema
+    state_timing: QueryStateTimingModel
     """Details about the state of the query"""
 
-class FileTypeSchema(Enum):
+class FileTypeModel(Enum):
     Parquet: int
     IPC: int
     Csv: int
     NDJSON: int
     JSON: int
 
-class ResultSchema:
+class ResultModel:
     total_stages: int
     finished_stages: int
     failed_stages: int
     n_rows_result: int | None
-    file_type_sink: FileTypeSchema | None
+    file_type_sink: FileTypeModel | None
     errors: list[str]
 
-class QueryWithStateTimingAndResultSchema:
-    query: QuerySchema
+class QueryWithStateTimingAndResultModel:
+    query: QueryModel
     """Details of the query."""
-    state_timing: QueryStateTimingSchema
+    state_timing: QueryStateTimingModel
     """Details about the state of the query"""
-    result: ResultSchema | None
+    result: ResultModel | None
 
-class QueryPlansSchema:
+class QueryPlansModel:
     id: UUID
     """Query ID."""
     ir_plan: str | None
@@ -212,7 +213,7 @@ class QueryPlansSchema:
     phys_plan: str | None
     """The physical plan in dotfile format."""
 
-class TerminationReasonSchema(Enum):
+class TerminationReasonModel(Enum):
     """Enum representing the reasons for termination."""
 
     StoppedByUser: int
@@ -224,10 +225,10 @@ class TerminationReasonSchema(Enum):
     Failed: int
     """The instance failed."""
 
-class TerminationSchema:
+class TerminationModel:
     """Represents the termination details of a compute instance."""
 
-    termination_reason: TerminationReasonSchema
+    termination_reason: TerminationReasonModel
     """Reason for termination."""
 
     termination_time: datetime
@@ -236,28 +237,28 @@ class TerminationSchema:
     termination_message: str | None
     """Optional message providing details about the termination."""
 
-class DBClusterModeSchema(Enum):
+class DBClusterModeModel(Enum):
     """Mode of the database cluster."""
 
     @staticmethod
-    def from_str(s: ConnectionMode | None) -> DBClusterModeSchema: ...
+    def from_str(s: ConnectionMode | None) -> DBClusterModeModel: ...
     def as_str(self) -> ConnectionMode: ...
 
     Proxy: int
     Direct: int
 
-class DBCPUArchitectureSchema(Enum):
+class DBCPUArchitectureModel(Enum):
     """CPU Architecture."""
 
     @staticmethod
-    def from_str(s: CPUArchitecture | None) -> DBCPUArchitectureSchema: ...
+    def from_str(s: CPUArchitecture | None) -> DBCPUArchitectureModel: ...
     def as_str(self) -> CPUArchitecture: ...
 
     X86_64: int
     Arm64: int
 
-class ManifestSchema:
-    """Represents the schema for a compute cluster manifest."""
+class ManifestModel:
+    """Represents the model for a compute cluster manifest."""
 
     id: UUID
     """Unique identifier for the manifest."""
@@ -277,7 +278,7 @@ class ManifestSchema:
     req_cpu_cores: int | None
     """Requested number of CPU cores."""
 
-    cpu_architectures: list[DBCPUArchitectureSchema] | None
+    cpu_architectures: list[DBCPUArchitectureModel] | None
     """Requested cpu_architectures for the compute cluster."""
 
     req_storage: int | None
@@ -295,13 +296,13 @@ class ManifestSchema:
     cluster_size: int
     """Number of compute nodes in the cluster."""
 
-    mode: DBClusterModeSchema
+    mode: DBClusterModeModel
     """Mode of the database cluster."""
 
     idle_timeout_mins: int | None
     """How many minutes a cluster can be idle before it will be automatically killed."""
 
-    log_level: LogLevelSchema
+    log_level: LogLevelModel
     """Log level of the compute cluster."""
 
     polars_version: str
@@ -316,8 +317,8 @@ class ManifestSchema:
     live_cluster_id: UUID | None
     """"ID of the cluster for this manifest if one is active"""
 
-class ComputeSchema:
-    """Represents the schema for a compute cluster."""
+class ComputeModel:
+    """Represents the model for a compute cluster."""
 
     id: UUID
     """Unique identifier for the compute cluster."""
@@ -334,7 +335,7 @@ class ComputeSchema:
     instance_type: str | None
     """Type of instance (e.g., instance type string)."""
 
-    cpu_architectures: list[DBCPUArchitectureSchema] | None
+    cpu_architectures: list[DBCPUArchitectureModel] | None
     """Requested cpu_architectures for the compute cluster."""
 
     req_ram_gb: int | None
@@ -364,7 +365,7 @@ class ComputeSchema:
     cluster_size: int
     """Number of compute nodes in the cluster."""
 
-    termination: TerminationSchema | None
+    termination: TerminationModel | None
     """Termination settings, if applicable."""
 
     gc_inactive_hours: int
@@ -373,10 +374,10 @@ class ComputeSchema:
     request_time: datetime
     """Timestamp when the compute cluster was requested."""
 
-    mode: DBClusterModeSchema
+    mode: DBClusterModeModel
     """Mode of the database cluster."""
 
-    log_level: LogLevelSchema
+    log_level: LogLevelModel
     """Log level of the compute cluster."""
 
     polars_version: str
@@ -394,26 +395,26 @@ class ComputeSchema:
     deleted_at: datetime | None
     """Timestamp when the compute cluster was deleted, if applicable."""
 
-    status: ComputeStatusSchema
+    status: ComputeStatusModel
     """Status of the compute cluster."""
 
-class LogLevelSchema(Enum):
+class LogLevelModel(Enum):
     """Log level for a compute cluster."""
 
     @staticmethod
-    def from_str(s: LogLevel | None) -> LogLevelSchema: ...
+    def from_str(s: LogLevel | None) -> LogLevelModel: ...
     def as_str(self) -> LogLevel: ...
 
     Info: int
     Debug: int
     Trace: int
 
-class ComputeClusterPublicInfoSchema:
+class ComputeClusterPublicInfoModel:
     cluster_id: UUID
     public_address: str
     public_server_key: str
 
-class ComputeStatusSchema(Enum):
+class ComputeStatusModel(Enum):
     Starting: int
     Idle: int
     Running: int
@@ -421,18 +422,18 @@ class ComputeStatusSchema(Enum):
     Stopped: int
     Failed: int
 
-class WorkspaceWithUrlSchema:
-    workspace: WorkspaceSchema
+class WorkspaceWithUrlModel:
+    workspace: WorkspaceModel
     full_url: str
     barebones_url: str
 
-class WorkspaceSetupUrlSchema:
+class WorkspaceSetupUrlModel:
     full_setup_url: str
     barebones_setup_url: str
     full_template_url: str
     barebones_template_url: str
 
-class WorkspaceApiTokenWithNameSchema:
+class WorkspaceApiTokenWithNameModel:
     id: UUID
     name: str
     workspace_id: UUID
@@ -447,11 +448,11 @@ class WorkspaceApiToken:
     description: str | None
     created_at: datetime
 
-class DeleteWorkspaceSchema:
+class DeleteWorkspaceModel:
     stack_name: str
     url: str
 
-class UserSchema:
+class UserModel:
     id: UUID
     """User id."""
     first_name: str | None
@@ -477,6 +478,9 @@ class AuthLoadError(Exception):
 
 class EncodedPolarsError(Exception):
     """Polars Error raised by the compute plane."""
+
+class ComputeClusterMisspecified(Exception):
+    """Exception raised when the cluster settings were misspecified."""
 
 class StageStatsPy:
     num_workers_used: int
@@ -509,9 +513,43 @@ class QueryProfilePy:
     phys_plan_explain: str | None
     phys_plan_dot: str | None
     data: bytes | None
+    errors: list[str]
 
-class OrganizationSchema:
-    """Represents an organization schema."""
+class QueryPlanTimingPy:
+    plan_start_time: str | None
+    parse_start_time: str | None
+    optimize_start_time: str | None
+    distribute_start_time: str | None
+    distribute_end_time: str | None
+    plan_end_time: str | None
+
+class QueryDetailPy:
+    id: str
+    user_name: str
+    status: str
+    request_time: str
+    start_time: str | None
+    end_time: str | None
+    query_plan_timing: QueryPlanTimingPy
+    total_num_stages: int | None
+    failed_stage: int | None
+    in_progress_stages: list[int]
+    finished_stages: list[int]
+    total_bytes_shuffled: int | None
+    total_node_time_ns: int
+    percentage_time_shuffling: float | None
+    total_num_files: int | None
+    original_num_files: int | None
+    total_rows_read: int | None
+    errors: list[str] | None
+    engine: str
+    query_type: str
+    output_location: str | None
+    output_files: int | None
+    output_rows: int | None
+
+class OrganizationModel:
+    """Represents an organization model."""
 
     id: UUID
     """Organization ID (UUID v7)."""
@@ -528,7 +566,7 @@ class OrganizationSchema:
     creator_id: UUID
     """User who owns the Organization."""
 
-    status: WorkspaceStateSchema
+    status: WorkspaceStateModel
     """Status of the Workspace."""
 
     created_at: datetime
@@ -554,15 +592,23 @@ class ApiClient:
     # Workspace methods
     def create_workspace(
         self, name: str, organization_id: UUID
-    ) -> WorkspaceWithUrlSchema: ...
-    def get_workspace_setup_url(
-        self, workspace_id: UUID
-    ) -> WorkspaceSetupUrlSchema: ...
-    def delete_workspace(self, workspace_id: UUID) -> DeleteWorkspaceSchema | None: ...
-    def get_workspace(self, workspace_id: UUID) -> WorkspaceSchema: ...
+    ) -> WorkspaceWithUrlModel: ...
+    def get_workspace_setup_url(self, workspace_id: UUID) -> WorkspaceSetupUrlModel: ...
+    def delete_workspace(self, workspace_id: UUID) -> DeleteWorkspaceModel | None: ...
+    def get_workspace(self, workspace_id: UUID) -> WorkspaceModel: ...
     def get_workspaces(
         self, name: str | None = None, organization_id: UUID | None = None
-    ) -> list[WorkspaceSchema]: ...
+    ) -> list[WorkspaceModel]: ...
+    def set_workspace_cluster_defaults(
+        self,
+        workspace_id: UUID,
+        instance_type: str | None,
+        cpus: int | None,
+        ram_gb: int | None,
+        storage: int | None,
+        cpu_architectures: list[DBCPUArchitectureModel] | None,
+        cluster_size: int,
+    ) -> None: ...
     def get_workspace_default_compute_specs(
         self, workspace_id: UUID
     ) -> DefaultComputeSpecs | None: ...
@@ -570,23 +616,23 @@ class ApiClient:
     # Compute methods
     def get_compute_cluster(
         self, workspace_id: UUID, compute_id: UUID
-    ) -> ComputeSchema: ...
+    ) -> ComputeModel: ...
     def get_compute_cluster_manifest(
         self, workspace_id: UUID, manifest_name: str
-    ) -> ManifestSchema: ...
+    ) -> ManifestModel: ...
     def stop_compute_cluster(self, workspace_id: UUID, compute_id: UUID) -> None: ...
     def get_compute_server_info(
         self, workspace_id: UUID, compute_id: UUID
-    ) -> ComputeClusterPublicInfoSchema: ...
+    ) -> ComputeClusterPublicInfoModel: ...
     def register_compute_cluster_manifest(
         self,
         workspace_id: UUID,
         name: str,
         cluster_size: int,
-        mode: DBClusterModeSchema,
+        mode: DBClusterModeModel,
         cpus: int | None,
         ram_gb: int | None,
-        cpu_architectures: list[DBCPUArchitectureSchema] | None,
+        cpu_architectures: list[DBCPUArchitectureModel] | None,
         instance_type: str | None,
         big_instance_type: str | None,
         big_instance_multiplier: int | None,
@@ -594,9 +640,9 @@ class ApiClient:
         big_instance_storage: int | None,
         requirements_txt: str | None,
         labels: list[str] | None,
-        log_level: LogLevelSchema | None,
+        log_level: LogLevelModel | None,
         idle_timeout_mins: int | None,
-    ) -> ManifestSchema: ...
+    ) -> ManifestModel: ...
     def unregister_compute_cluster_manifest(
         self,
         workspace_id: UUID,
@@ -604,15 +650,15 @@ class ApiClient:
     ) -> None: ...
     def start_compute_cluster_manifest(
         self, workspace_id: UUID, name: str
-    ) -> ComputeSchema: ...
+    ) -> ComputeModel: ...
     def start_compute(
         self,
         workspace_id: UUID,
         cluster_size: int,
-        mode: DBClusterModeSchema,
+        mode: DBClusterModeModel,
         cpus: int | None,
         ram_gb: int | None,
-        cpu_architectures: list[DBCPUArchitectureSchema] | None,
+        cpu_architectures: list[DBCPUArchitectureModel] | None,
         instance_type: str | None,
         big_instance_type: str | None,
         big_instance_multiplier: int | None,
@@ -620,34 +666,34 @@ class ApiClient:
         big_instance_storage: int | None,
         requirements_txt: str | None,
         labels: list[str] | None,
-        log_level: LogLevelSchema | None,
+        log_level: LogLevelModel | None,
         idle_timeout_mins: int | None,
-    ) -> ComputeSchema: ...
+    ) -> ComputeModel: ...
     def get_compute_clusters(
-        self, workspace_id: UUID, *, status: list[ComputeStatusSchema] | None = None
-    ) -> list[ComputeSchema]: ...
+        self, workspace_id: UUID, *, status: list[ComputeStatusModel] | None = None
+    ) -> list[ComputeModel]: ...
     def get_compute_cluster_token(
         self, workspace_id: UUID, compute_id: UUID
-    ) -> ComputeTokenSchema: ...
+    ) -> ComputeTokenModel: ...
     def get_compute_cluster_nodes(
         self, workspace_id: UUID, compute_id: UUID
-    ) -> list[ComputeClusterNodeInfoSchema]: ...
+    ) -> list[ComputeClusterNodeInfoModel]: ...
 
     # Organization methods
-    def get_organization(self, organization_id: UUID) -> OrganizationSchema: ...
-    def create_organization(self, name: str) -> OrganizationSchema: ...
+    def get_organization(self, organization_id: UUID) -> OrganizationModel: ...
+    def create_organization(self, name: str) -> OrganizationModel: ...
     def delete_organization(self, organization_id: UUID) -> None: ...
-    def get_organizations(self, name: str | None) -> list[OrganizationSchema]: ...
+    def get_organizations(self, name: str | None) -> list[OrganizationModel]: ...
 
     # Query methods
     def get_query(
         self, workspace_id: UUID, query_id: UUID
-    ) -> QueryWithStateTimingAndResultSchema: ...
+    ) -> QueryWithStateTimingAndResultModel: ...
     def cancel_proxy_query(self, workspace_id: UUID, query_id: UUID) -> None: ...
-    def get_queries(self, workspace_id: UUID) -> list[QueryWithStateTimingSchema]: ...
+    def get_queries(self, workspace_id: UUID) -> list[QueryWithStateTimingModel]: ...
 
     # User methods
-    def get_user(self) -> UserSchema: ...
+    def get_user(self) -> UserModel: ...
     def get_query_result(self, query_id: UUID) -> QueryInfoPy: ...
     def submit_query(
         self,
@@ -660,18 +706,24 @@ class ApiClient:
 
     def get_service_accounts(
         self, workspace_id: UUID
-    ) -> list[WorkspaceApiTokenWithNameSchema]: ...
+    ) -> list[WorkspaceApiTokenWithNameModel]: ...
     def create_service_account(
         self, workspace_id: UUID, name: str, description: str | None
     ) -> WorkspaceApiToken: ...
     def delete_service_account(self, workspace_id: UUID, user_id: UUID) -> None: ...
 
 class SchedulerClient:
-    def __init__(self, compute_addr: str, client_options: ClientOptions): ...
+    def __init__(
+        self,
+        address: str,
+        grpc_port: int,
+        observatory_port: int,
+        client_options: ClientOptions,
+    ): ...
     def cancel_direct_query(self, query_id: UUID, token: str | None) -> None: ...
     def get_direct_query_status(
         self, query_id: UUID, token: str | None
-    ) -> QueryStatusCodeSchema: ...
+    ) -> QueryStatusCodeModel: ...
     def get_direct_query_result(
         self, query_id: UUID, token: str | None
     ) -> QueryInfoPy: ...
@@ -690,6 +742,7 @@ class SchedulerClient:
         self, query_id: UUID, token: str | None, phys: bool = False, ir: bool = False
     ) -> QueryPlansPy: ...
     def get_compute_versions(self, token: str | None) -> ComputeVersionsPy: ...
+    def get_query_details(self, query_id: UUID, token: str | None) -> QueryDetailPy: ...
 
 class PlanFormatPy(Enum):
     Dot: int
@@ -704,3 +757,40 @@ class ComputeVersionsPy:
     compute_plane_version: str
     polars_python_version: str
     polars_rust_revision: str
+
+class ComputeContextSpecs:
+    def __init__(
+        self,
+        *,
+        cpus: int | None = None,
+        memory: int | None = None,
+        cpu_architectures: list[DBCPUArchitectureModel] | None = None,
+        instance_type: str | None = None,
+        big_instance_type: str | None = None,
+        big_instance_multiplier: int | None = None,
+        storage: int | None = None,
+        big_instance_storage: int | None = None,
+        cluster_size: int = ...,
+    ) -> None: ...
+    cpus: int | None
+    memory: int | None
+    cpu_architectures: list[DBCPUArchitectureModel] | None
+    instance_type: str | None
+    big_instance_type: str | None
+    big_instance_multiplier: int | None
+    storage: int | None
+    big_instance_storage: int | None
+    cluster_size: int
+
+def resolve_compute_context_specs(
+    workspace_id: UUID,
+    cpus: int | None = None,
+    memory: int | None = None,
+    cpu_architectures: list[DBCPUArchitectureModel] | None = None,
+    instance_type: str | None = None,
+    storage: int | None = None,
+    big_instance_type: str | None = None,
+    big_instance_multiplier: int | None = None,
+    big_instance_storage: int | None = None,
+    cluster_size: int | None = None,
+) -> ComputeContextSpecs: ...

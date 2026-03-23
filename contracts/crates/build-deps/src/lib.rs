@@ -19,7 +19,7 @@ fn visit_files(path: &Path) -> impl Iterator<Item = PathBuf> + use<> {
 
 pub fn build_with_common() -> Result<(), Box<dyn std::error::Error>> {
     build(
-        tonic_build::configure().extern_path(
+        tonic_prost_build::configure().extern_path(
             ".polars_cloud.common",
             "::protos_common::proto::polars_cloud::common",
         ),
@@ -27,9 +27,9 @@ pub fn build_with_common() -> Result<(), Box<dyn std::error::Error>> {
     )
 }
 
-pub fn build(
-    builder: tonic_build::Builder,
-    includes: &[&str],
+pub fn build<P: AsRef<Path>>(
+    builder: tonic_prost_build::Builder,
+    includes: &[P],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = prost_build::Config::new();
     config
@@ -38,12 +38,13 @@ pub fn build(
 
     let files: Vec<PathBuf> = visit_files(Path::new("protos")).collect();
 
+    let includes: Vec<_> = includes.iter().map(|p| p.as_ref().to_path_buf()).collect();
     let result = builder
         .include_file("includes.rs")
-        .bytes(["."])
+        .bytes(".")
         .emit_rerun_if_changed(false)
         .protoc_arg("--experimental_allow_proto3_optional")
-        .compile_protos_with_config(config, &files, includes);
+        .compile_with_config(config, &files, &includes);
 
     if let Err(err) = result {
         eprintln!("{err:#}");

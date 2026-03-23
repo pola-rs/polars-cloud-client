@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
 #[cfg(feature = "server")]
-use utoipa::ToSchema;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize)]
 pub struct Pagination {
@@ -20,14 +20,14 @@ impl Default for Pagination {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
 pub struct Paginated<T> {
     pub pagination: PaginationInfo,
     pub result: Vec<T>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
 pub struct PaginationInfo {
     pub page: i64,
     pub limit: i64,

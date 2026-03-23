@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, overload
 
 import polars as pl
 from polars.lazyframe.opt_flags import DEFAULT_QUERY_OPT_FLAGS
@@ -31,9 +31,11 @@ if TYPE_CHECKING:
         ScalingMode,
         ShuffleCompression,
         ShuffleFormat,
+        SingleWorkerOps,
     )
     from polars_cloud.context import ComputeContext
-    from polars_cloud.query.query import DirectQuery, ProxyQuery
+    from polars_cloud.query import DirectQuery, ProxyQuery
+    from polars_cloud.query.query_result import QueryResult
 
 
 class LazyFrameRemote:
@@ -70,7 +72,7 @@ class LazyFrameRemote:
         expression_extraction: bool = False,
         equi_join_broadcast_limit: int = 256 * 1024**2,
         partitions_per_worker: int | None = None,
-        cost_based_planner: bool = True,
+        single_worker_ops: SingleWorkerOps = "auto",
     ) -> ExecuteRemote:
         """Whether the query should run in a distributed fashion.
 
@@ -108,8 +110,29 @@ class LazyFrameRemote:
             Into how many parts to split the data when distributing work over workers.
             A higher number means less peak memory usage, but might mean slightly
             less performant execution.
-        cost_based_planner
-            Switch to the experimental cost-based planner.
+        single_worker_ops
+            Whether to allow memory-intensive operations to execute on a single worker.
+            This can lead to a faster execution, but it also increases a risk of running
+            out of RAM.
+
+            This option affects individual operations (joins, group-bys, etc.). For
+            executing the whole query on a single worker, use `single_node()` instead
+            of `distributed()`.
+
+            - Set to `auto` to let the planner decide which operations are safe to
+              execute on a single worker. This option strikes a balance between safety
+              and performance, and should be preferred for most queries.
+            - Set to `allow` if a single worker has enough RAM to execute the whole
+              query. This gives the planner the freedom to execute any part of the query
+              on a single worker, if it leads to a faster plan, at the risk of the query
+              failing if the worker runs out of RAM.
+            - Set to `forbid` to force the planner to always execute memory-intensive
+              operations in partitions. This is the safest option, but can make the plan
+              slower.
+
+            .. warning::
+                This functionality is experimental. It may be
+                changed at any point without it being considered a breaking change.
 
         Examples
         --------
@@ -124,9 +147,9 @@ class LazyFrameRemote:
             sort_partitioned=sort_partitioned,
             pre_aggregation=pre_aggregation,
             expression_extraction=expression_extraction,
-            cost_based_planner=cost_based_planner,
             equi_join_broadcast_limit=equi_join_broadcast_limit,
             partitions_per_worker=partitions_per_worker,
+            single_worker_ops=single_worker_ops,
         )
         exec = ExecuteRemote(
             lf=self.lf,
@@ -183,24 +206,79 @@ class LazyFrameRemote:
         if self.scaling_mode == "single-node":
             return self.single_node()
         else:
-            msg = f"'scaling_mode' should be one of {{'auto', 'single-node', 'distributed'}}, got {self.scaling_mode}"
+            msg = f"""'scaling_mode' should be one of {{'auto', 'single-node', 'distributed'}}, got {
+                self.scaling_mode
+            }"""
             raise ValueError(msg)
 
-    def execute(self) -> DirectQuery | ProxyQuery:
-        """Start executing the query and store an intermediate result.
+    @overload
+    def execute(
+        self, *, optimizations: QueryOptFlags = ..., silent: bool | None = ...
+    ) -> QueryResult: ...
 
-        This is useful for direct connect workloads to cache the results of a query.
+    @overload
+    def execute(
+        self,
+        *,
+        blocking: Literal[False],
+        optimizations: QueryOptFlags = ...,
+        silent: bool | None = ...,
+    ) -> DirectQuery | ProxyQuery: ...
+
+    @overload
+    def execute(
+        self,
+        *,
+        blocking: Literal[True],
+        optimizations: QueryOptFlags = ...,
+        silent: bool | None = ...,
+    ) -> QueryResult: ...
+
+    @overload
+    def execute(
+        self,
+        *,
+        blocking: bool,
+        optimizations: QueryOptFlags = ...,
+        silent: bool | None = ...,
+    ) -> QueryResult | DirectQuery | ProxyQuery: ...
+
+    def execute(
+        self,
+        *,
+        blocking: bool = True,
+        optimizations: QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
+        silent: bool | None = None,
+    ) -> QueryResult | DirectQuery | ProxyQuery:
+        """Start executing the query and retrieve a result.
+
+        This result is not a `DataFrame`, but data written
+        to temporary storage.
+
+        Parameters
+        ----------
+        blocking
+            Block until a `QueryResult` is returned.
+            if not blocking, this will return an `InProgressQuery`.
+        optimizations
+            The optimization passes done during query optimization.
+        silent
+            Don't print to stdout during blocking execution.
 
         Examples
         --------
-        >>> result = query.remote(ctx).execute().await_result()
+        >>> result = query.remote(ctx).execute()
         >>> intermediate_lf = result.lazy()
 
-        See Also
-        --------
-        await_and_scan: Start executing the query and store a temporary result.
+        >>> in_progress = query.remote(ctx).execute(blocking=False)
+        >>> # do other useful work
+        >>> ...
+        >>> # await the in-progress query
+        >>> in_progress.await_result()
         """
-        return self._scaling_mode().execute()
+        return self._scaling_mode().execute(
+            blocking=blocking, optimizations=optimizations, silent=silent
+        )
 
     def await_and_scan(self) -> pl.LazyFrame:
         """Start executing the query and store a temporary result.
@@ -283,7 +361,8 @@ class LazyFrameRemote:
             node.
 
             If set to `"local"`, the query is executed locally.
-        compression : {'lz4', 'uncompressed', 'snappy', 'gzip', 'lzo', 'brotli', 'zstd'}
+        compression : {'lz4', 'uncompressed',
+            'snappy', 'gzip', 'lzo', 'brotli', 'zstd'}
             Choose "zstd" for good compression performance.
             Choose "lz4" for fast compression/decompression.
             Choose "snappy" for more backwards compatibility guarantees
@@ -627,29 +706,72 @@ class ExecuteRemote:
         self._shuffle_compression_level = shuffle_compression_level
         self._distributed_settings: DistributionSettings | None = distributed_settings
 
+    @overload
+    def execute(
+        self, *, optimizations: QueryOptFlags = ..., silent: bool | None = ...
+    ) -> QueryResult: ...
+
+    @overload
     def execute(
         self,
+        *,
+        blocking: Literal[False],
+        optimizations: QueryOptFlags = ...,
+        silent: bool | None = ...,
+    ) -> DirectQuery | ProxyQuery: ...
+
+    @overload
+    def execute(
+        self,
+        *,
+        blocking: Literal[True],
+        optimizations: QueryOptFlags = ...,
+        silent: bool | None = ...,
+    ) -> QueryResult: ...
+
+    @overload
+    def execute(
+        self,
+        *,
+        blocking: bool,
+        optimizations: QueryOptFlags = ...,
+        silent: bool | None = ...,
+    ) -> QueryResult | DirectQuery | ProxyQuery: ...
+
+    def execute(
+        self,
+        *,
+        blocking: bool = True,
         optimizations: QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
-    ) -> DirectQuery | ProxyQuery:
+        silent: bool | None = None,
+    ) -> QueryResult | DirectQuery | ProxyQuery:
         """Start executing the query and store an intermediate result.
 
-        This is useful for direct connect workloads to cache the results of a query.
+        This result is not a `DataFrame`, but data written
+        to temporary storage.
 
         Parameters
         ----------
+        blocking
+            Block until a `QueryResult` is returned.
+            if not blocking, this will return an `InProgressQuery`.
         optimizations
             The optimization passes done during query optimization.
+        silent
+            Don't print to stdout during blocking execution.
 
         Examples
         --------
-        >>> result = query.remote(ctx).execute().await_result()
+        >>> result = query.remote(ctx).execute()
         >>> intermediate_lf = result.lazy()
 
-        See Also
-        --------
-        await_and_scan: Start executing the query and store a temporary result.
+        >>> in_progress = query.remote(ctx).execute(blocking=False)
+        >>> # do other useful work
+        >>> ...
+        >>> # await the in-progress query
+        >>> in_progress.await_result()
         """
-        return spawn(
+        in_progress = spawn(
             lf=self.lf,
             dst=TmpDst(),
             context=self.context,
@@ -664,7 +786,12 @@ class ExecuteRemote:
             optimizations=optimizations,
         )
 
-    def await_and_scan(self) -> pl.LazyFrame:
+        if blocking:
+            return in_progress.await_result(silent=silent)
+        else:
+            return in_progress
+
+    def await_and_scan(self, *, silent: bool | None = None) -> pl.LazyFrame:
         """Start executing the query and store a temporary result.
 
         This will immediately block this thread and wait for
@@ -673,7 +800,12 @@ class ExecuteRemote:
 
         This is syntactic sugar for:
 
-        ``.execute().await_result().lazy()``
+        ``.execute().lazy()``
+
+        Parameters
+        ----------
+        silent
+            Don't print to stdout during blocking execution.
 
         Examples
         --------
@@ -682,9 +814,9 @@ class ExecuteRemote:
         run LazyFrame.show_graph() to see the optimized version
         Parquet SCAN [https://s3.eu-west-1.amazonaws.com/polars-cloud-xxxxxxx-xxxx-..]
         """
-        return self.execute().await_result().lazy()
+        return self.execute(blocking=True, silent=silent).lazy()
 
-    def show(self, n: int = 10) -> DataFrame:
+    def show(self, n: int = 10, *, silent: bool | None = None) -> DataFrame:
         """Start executing the query return the first `n` rows.
 
         Show will immediately block this thread and wait for
@@ -695,6 +827,8 @@ class ExecuteRemote:
         ----------
         n
             Number of rows to return
+        silent
+            Don't print to stdout during blocking execution.
 
         Examples
         --------
@@ -713,7 +847,7 @@ class ExecuteRemote:
         """
         this = copy.copy(self)
         this.lf = this.lf.limit(n)
-        return this.await_and_scan().collect()
+        return this.await_and_scan(silent=silent).collect()
 
     def sink_parquet(
         self,

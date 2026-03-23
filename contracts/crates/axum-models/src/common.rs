@@ -4,16 +4,19 @@ use regex::Regex;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
+#[cfg_attr(feature = "server", derive(schemars::JsonSchema))]
 pub struct TimeWindow {
     pub start: DateTime<FixedOffset>,
     pub end: DateTime<FixedOffset>,
 }
 
 #[derive(Deserialize, Debug)]
+#[cfg_attr(feature = "server", derive(schemars::JsonSchema))]
 pub struct MetricWindow {
     #[serde(flatten)]
     pub window: TimeWindow,
     #[serde(with = "duration_seconds")]
+    #[cfg_attr(feature = "server", schemars(with = "u64"))]
     pub interval: chrono::Duration,
 }
 

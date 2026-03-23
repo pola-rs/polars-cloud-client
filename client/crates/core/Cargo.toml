@@ -1,0 +1,37 @@
+[package]
+name = "client-core"
+version.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+base64 = { workspace = true }
+directories = { workspace = true }
+polars-axum-models = { workspace = true }
+polars-backend-client = { workspace = true }
+protos-client-control = { workspace = true }
+protos-common = { workspace = true }
+pyo3 = { workspace = true }
+reqwest = { workspace = true }
+reqwest-middleware = { workspace = true }
+reqwest-retry = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+webbrowser = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+testresult = { workspace = true }
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false

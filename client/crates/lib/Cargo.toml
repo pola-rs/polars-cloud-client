@@ -1,0 +1,34 @@
+[package]
+name = "client-lib"
+version.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "polars_cloud"
+crate-type = ["cdylib"]
+test = false
+
+[dependencies]
+client-cli = { workspace = true }
+client-core = { workspace = true }
+pc-observatory-models = { workspace = true }
+polars-axum-models = { workspace = true }
+polars-backend-client = { workspace = true }
+protos-client-compute = { workspace = true }
+protos-client-control = { workspace = true }
+protos-common = { workspace = true }
+pyo3 = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+utils = { workspace = true }
+uuid = { workspace = true }
+
+[lints]
+workspace = true
+
+[package.metadata.cargo-shear]
+ignored = ["tracing"]

@@ -44,6 +44,13 @@ message ShuffleOpts {
   optional int32 compression_level = 3;
 }
 
+enum SingleWorkerOps {
+  SINGLE_WORKER_OPS_UNSPECIFIED = 0;
+  SINGLE_WORKER_OPS_AUTO = 1;
+  SINGLE_WORKER_OPS_ALLOW = 2;
+  SINGLE_WORKER_OPS_FORBID = 3;
+}
+
 message SingleOpts {}
 
 message DistributedOpts {
@@ -52,8 +59,9 @@ message DistributedOpts {
   bool allow_partitioned_sort = 3;
   uint64 allow_equi_join_broadcast_limit = 4;
   optional uint32 partitions_per_worker = 5;
-  bool cost_based_planner = 6;
+  reserved 6; // Deprecated `bool cost_based_planner`
   bool allow_expression_extraction = 7;
+  optional SingleWorkerOps single_worker_ops = 8;
 }
 
 enum GraphFormat {

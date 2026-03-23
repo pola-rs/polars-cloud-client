@@ -5,27 +5,25 @@ use chrono::{DateTime, FixedOffset, Utc};
 use garde::Validate;
 #[cfg(feature = "pyo3")]
 use pyo3::{PyResult, exceptions::PyValueError, pyclass};
+#[cfg(feature = "server")]
+use schemars::JsonSchema;
 use serde::de::IntoDeserializer;
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "server")]
-use utoipa::IntoParams;
-#[cfg(feature = "server")]
-use utoipa::ToSchema;
 use uuid::Uuid;
 use version_number::VersionNumber;
 
-use crate::termination::TerminationSchema;
-use crate::{EntityOrdering, InstanceSpecsSchema};
+use crate::termination::TerminationModel;
+use crate::{EntityOrdering, InstanceSpecsModel};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
 #[serde(
     deny_unknown_fields,
     rename_all = "snake_case",
     tag = "mode",
     content = "settings"
 )]
-pub enum ClusterModeSchema {
+pub enum ClusterModeModel {
     // client_public_key is optional, it can be an empty string.
     // It will remain a String type for backwards compatibility.
     Direct { client_public_key: String },
@@ -33,9 +31,9 @@ pub enum ClusterModeSchema {
 }
 
 #[derive(Default, Clone, Deserialize, Serialize, Debug, PartialEq)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
-#[cfg_attr(feature = "pyo3", pyclass(eq, eq_int))]
-pub enum LogLevelSchema {
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object, eq, eq_int))]
+pub enum LogLevelModel {
     Trace,
     Debug,
     #[default]
@@ -44,7 +42,7 @@ pub enum LogLevelSchema {
 
 #[cfg_attr(feature = "pyo3", pyo3::pymethods)]
 #[cfg(feature = "pyo3")]
-impl LogLevelSchema {
+impl LogLevelModel {
     #[staticmethod]
     fn from_str(s: Option<&str>) -> PyResult<Self> {
         match s {
@@ -59,15 +57,15 @@ impl LogLevelSchema {
 
     fn as_str(&self) -> &str {
         match self {
-            LogLevelSchema::Info => "info",
-            LogLevelSchema::Debug => "debug",
-            LogLevelSchema::Trace => "trace",
+            LogLevelModel::Info => "info",
+            LogLevelModel::Debug => "debug",
+            LogLevelModel::Trace => "trace",
         }
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
-#[cfg_attr(feature = "server", derive(ToSchema, Validate))]
+#[derive(Deserialize, Serialize, Copy, Debug, Clone)]
+#[cfg_attr(feature = "server", derive(JsonSchema, Validate))]
 pub struct PythonVersion {
     #[cfg_attr(feature = "server", garde(range(min = 3, max = 3)))]
     pub major: u8,
@@ -84,14 +82,14 @@ impl Display for PythonVersion {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
-#[cfg_attr(feature = "server", derive(ToSchema, Validate))]
+#[cfg_attr(feature = "server", derive(JsonSchema, Validate))]
 #[serde(deny_unknown_fields)]
 pub struct RegisterComputeClusterArgs {
     #[cfg_attr(feature = "server", garde(skip))]
     pub name: String,
     #[serde(flatten)]
     #[cfg_attr(feature = "server", garde(dive))]
-    pub instance: InstanceSpecsSchema,
+    pub instance: InstanceSpecsModel,
     #[cfg_attr(feature = "server", garde(range(min = 16)))]
     pub storage: Option<u32>,
     #[cfg_attr(feature = "server", garde(range(min = 16)))]
@@ -100,15 +98,15 @@ pub struct RegisterComputeClusterArgs {
     pub cluster_size: u32,
     #[serde(default, flatten)]
     #[cfg_attr(feature = "server", garde(skip))]
-    pub mode: ClusterModeSchema,
+    pub mode: ClusterModeModel,
     #[cfg_attr(feature = "server", garde(dive))]
     pub python_version: PythonVersion,
-    #[cfg_attr(feature = "server", garde(skip), schema(value_type = String))]
+    #[cfg_attr(feature = "server", garde(skip), schemars(with = "String"))]
     pub polars_version: VersionNumber,
     #[cfg_attr(feature = "server", garde(skip))]
     pub labels: Option<Vec<String>>,
     #[cfg_attr(feature = "server", garde(skip))]
-    pub log_level: LogLevelSchema,
+    pub log_level: LogLevelModel,
     #[cfg_attr(feature = "server", garde(range(min = 10)))]
     pub idle_timeout_mins: Option<u32>,
     #[cfg_attr(feature = "server", garde(skip))]
@@ -116,24 +114,24 @@ pub struct RegisterComputeClusterArgs {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
-#[cfg_attr(feature = "server", derive(ToSchema, Validate))]
+#[cfg_attr(feature = "server", derive(JsonSchema, Validate))]
 #[serde(deny_unknown_fields)]
 pub struct StartComputeClusterManifestArgs {
     #[cfg_attr(feature = "server", garde(skip))]
     pub name: String,
     #[cfg_attr(feature = "server", garde(dive))]
     pub python_version: PythonVersion,
-    #[cfg_attr(feature = "server", garde(skip), schema(value_type = String))]
+    #[cfg_attr(feature = "server", garde(skip), schemars(with = "String"))]
     pub polars_version: VersionNumber,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
-#[cfg_attr(feature = "server", derive(ToSchema, Validate))]
+#[cfg_attr(feature = "server", derive(JsonSchema, Validate))]
 #[serde(deny_unknown_fields)]
 pub struct StartComputeClusterArgs {
     #[serde(flatten)]
     #[cfg_attr(feature = "server", garde(dive))]
-    pub instance: InstanceSpecsSchema,
+    pub instance: InstanceSpecsModel,
     #[cfg_attr(feature = "server", garde(range(min = 16)))]
     pub storage: Option<u32>,
     #[cfg_attr(feature = "server", garde(range(min = 16)))]
@@ -142,34 +140,34 @@ pub struct StartComputeClusterArgs {
     pub cluster_size: u32,
     #[serde(default, flatten)]
     #[cfg_attr(feature = "server", garde(skip))]
-    pub mode: ClusterModeSchema,
+    pub mode: ClusterModeModel,
     #[cfg_attr(feature = "server", garde(dive))]
     pub python_version: PythonVersion,
-    #[cfg_attr(feature = "server", garde(skip), schema(value_type = String))]
+    #[cfg_attr(feature = "server", garde(skip), schemars(with = "String"))]
     pub polars_version: VersionNumber,
     #[cfg_attr(feature = "server", garde(skip))]
     pub labels: Option<Vec<String>>,
     #[cfg_attr(feature = "server", garde(skip))]
-    pub log_level: Option<LogLevelSchema>,
+    pub log_level: Option<LogLevelModel>,
     #[cfg_attr(feature = "server", garde(range(min = 10)))]
     pub idle_timeout_mins: Option<u32>,
     #[cfg_attr(feature = "server", garde(skip))]
     pub requirements_txt: Option<String>,
 }
 
-#[cfg_attr(feature = "pyo3", pyclass(get_all))]
+#[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
 #[derive(Deserialize, Serialize, Debug)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
-pub struct ComputeClusterPublicInfoSchema {
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct ComputeClusterPublicInfoModel {
     pub cluster_id: Uuid,
     pub public_address: String,
     pub public_server_key: String,
 }
 
-#[cfg_attr(feature = "pyo3", pyclass(get_all))]
+#[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
 #[derive(Deserialize, Serialize, Debug)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
-pub struct ComputeClusterNodeInfoSchema {
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct ComputeClusterNodeInfoModel {
     pub cluster_id: Uuid,
     pub private_address: Option<String>,
     pub cpus: Option<i32>,
@@ -178,52 +176,53 @@ pub struct ComputeClusterNodeInfoSchema {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
-pub struct SupportedVersionsSchema {
-    #[cfg_attr(feature="server", schema(value_type = Vec<String>))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct SupportedVersionsModel {
+    #[cfg_attr(feature = "server", schemars(with = "Vec<String>"))]
     pub polars: Vec<VersionNumber>,
 }
 
-impl EntityOrdering for ComputeClusterNodeInfoSchema {
+impl EntityOrdering for ComputeClusterNodeInfoModel {
     fn order_fields() -> &'static [&'static str] {
         &["cpus", "memory_mb", "storage_mb"]
     }
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
-pub struct AwsMetricSchema {
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct AwsMetricModel {
     pub timestamps: Vec<i64>,
     pub values: Vec<f64>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
-pub struct AwsMetricsSchema {
-    pub cpu_usage_percent: AwsMetricSchema,
-    pub memory_usage: AwsMetricSchema,
-    pub memory_usage_percent: AwsMetricSchema,
-    pub disk_usage: AwsMetricSchema,
-    pub disk_usage_percent: AwsMetricSchema,
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct AwsMetricsModel {
+    pub cpu_usage_percent: AwsMetricModel,
+    pub memory_usage: AwsMetricModel,
+    pub memory_usage_percent: AwsMetricModel,
+    pub disk_usage: AwsMetricModel,
+    pub disk_usage_percent: AwsMetricModel,
 }
 
 #[derive(Deserialize, Debug)]
+#[cfg_attr(feature = "server", derive(schemars::JsonSchema))]
 pub struct TimeWindowOpt {
     pub start: Option<DateTime<FixedOffset>>,
     pub end: Option<DateTime<FixedOffset>>,
 }
 
-#[cfg_attr(feature = "pyo3", pyclass(eq, eq_int))]
-#[cfg_attr(feature = "server", derive(ToSchema, Validate))]
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object, eq, eq_int))]
+#[cfg_attr(feature = "server", derive(JsonSchema, Validate))]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub enum DBCPUArchitectureSchema {
+pub enum DBCPUArchitectureModel {
     X86_64,
     Arm64,
 }
 
 #[cfg_attr(feature = "pyo3", pyo3::pymethods)]
 #[cfg(feature = "pyo3")]
-impl DBCPUArchitectureSchema {
+impl DBCPUArchitectureModel {
     #[staticmethod]
     fn from_str(s: Option<&str>) -> PyResult<Self> {
         match s {
@@ -237,23 +236,23 @@ impl DBCPUArchitectureSchema {
 
     fn as_str(&self) -> &str {
         match self {
-            DBCPUArchitectureSchema::X86_64 => "x86_64",
-            DBCPUArchitectureSchema::Arm64 => "arm64",
+            DBCPUArchitectureModel::X86_64 => "x86_64",
+            DBCPUArchitectureModel::Arm64 => "arm64",
         }
     }
 }
 
-#[cfg_attr(feature = "pyo3", pyclass(eq, eq_int))]
-#[cfg_attr(feature = "server", derive(ToSchema))]
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object, eq, eq_int))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub enum DBClusterModeSchema {
+pub enum DBClusterModeModel {
     Proxy,
     Direct,
 }
 
 #[cfg_attr(feature = "pyo3", pyo3::pymethods)]
 #[cfg(feature = "pyo3")]
-impl DBClusterModeSchema {
+impl DBClusterModeModel {
     #[staticmethod]
     fn from_str(s: Option<&str>) -> PyResult<Self> {
         match s {
@@ -267,8 +266,8 @@ impl DBClusterModeSchema {
 
     fn as_str(&self) -> &str {
         match self {
-            DBClusterModeSchema::Direct => "direct",
-            DBClusterModeSchema::Proxy => "proxy",
+            DBClusterModeModel::Direct => "direct",
+            DBClusterModeModel::Proxy => "proxy",
         }
     }
 }
@@ -290,34 +289,34 @@ where
 }
 
 #[derive(Deserialize, Default, Serialize, Debug)]
-#[cfg_attr(feature = "server", derive(IntoParams))]
-pub struct GetClusterFilterParams {
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct GetClusterFilterArgs {
     /// Filters out any clusters that are not in the given status.
     #[serde(default)]
     #[serde(deserialize_with = "csv_vec_opt")]
-    pub status: Option<Vec<ComputeStatusSchema>>,
+    pub status: Option<Vec<ComputeStatusModel>>,
     #[serde(default)]
     pub current_user_only: bool,
 }
 
-#[cfg_attr(feature = "pyo3", pyclass(get_all))]
-#[cfg_attr(feature = "server", derive(ToSchema))]
+#[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ComputeTokenSchema {
+pub struct ComputeTokenModel {
     pub id: Uuid,
     pub token: String,
 }
 
 #[cfg_attr(feature = "pyo3", pyclass)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ComputeSchema {
+pub struct ComputeModel {
     pub id: Uuid,
     pub user_id: Uuid,
     pub workspace_id: Uuid,
     pub name: Option<String>,
     pub instance_type: Option<String>,
-    pub cpu_architectures: Option<Vec<DBCPUArchitectureSchema>>,
+    pub cpu_architectures: Option<Vec<DBCPUArchitectureModel>>,
     pub req_ram_gb: Option<u32>,
     pub req_cpu_cores: Option<u32>,
     pub req_storage: Option<i32>,
@@ -328,18 +327,18 @@ pub struct ComputeSchema {
     pub vcpus: Option<i32>,
     pub storage_gb: Option<i32>,
     pub cluster_size: u32,
-    pub termination: Option<TerminationSchema>,
+    pub termination: Option<TerminationModel>,
     pub gc_inactive_hours: i32,
     pub request_time: DateTime<Utc>,
-    pub mode: DBClusterModeSchema,
-    #[cfg_attr(feature="server", schema(value_type = String))]
+    pub mode: DBClusterModeModel,
+    #[cfg_attr(feature = "server", schemars(with = "String"))]
     pub polars_version: VersionNumber,
-    pub status: ComputeStatusSchema,
-    pub log_level: LogLevelSchema,
+    pub status: ComputeStatusModel,
+    pub log_level: LogLevelModel,
     pub tunnel_addr: Option<String>,
 }
 
-impl EntityOrdering for ComputeSchema {
+impl EntityOrdering for ComputeModel {
     fn order_fields() -> &'static [&'static str] {
         &[
             "id",
@@ -354,7 +353,7 @@ impl EntityOrdering for ComputeSchema {
 
 #[cfg_attr(feature = "pyo3", pyo3::pymethods)]
 #[cfg(feature = "pyo3")]
-impl ComputeSchema {
+impl ComputeModel {
     #[getter]
     pub fn id(&self) -> pyo3::PyResult<Uuid> {
         Ok(self.id)
@@ -381,7 +380,7 @@ impl ComputeSchema {
     }
 
     #[getter]
-    pub fn cpu_architectures(&self) -> pyo3::PyResult<Option<Vec<DBCPUArchitectureSchema>>> {
+    pub fn cpu_architectures(&self) -> pyo3::PyResult<Option<Vec<DBCPUArchitectureModel>>> {
         Ok(self.cpu_architectures.clone())
     }
 
@@ -431,7 +430,7 @@ impl ComputeSchema {
     }
 
     #[getter]
-    pub fn termination(&self) -> pyo3::PyResult<Option<TerminationSchema>> {
+    pub fn termination(&self) -> pyo3::PyResult<Option<TerminationModel>> {
         Ok(self.termination.clone())
     }
 
@@ -446,7 +445,7 @@ impl ComputeSchema {
     }
 
     #[getter]
-    pub fn mode(&self) -> pyo3::PyResult<DBClusterModeSchema> {
+    pub fn mode(&self) -> pyo3::PyResult<DBClusterModeModel> {
         Ok(self.mode)
     }
 
@@ -456,12 +455,12 @@ impl ComputeSchema {
     }
 
     #[getter]
-    pub fn status(&self) -> pyo3::PyResult<ComputeStatusSchema> {
+    pub fn status(&self) -> pyo3::PyResult<ComputeStatusModel> {
         Ok(self.status)
     }
 
     #[getter]
-    pub fn log_level(&self) -> pyo3::PyResult<LogLevelSchema> {
+    pub fn log_level(&self) -> pyo3::PyResult<LogLevelModel> {
         Ok(self.log_level.clone())
     }
 
@@ -471,10 +470,10 @@ impl ComputeSchema {
     }
 }
 
-#[cfg_attr(feature = "server", derive(ToSchema))]
-#[cfg_attr(feature = "pyo3", pyclass(get_all, eq, eq_int))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all, eq, eq_int))]
 #[derive(Debug, Deserialize, Clone, Copy, Serialize, PartialEq)]
-pub enum ComputeStatusSchema {
+pub enum ComputeStatusModel {
     Starting = 0,
     Idle = 1,
     Running = 2,
@@ -483,29 +482,29 @@ pub enum ComputeStatusSchema {
     Failed = 7,
 }
 
-impl Display for ComputeStatusSchema {
+impl Display for ComputeStatusModel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ComputeStatusSchema::Starting => write!(f, "Starting"),
-            ComputeStatusSchema::Idle => write!(f, "Idle"),
-            ComputeStatusSchema::Running => write!(f, "Running"),
-            ComputeStatusSchema::Stopping => write!(f, "Stopping"),
-            ComputeStatusSchema::Stopped => write!(f, "Stopped"),
-            ComputeStatusSchema::Failed => write!(f, "Failed"),
+            ComputeStatusModel::Starting => write!(f, "Starting"),
+            ComputeStatusModel::Idle => write!(f, "Idle"),
+            ComputeStatusModel::Running => write!(f, "Running"),
+            ComputeStatusModel::Stopping => write!(f, "Stopping"),
+            ComputeStatusModel::Stopped => write!(f, "Stopped"),
+            ComputeStatusModel::Failed => write!(f, "Failed"),
         }
     }
 }
 
 #[derive(Deserialize, Serialize)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
-pub struct AwsLogEventSchema {
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct AwsLogEventModel {
     pub timestamp: DateTime<Utc>,
     pub message: String,
 }
 
 #[cfg(feature = "server")]
-#[derive(Debug, Deserialize, Serialize, ToSchema)]
-pub struct TokenPaginated<T: Serialize + ToSchema> {
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct TokenPaginated<T: Serialize + schemars::JsonSchema> {
     pub data: T,
     pub next_token: Option<String>,
 }

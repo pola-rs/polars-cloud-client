@@ -1,17 +1,15 @@
 use chrono::{DateTime, Utc};
 #[cfg(feature = "server")]
 use garde::Validate;
+#[cfg(feature = "server")]
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "server")]
-use utoipa::IntoParams;
-#[cfg(feature = "server")]
-use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::EntityOrdering;
 
 #[derive(Deserialize, Serialize, Debug)]
-#[cfg_attr(feature = "server", derive(Validate, ToSchema))]
+#[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
 pub struct OrganizationInviteArgs {
     #[cfg_attr(feature = "server", garde(length(min = 1, max = 128)))]
     pub route: String,
@@ -22,16 +20,16 @@ pub struct OrganizationInviteArgs {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
-pub struct OrganizationInviteWithUrlSchema {
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct OrganizationInviteWithUrlModel {
     #[serde(flatten)]
-    pub invite: OrganizationInviteSchema,
+    pub invite: OrganizationInviteModel,
     pub url: String,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
-pub struct OrganizationInviteSchema {
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct OrganizationInviteModel {
     /// Invite id
     pub id: Uuid,
     /// The creator of the invite
@@ -50,14 +48,14 @@ pub struct OrganizationInviteSchema {
     pub accepted_at: Option<DateTime<Utc>>,
 }
 
-impl EntityOrdering for OrganizationInviteSchema {
+impl EntityOrdering for OrganizationInviteModel {
     fn order_fields() -> &'static [&'static str] {
         &["id", "organization_name", "accepted_at"]
     }
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-#[cfg_attr(feature = "server", derive(Validate, ToSchema))]
+#[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
 pub struct InviteArgs {
     #[cfg_attr(feature = "server", garde(length(min = 1, max = 128)))]
     pub route: String,
@@ -70,9 +68,8 @@ pub struct InviteArgs {
 }
 
 #[derive(Deserialize, Debug)]
-#[cfg_attr(feature = "server", derive(IntoParams))]
-#[cfg_attr(feature = "server",into_params(parameter_in = Query))]
-pub struct RedeemInviteParams {
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct RedeemInviteArgs {
     pub id: Uuid,
     pub key: String,
 }

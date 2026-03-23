@@ -37,10 +37,12 @@ impl QueryProfileClient {
 #[async_trait]
 /// This is the trait downstream crates need to implement.
 pub trait AdaptedQueryProfileService {
+    type Error: Into<Status>;
+
     async fn get_query_profile(
         &self,
         request: Request<GetQueryProfileRequest>,
-    ) -> Result<Response<Option<QueryProfile>>, Status>;
+    ) -> Result<Response<Option<QueryProfile>>, Self::Error>;
 }
 
 #[async_trait]
@@ -56,6 +58,7 @@ impl<T: AdaptedQueryProfileService + Send + Sync + 'static> proto::QueryProfileS
                     profile: q.map(Into::into),
                 })
             })
+            .map_err(|e| e.into())
     }
 }
 
@@ -95,6 +98,7 @@ pub struct QueryProfile {
     pub phys_plan_explain: Option<String>,
     pub phys_plan_dot: Option<String>,
     pub data: Bytes,
+    pub errors: Vec<String>,
 }
 
 impl From<proto::QueryProfile> for QueryProfile {
@@ -105,6 +109,7 @@ impl From<proto::QueryProfile> for QueryProfile {
             phys_plan_explain: value.phys_plan_explain,
             phys_plan_dot: value.phys_plan_dot,
             data: value.data,
+            errors: value.errors,
         }
     }
 }
@@ -117,6 +122,7 @@ impl From<QueryProfile> for proto::QueryProfile {
             phys_plan_explain: value.phys_plan_explain,
             phys_plan_dot: value.phys_plan_dot,
             data: value.data,
+            errors: value.errors,
         }
     }
 }

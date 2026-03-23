@@ -8,7 +8,7 @@ Exceptions
     :toctree: api/
     :nosignatures:
 
-    AuthenticationError
+    WorkspaceDeploymentError
     VerificationTimeoutError
     WorkspaceResolveError
-    ComputeClusterMisspecified
+    OrganizationResolveError

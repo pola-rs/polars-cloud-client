@@ -30,20 +30,20 @@ class WorkspaceStatus(Enum):
     """Workspace is deleted."""
 
     @classmethod
-    def _from_api_schema(cls, schema: pcr.WorkspaceStateSchema) -> Self:
+    def _from_api_model(cls, model: pcr.WorkspaceStateModel) -> Self:
         """Parse API result into a Python object."""
-        if schema == pcr.WorkspaceStateSchema.Uninitialized:
+        if model == pcr.WorkspaceStateModel.Uninitialized:
             return cls.Uninitialized
-        elif schema == pcr.WorkspaceStateSchema.Pending:
+        elif model == pcr.WorkspaceStateModel.Pending:
             return cls.Pending
-        elif schema == pcr.WorkspaceStateSchema.Active:
+        elif model == pcr.WorkspaceStateModel.Active:
             return cls.Active
-        elif schema == pcr.WorkspaceStateSchema.Failed:
+        elif model == pcr.WorkspaceStateModel.Failed:
             return cls.Failed
-        elif schema == pcr.WorkspaceStateSchema.Deleted:
+        elif model == pcr.WorkspaceStateModel.Deleted:
             return cls.Deleted
         else:
-            msg = f"Unknown type found for workspace status {schema}"
+            msg = f"Unknown type found for workspace status {model}"
             raise RuntimeError(msg)
 
     def __repr__(self) -> str:

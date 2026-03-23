@@ -14,6 +14,7 @@ Engine: TypeAlias = Literal["auto", "streaming", "in-memory", "gpu"]
 PlanTypePreference: TypeAlias = Literal["dot", "plain"]
 ShuffleCompression: TypeAlias = Literal["auto", "uncompressed", "lz4", "zstd"]
 ShuffleFormat: TypeAlias = Literal["auto", "ipc", "parquet"]
+SingleWorkerOps: TypeAlias = Literal["auto", "allow", "forbid"]
 
 Json: TypeAlias = dict[str, Any]
 PlanType: TypeAlias = Literal["physical", "ir"]

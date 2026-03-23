@@ -10,11 +10,16 @@ repository.workspace = true
 prost = { workspace = true }
 serde = { workspace = true }
 tonic = { workspace = true }
+tonic-prost = { workspace = true }
 uuid = { workspace = true }
 
 [build-dependencies]
-tonic-build = { version = "0.13", features = ["prost"] }
+tonic-prost-build = { version = "0.14.3" }
 build-deps = { workspace = true }
 
 [lints]
 workspace = true
+
+[lib]
+test = false
+doctest = false

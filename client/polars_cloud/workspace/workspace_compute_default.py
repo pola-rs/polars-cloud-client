@@ -54,7 +54,7 @@ class WorkspaceDefaultComputeSpecs:
         self.cluster_size = cluster_size
 
     @classmethod
-    def _from_api_schema(cls, value: pcr.DefaultComputeSpecs) -> Self:
+    def _from_api_model(cls, value: pcr.DefaultComputeSpecs) -> Self:
         return cls(
             instance_type=value.instance_type,
             memory=value.ram_gb,

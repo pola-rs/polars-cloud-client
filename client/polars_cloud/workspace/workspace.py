@@ -109,20 +109,20 @@ class Workspace:
         )
 
     @classmethod
-    def _from_api_schema(cls, workspace_schema: pcr.WorkspaceSchema) -> Self:
+    def _from_api_model(cls, workspace_model: pcr.WorkspaceModel) -> Self:
         """Parse API result into a Python object."""
         self = object.__new__(cls)
-        self._update_from_api_schema(workspace_schema)
+        self._update_from_api_model(workspace_model)
         return self
 
-    def _update_from_api_schema(self, workspace_schema: pcr.WorkspaceSchema) -> None:
+    def _update_from_api_model(self, workspace_model: pcr.WorkspaceModel) -> None:
         """Update the object from an API result."""
-        self._id = workspace_schema.id
-        self._name = workspace_schema.name
-        self._cloud_resources_url = workspace_schema.cloud_resources_url
-        self._status = WorkspaceStatus._from_api_schema(workspace_schema.status)
+        self._id = workspace_model.id
+        self._name = workspace_model.name
+        self._cloud_resources_url = workspace_model.cloud_resources_url
+        self._status = WorkspaceStatus._from_api_model(workspace_model.status)
         self._organization = Organization._from_id_unchecked(
-            workspace_schema.organization_id
+            workspace_model.organization_id
         )
 
     @property
@@ -164,7 +164,7 @@ class Workspace:
         if not api_defaults:
             return None
 
-        defaults = WorkspaceDefaultComputeSpecs._from_api_schema(api_defaults)
+        defaults = WorkspaceDefaultComputeSpecs._from_api_model(api_defaults)
 
         return defaults
 
@@ -212,14 +212,14 @@ class Workspace:
             msg = f"Workspace {self._name!r} does not exist"
             raise WorkspaceResolveError(msg)
         elif len(matches) == 1:
-            self._update_from_api_schema(matches[0])
+            self._update_from_api_model(matches[0])
         else:
             if self._organization is not None:
                 matches = [
                     ws
                     for ws in matches
                     if (
-                        ws.organization_id == str(self._organization.id)
+                        ws.organization_id == self._organization.id
                         and ws.name == self._name
                     )
                 ]
@@ -227,7 +227,7 @@ class Workspace:
                     msg = f"The workspace {self._name!r} is not part of the {self._organization.name} organization"
                     raise WorkspaceResolveError(msg)
 
-                self._update_from_api_schema(matches[0])
+                self._update_from_api_model(matches[0])
                 return
 
             msg = (
@@ -241,11 +241,11 @@ class Workspace:
         """Load the workspace by id."""
         assert self._id is not None
         workspace_details = constants.API_CLIENT.get_workspace(self._id)
-        self._update_from_api_schema(workspace_details)
+        self._update_from_api_model(workspace_details)
 
     def _load_by_default(self) -> None:
         """Load the workspace by the default of the user."""
-        user: pcr.UserSchema = constants.API_CLIENT.get_user()
+        user: pcr.UserModel = constants.API_CLIENT.get_user()
         if user.default_workspace_id is None:
             msg = (
                 "No (default) workspace specified."
@@ -294,49 +294,53 @@ class Workspace:
         True
         """
         max_polls = int(timeout / interval) + 1
-        prev_status = WorkspaceStatus.Uninitialized
         logger.debug("polling workspace details endpoint")
         for _ in range(max_polls):
+            prev_status = self.status
             self.load()
             logger.debug("current workspace status: %s", self.status)
 
-            if self.status != prev_status:
-                # Log a message when status changes from UNINITIALIZED to PENDING
-                if self.status == WorkspaceStatus.Pending:
-                    logger.info("workspace stack is being deployed")
-                prev_status = self.status
-
-            if self.status in [
-                WorkspaceStatus.Uninitialized,
-                WorkspaceStatus.Pending,
-            ]:
-                time.sleep(interval)
-                continue
-            elif self.status == WorkspaceStatus.Active:
+            # End states we can immediately act on
+            if self.status == WorkspaceStatus.Active:
                 logger.info("workspace successfully verified")
                 return True
-            elif self.status == WorkspaceStatus.Failed:
-                msg = (
-                    "Deploying the workspace failed."
-                    " Check the status of the deployment in your AWS CloudFormation dashboard"
-                    f" or by following this link: {self._cloud_resources_url}"
-                )
-                logger.debug(msg)
-                raise WorkspaceDeploymentError(msg)
             elif self.status == WorkspaceStatus.Deleted:
                 logger.info("workspace verification failed: status is %s", self.status)
                 return False
 
+            if self.status != prev_status:
+                # States we act on only if we changed to them
+                # Our workspace might be Failed from an earlier deployment
+                if self.status == WorkspaceStatus.Pending:
+                    logger.info("workspace stack is being deployed")
+                elif self.status == WorkspaceStatus.Failed:
+                    msg = (
+                        "Deploying the workspace failed."
+                        " Check the status of the deployment in your AWS CloudFormation dashboard"
+                        f" or by following this link: {self._cloud_resources_url}"
+                    )
+                    logger.debug(msg)
+                    raise WorkspaceDeploymentError(msg)
+
+            time.sleep(interval)
+            continue
+
+        if self.status == WorkspaceStatus.Failed:
+            msg = (
+                "Workspace verification has timed out or we failed to detect a status change."
+                " Check the status of the deployment in your AWS CloudFormation dashboard"
+            )
         else:
             msg = (
                 "Workspace verification has timed out."
                 " Check the status of the deployment in your AWS CloudFormation dashboard"
             )
-            if self._cloud_resources_url and len(self._cloud_resources_url) > 0:
-                msg += f" or by following this link: {self._cloud_resources_url}"
 
-            logger.debug(msg)
-            raise VerificationTimeoutError(msg)
+        if self._cloud_resources_url and len(self._cloud_resources_url) > 0:
+            msg += f" or by following this link: {self._cloud_resources_url}"
+
+        logger.debug(msg)
+        raise VerificationTimeoutError(msg)
 
     def delete(self) -> None:
         """Delete a workspace.
@@ -396,14 +400,14 @@ class Workspace:
             raise OrganizationResolveError(msg)
 
         organization_id = matches[0].id
-        workspace_schema = constants.API_CLIENT.create_workspace(
+        workspace_model = constants.API_CLIENT.create_workspace(
             workspace_name, organization_id
         )
 
         logger.debug("opening web browser")
-        _open_browser(workspace_schema.full_url)
+        _open_browser(workspace_model.full_url)
 
-        workspace = cls._from_api_schema(workspace_schema.workspace)
+        workspace = cls._from_api_model(workspace_model.workspace)
         if verify:
             logger.info("verifying workspace creation")
             workspace.wait_until_active()
@@ -468,7 +472,7 @@ class Workspace:
             name='new-workspace', status=Uninitialized, defaults=None)]
         """
         return [
-            cls._from_api_schema(s) for s in constants.API_CLIENT.get_workspaces(name)
+            cls._from_api_model(s) for s in constants.API_CLIENT.get_workspaces(name)
         ]
 
 

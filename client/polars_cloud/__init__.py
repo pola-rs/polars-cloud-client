@@ -18,7 +18,7 @@ from polars_cloud.context import (
 from polars_cloud.organization import (
     Organization,
 )
-from polars_cloud.polars_cloud import LogLevelSchema
+from polars_cloud.polars_cloud import LogLevelModel, cli_main
 from polars_cloud.query import (
     CsvDst,
     DirectQuery,
@@ -27,7 +27,9 @@ from polars_cloud.query import (
     LazyFrameRemote,
     ParquetDst,
     ProxyQuery,
+    QueryDetail,
     QueryInfo,
+    QueryPlanTiming,
     QueryProfile,
     QueryResult,
     QueryStatus,
@@ -55,11 +57,13 @@ __all__ = [
     "ExecuteRemote",
     "IpcDst",
     "LazyFrameRemote",
-    "LogLevelSchema",
+    "LogLevelModel",
     "Organization",
     "ParquetDst",
     "ProxyQuery",
+    "QueryDetail",
     "QueryInfo",
+    "QueryPlanTiming",
     "QueryProfile",
     "QueryResult",
     "QueryStatus",
@@ -69,6 +73,7 @@ __all__ = [
     "WorkspaceStatus",
     "__version__",
     "authenticate",
+    "cli_main",
     "exceptions",
     "login",
     "set_compute_context",

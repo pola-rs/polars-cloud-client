@@ -60,21 +60,20 @@ class Organization:
         """Creates an instance of the object without API calls or invariant checks."""
         self = object.__new__(cls)
         self._id = organization_id
+        self._name = None
         return self
 
     @classmethod
-    def _from_api_schema(cls, organization_schema: pcr.OrganizationSchema) -> Self:
+    def _from_api_model(cls, organization_model: pcr.OrganizationModel) -> Self:
         """Parse API result into a Python object."""
         self = object.__new__(cls)
-        self._update_from_api_schema(organization_schema)
+        self._update_from_api_model(organization_model)
         return self
 
-    def _update_from_api_schema(
-        self, organization_schema: pcr.OrganizationSchema
-    ) -> None:
+    def _update_from_api_model(self, organization_model: pcr.OrganizationModel) -> None:
         """Update the object from an API result."""
-        self._id = organization_schema.id
-        self._name = organization_schema.name
+        self._id = organization_model.id
+        self._name = organization_model.name
 
     @property
     def id(self) -> UUID:
@@ -170,7 +169,7 @@ class Organization:
             name='organization-name',
         """
         organization = constants.API_CLIENT.create_organization(name)
-        return cls._from_api_schema(organization)
+        return cls._from_api_model(organization)
 
     @classmethod
     def list(cls, name: str | None = None) -> list[Organization]:
@@ -190,6 +189,5 @@ class Organization:
             name='different-organization',]
         """
         return [
-            cls._from_api_schema(s)
-            for s in constants.API_CLIENT.get_organizations(name)
+            cls._from_api_model(s) for s in constants.API_CLIENT.get_organizations(name)
         ]
