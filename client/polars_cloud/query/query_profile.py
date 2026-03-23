@@ -10,6 +10,8 @@ from polars.exceptions import (
     NoDataError,
 )
 
+from polars_cloud.query.query_result import raise_query_errors
+
 if TYPE_CHECKING:
     from pathlib import Path
     from uuid import UUID
@@ -21,6 +23,15 @@ if TYPE_CHECKING:
 class QueryProfile:
     id: UUID
     inner: pcr.QueryProfilePy
+
+    @property
+    def errors(self) -> list[str]:
+        """Get query errors, if any."""
+        return self.inner.errors
+
+    def raise_err(self) -> None:
+        """Raise a Python exception from the query errors."""
+        raise_query_errors(self.errors)
 
     @property
     def total_stages(self) -> int | None:
@@ -111,7 +122,6 @@ class QueryProfile:
                 duration=(
                     pl.col("end_time").fill_null(now).max() - pl.col("start_time").min()
                 ),
-                output_rows=pl.col("output_rows").sum(),
                 shuffle_bytes_written=pl.col("shuffle_bytes_written").sum(),
                 last_update=pl.max_horizontal(
                     pl.col("end_time").fill_null(datetime.datetime.min),

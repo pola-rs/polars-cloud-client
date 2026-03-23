@@ -1,20 +1,20 @@
 #[cfg(feature = "server")]
 use garde::Validate;
-use serde::{Deserialize, Serialize};
 #[cfg(feature = "server")]
-use utoipa::ToSchema;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Deserialize, Serialize, Debug)]
-#[cfg_attr(feature = "server", derive(ToSchema, Validate))]
-pub struct NotificationDetail {
+#[cfg_attr(feature = "server", derive(JsonSchema, Validate))]
+pub struct NotificationDetailArgs {
     #[cfg_attr(feature = "server", garde(skip))]
     pub read: bool,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
-pub enum NotificationDataSchema {
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub enum NotificationDataModel {
     TestType,
     UserJoinedWorkspace {
         user_sub: String,
@@ -24,8 +24,8 @@ pub enum NotificationDataSchema {
 
 /// Wrapper around `Notification`
 #[derive(Deserialize, Serialize, Debug)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
-pub struct NotificationSchema {
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct NotificationModel {
     /// Notification id
     pub id: Uuid,
     /// User id
@@ -33,7 +33,7 @@ pub struct NotificationSchema {
     /// Timestamp of the event
     pub timestamp: chrono::DateTime<chrono::Utc>,
     /// The type of notification
-    pub notification_data: NotificationDataSchema,
+    pub notification_data: NotificationDataModel,
     /// Whether this notification has been read
     pub read: bool,
     /// Creation timestamp

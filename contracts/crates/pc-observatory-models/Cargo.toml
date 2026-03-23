@@ -1,0 +1,27 @@
+[package]
+name = "pc-observatory-models"
+version = "0.1.0"
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+path = "src/lib.rs"
+test = false
+doctest = false
+
+[dependencies]
+chrono = { workspace = true }
+pc-observatory-types = { workspace = true }
+schemars = { workspace = true, optional = true }
+serde = { workspace = true }
+strum = { workspace = true }
+strum_macros = { workspace = true }
+uuid = { workspace = true }
+
+[features]
+server = ["dep:schemars", "pc-observatory-types/server"]
+
+[lints]
+workspace = true

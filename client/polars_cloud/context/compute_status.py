@@ -62,18 +62,18 @@ class ComputeContextStatus(Enum):
         ]
 
     @classmethod
-    def _from_api_schema(cls, status: pcr.ComputeStatusSchema) -> Self:
-        if status == pcr.ComputeStatusSchema.Starting:
+    def _from_api_model(cls, status: pcr.ComputeStatusModel) -> Self:
+        if status == pcr.ComputeStatusModel.Starting:
             return cls.STARTING
-        elif status == pcr.ComputeStatusSchema.Idle:
+        elif status == pcr.ComputeStatusModel.Idle:
             return cls.IDLE
-        elif status == pcr.ComputeStatusSchema.Running:
+        elif status == pcr.ComputeStatusModel.Running:
             return cls.RUNNING
-        elif status == pcr.ComputeStatusSchema.Stopping:
+        elif status == pcr.ComputeStatusModel.Stopping:
             return cls.STOPPING
-        elif status == pcr.ComputeStatusSchema.Stopped:
+        elif status == pcr.ComputeStatusModel.Stopped:
             return cls.STOPPED
-        elif status == pcr.ComputeStatusSchema.Failed:
+        elif status == pcr.ComputeStatusModel.Failed:
             return cls.FAILED
         else:
             msg = f"Unknown ComputeStatus found {status}"

@@ -3,15 +3,15 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from polars_cloud.exceptions import ComputeClusterMisspecified
+from polars_cloud.polars_cloud import ComputeClusterMisspecified
 
 if TYPE_CHECKING:
-    from polars_cloud.polars_cloud import ComputeSchema
+    from polars_cloud.polars_cloud import ComputeModel
     from polars_cloud.workspace import Workspace
 
 
 def select_compute_cluster(
-    clusters: list[tuple[Workspace, ComputeSchema]],
+    clusters: list[tuple[Workspace, ComputeModel]],
 ) -> int | None:
     if not clusters:
         msg = "`no available compute contexts found.`"

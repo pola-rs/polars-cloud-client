@@ -115,28 +115,33 @@ macro_rules! retry {
         $crate::retry!($backoff, $task, $sleep, warn_after = Duration::ZERO);
     };
     ($backoff:expr, $task:expr, $sleep:expr, warn_after = $warn_after:expr) => {
+        $crate::retry!($backoff, $task, $sleep, warn_after = $warn_after, warning = "Retrying")
+    };
+    ($backoff:expr, $task:expr, $sleep:expr, warn_after = $warn_after:expr, warning = $warning:literal) => {
         async {
             let backoff = $backoff;
             let mut last_duration = None;
             let mut last_warned = std::time::Instant::now();
+            let start = std::time::Instant::now();
             loop {
                 match $crate::retry::OperationResult::from($task.await) {
                     $crate::retry::OperationResult::Ok(v) => return Ok(v),
-                    $crate::retry::OperationResult::Retry(e) => {
+                    $crate::retry::OperationResult::Retry(error) => {
+                        let elapsed = start.elapsed();
                         if last_warned.elapsed() >= $warn_after {
-                            tracing::warn!("Retrying {:?}", e);
+                            tracing::warn!(error = ?error, elapsed_ms = start.elapsed().as_millis(), $warning);
                             last_warned = std::time::Instant::now();
                         } else {
-                            tracing::debug!("Retrying {:?}", e);
+                            tracing::debug!(error = ?error, elapsed_ms = start.elapsed().as_millis(), $warning);
                         }
                         last_duration =
                             $crate::retry::Backoff::next_duration(&backoff, last_duration);
                         let Some(duration) = last_duration else {
-                            return Err(e);
+                            return Err(error);
                         };
                         $sleep(duration).await;
                     },
-                    $crate::retry::OperationResult::Err(e) => return Err(e),
+                    $crate::retry::OperationResult::Err(error) => return Err(error),
                 }
             }
         }

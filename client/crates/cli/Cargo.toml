@@ -1,0 +1,29 @@
+[package]
+name = "client-cli"
+version.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "client_cli"
+test = false
+doctest = false
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+client-core = { workspace = true }
+comfy-table = { workspace = true }
+polars-axum-models = { workspace = true }
+polars-backend-client = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+webbrowser = { workspace = true }
+
+[lints]
+workspace = true

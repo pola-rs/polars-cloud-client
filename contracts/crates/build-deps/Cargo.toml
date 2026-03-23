@@ -7,8 +7,12 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-prost-build = "0.13"
-tonic-build = { version = "0.13", features = ["prost"] }
+prost-build = "0.14.3"
+tonic-prost-build = { version = "0.14.3" }
 
 [lints]
 workspace = true
+
+[lib]
+test = false
+doctest = false

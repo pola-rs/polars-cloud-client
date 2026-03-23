@@ -5,9 +5,9 @@ use std::sync::LazyLock;
 use garde::Validate;
 #[cfg(feature = "server")]
 use regex::Regex;
-use serde::{Deserialize, Serialize};
 #[cfg(feature = "server")]
-use utoipa::ToSchema;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::EntityOrdering;
@@ -17,8 +17,8 @@ static COLOR_HEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^#(?:[A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$").unwrap());
 
 #[derive(Deserialize, Serialize, Debug, PartialEq)]
-#[cfg_attr(feature = "server", derive(Validate, ToSchema))]
-pub struct LabelSchema {
+#[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
+pub struct LabelModel {
     /// Label name
     #[cfg_attr(feature = "server", garde(length(min = 1, max = 32)))]
     pub name: String,
@@ -31,8 +31,8 @@ pub struct LabelSchema {
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
-pub struct LabelOutputSchema {
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct LabelOutputModel {
     pub id: Uuid,
     pub workspace_id: Uuid,
     /// Label name
@@ -42,15 +42,15 @@ pub struct LabelOutputSchema {
     /// Label color
     pub color: String,
 }
-impl EntityOrdering for LabelOutputSchema {
+impl EntityOrdering for LabelOutputModel {
     fn order_fields() -> &'static [&'static str] {
         &["id", "name"]
     }
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq)]
-#[cfg_attr(feature = "server", derive(Validate, ToSchema))]
-pub struct LabelUpdateSchema {
+#[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
+pub struct LabelUpdateModel {
     /// Label name
     #[cfg_attr(feature = "server", garde(length(min = 1, max = 32)))]
     pub name: Option<String>,
@@ -63,16 +63,16 @@ pub struct LabelUpdateSchema {
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq)]
-#[cfg_attr(feature = "server", derive(Validate, ToSchema))]
-pub struct LabelIdSchema {
+#[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
+pub struct LabelIdModel {
     /// Label identifier
     #[cfg_attr(feature = "server", garde(skip))]
     pub label_id: Uuid,
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
-pub struct ComputeClusterLabelSchema {
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct ComputeClusterLabelModel {
     /// Unique identifier
     pub id: Uuid,
     /// Unique identifier of the compute cluster
@@ -82,8 +82,8 @@ pub struct ComputeClusterLabelSchema {
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
-pub struct QueryLabelSchema {
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct QueryLabelModel {
     /// Unique identifier
     pub id: Uuid,
     /// Unique identifier of the query
@@ -93,8 +93,8 @@ pub struct QueryLabelSchema {
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
-pub struct ManifestLabelSchema {
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct ManifestLabelModel {
     /// Unique identifier
     pub id: Uuid,
     /// Unique identifier of the manifest

@@ -250,9 +250,9 @@ pub struct DistributedOpts {
     pub pre_aggregation: bool,
     pub expression_extraction: bool,
     pub sort_partitioned: bool,
-    pub cost_based_planner: bool,
     pub equi_join_broadcast_limit: u64,
     pub partitions_per_worker: Option<u32>,
+    pub single_worker_ops: SingleWorkerOps,
 }
 
 impl From<DistributedOpts> for proto::DistributedOpts {
@@ -262,9 +262,9 @@ impl From<DistributedOpts> for proto::DistributedOpts {
             pre_aggregation,
             expression_extraction,
             sort_partitioned,
-            cost_based_planner,
             equi_join_broadcast_limit,
             partitions_per_worker,
+            single_worker_ops,
         } = value;
         Self {
             shuffle_opts: proto::ShuffleOpts::from(shuffle_opts).into(),
@@ -272,8 +272,8 @@ impl From<DistributedOpts> for proto::DistributedOpts {
             allow_expression_extraction: expression_extraction,
             allow_partitioned_sort: sort_partitioned,
             allow_equi_join_broadcast_limit: equi_join_broadcast_limit,
-            cost_based_planner,
             partitions_per_worker,
+            single_worker_ops: Some(proto::SingleWorkerOps::from(single_worker_ops).into()),
         }
     }
 }
@@ -285,18 +285,47 @@ impl From<proto::DistributedOpts> for DistributedOpts {
             allow_expression_extraction,
             allow_partitioned_sort,
             allow_equi_join_broadcast_limit,
-            cost_based_planner,
             shuffle_opts,
             partitions_per_worker,
+            single_worker_ops: _,
         } = value;
         Self {
             shuffle_opts: shuffle_opts.unwrap_or_default().into(),
             pre_aggregation: allow_pre_aggregation,
             expression_extraction: allow_expression_extraction,
             sort_partitioned: allow_partitioned_sort,
-            cost_based_planner,
             equi_join_broadcast_limit: allow_equi_join_broadcast_limit,
             partitions_per_worker,
+            single_worker_ops: value.single_worker_ops().into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub enum SingleWorkerOps {
+    #[default]
+    Auto,
+    Allow,
+    Forbid,
+}
+
+impl From<SingleWorkerOps> for proto::SingleWorkerOps {
+    fn from(value: SingleWorkerOps) -> Self {
+        match value {
+            SingleWorkerOps::Auto => Self::Auto,
+            SingleWorkerOps::Allow => Self::Allow,
+            SingleWorkerOps::Forbid => Self::Forbid,
+        }
+    }
+}
+
+impl From<proto::SingleWorkerOps> for SingleWorkerOps {
+    fn from(value: proto::SingleWorkerOps) -> Self {
+        match value {
+            proto::SingleWorkerOps::Auto => Self::Auto,
+            proto::SingleWorkerOps::Allow => Self::Allow,
+            proto::SingleWorkerOps::Forbid => Self::Forbid,
+            proto::SingleWorkerOps::Unspecified => Self::Auto,
         }
     }
 }

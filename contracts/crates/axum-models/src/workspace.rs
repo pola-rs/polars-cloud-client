@@ -5,22 +5,16 @@ use chrono::{DateTime, Utc};
 use garde::Validate;
 #[cfg(feature = "pyo3")]
 use pyo3::pyclass;
-use serde::{Deserialize, Serialize};
 #[cfg(feature = "server")]
-use utoipa::{IntoParams, ToSchema};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[cfg(feature = "server")]
 use crate::common::{validate_alphanumeric_name, validate_alphanumeric_name_opt};
 
-#[cfg_attr(feature = "server", derive(IntoParams))]
-pub struct WorkspaceId {
-    /// Workspace identifier
-    pub workspace_id: Uuid,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "server", derive(Validate, ToSchema))]
+#[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
 pub struct WorkSpaceArgs {
     #[cfg_attr(feature = "server", garde(skip))]
     pub organization_id: Uuid,
@@ -31,9 +25,9 @@ pub struct WorkSpaceArgs {
     pub name: String,
 }
 
-#[cfg_attr(feature = "server", derive(ToSchema))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
 #[derive(Clone, Deserialize, Serialize, Debug)]
-pub struct WorkspaceComputeInstanceTypeSchema {
+pub struct WorkspaceComputeInstanceTypeModel {
     /// Instance type (m5.2xlarge)
     pub instance_type: String,
     /// Instance memory (in MIB)
@@ -43,9 +37,8 @@ pub struct WorkspaceComputeInstanceTypeSchema {
 }
 
 #[derive(Default, Debug, Deserialize)]
-#[cfg_attr(feature = "server", derive(Validate, IntoParams))]
-#[cfg_attr(feature="server",into_params(parameter_in = Query))]
-pub struct WorkspaceQuery {
+#[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
+pub struct WorkspaceQueryArgs {
     #[cfg_attr(
         feature = "server",
         garde(length(min = 3, max = 32), custom(validate_alphanumeric_name_opt))
@@ -56,8 +49,8 @@ pub struct WorkspaceQuery {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-#[cfg_attr(feature = "server", derive(Validate, ToSchema))]
-pub struct WorkspaceDetails {
+#[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
+pub struct WorkspaceDetailsArgs {
     #[cfg_attr(
         feature = "server",
         garde(length(min = 3, max = 32), custom(validate_alphanumeric_name_opt))
@@ -70,8 +63,8 @@ pub struct WorkspaceDetails {
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
-pub struct ComputeTimeSchema {
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct ComputeTimeModel {
     pub timestamp: DateTime<Utc>,
     // signed to be able to deserialize from postgres
     pub vcpu_hours: f64,
@@ -81,20 +74,21 @@ pub struct ComputeTimeSchema {
     pub storage_gb_hours: f64,
 }
 
-#[cfg_attr(feature = "pyo3", pyclass(get_all))]
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
 #[derive(Clone, Deserialize, Serialize, Debug)]
-pub struct WorkspaceWithUrlSchema {
+pub struct WorkspaceWithUrlModel {
     #[serde(flatten)]
-    pub workspace: WorkspaceSchema,
+    pub workspace: WorkspaceModel,
     #[serde(rename = "url", alias = "full_url")]
     pub full_url: String,
     pub barebones_url: String,
 }
 
-#[cfg_attr(feature = "pyo3", pyclass(eq, eq_int))]
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object, eq, eq_int))]
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
-pub enum WorkspaceStateSchema {
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub enum WorkspaceStateModel {
     Uninitialized,
     Pending,
     Active,
@@ -102,16 +96,16 @@ pub enum WorkspaceStateSchema {
     Deleted,
 }
 
-impl Display for WorkspaceStateSchema {
+impl Display for WorkspaceStateModel {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}T")
+        write!(f, "{self:?}")
     }
 }
 
-#[cfg_attr(feature = "pyo3", pyclass(get_all))]
-#[cfg_attr(feature = "server", derive(ToSchema))]
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
 #[derive(Clone, Deserialize, Serialize, Debug)]
-pub struct WorkspaceSchema {
+pub struct WorkspaceModel {
     /// Workspace ID -> UUID v7
     pub id: Uuid,
     /// Organization ID
@@ -123,7 +117,7 @@ pub struct WorkspaceSchema {
     /// User who owns the Workspace
     pub creator_id: Uuid,
     /// Status of the workspace
-    pub status: WorkspaceStateSchema,
+    pub status: WorkspaceStateModel,
     /// Url to deployed resources for this workspace.
     /// For AWS this is a direct link to the cloudformation stack
     pub cloud_resources_url: Option<String>,

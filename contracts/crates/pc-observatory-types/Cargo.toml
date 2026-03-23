@@ -1,0 +1,20 @@
+[package]
+name = "pc-observatory-types"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+schemars = { workspace = true, optional = true }
+serde = { workspace = true }
+sqlx = { workspace = true, optional = true }
+uuid = { workspace = true }
+
+[features]
+server = ["dep:schemars", "dep:sqlx"]
+
+[lints]
+workspace = true
+
+[lib]
+test = false
+doctest = false

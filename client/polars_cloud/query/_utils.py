@@ -8,6 +8,7 @@ from polars._utils.cloud import prepare_cloud_plan
 from polars.exceptions import ComputeError, InvalidOperationError
 
 from polars_cloud.constants import ALLOW_LOCAL_SCANS
+from polars_cloud.context import ComputeContext
 from polars_cloud.query.dst import CsvDst, IpcDst, ParquetDst, TmpDst
 
 with contextlib.suppress(ImportError):  # Module not available when building docs
@@ -24,6 +25,10 @@ if TYPE_CHECKING:
         PlanTypePreference,
         ShuffleCompression,
         ShuffleFormat,
+    )
+    from polars_cloud.context import (
+        ClientContext,
+        ClusterContext,
     )
     from polars_cloud.polars_cloud import PyQuerySettings
     from polars_cloud.query.dst import Dst
@@ -190,6 +195,11 @@ If you want to:
         msg = f"`engine` must be one of {{'auto', 'in-memory', 'streaming', 'gpu'}}, got {engine!r}"
         raise ValueError(msg)
 
+    if distributed_settings is not None:
+        if distributed_settings.single_worker_ops not in {"auto", "allow", "forbid"}:
+            msg = f"`distributed_settings.single_worker_ops` must be one of {{'auto', 'allow', 'forbid'}}, got {distributed_settings.single_worker_ops!r}"
+            raise ValueError(msg)
+
     shuffle_opts = pc_core.PyShuffleOpts.new(
         format=shuffle_format,
         compression=shuffle_compression,
@@ -206,3 +216,14 @@ If you want to:
     )
 
     return plan, settings
+
+
+def get_token(context: ClusterContext | ComputeContext | ClientContext) -> str | None:
+    if isinstance(context, ComputeContext):
+        assert context.connection_mode == "direct", (
+            "expected compute context in direct mode"
+        )
+        token = context._get_token()
+    else:
+        token = None
+    return token

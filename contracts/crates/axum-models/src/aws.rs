@@ -2,15 +2,21 @@
 use garde::Validate;
 #[cfg(feature = "pyo3")]
 use pyo3::pyclass;
-use serde::{Deserialize, Serialize};
 #[cfg(feature = "server")]
-use utoipa::ToSchema;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+// Up to and including this version stamp the lambda callback does not carry the CloudFormation
+// template version; we default to 1.0.0 (same default as the database)
+fn default_cfn_template_version() -> String {
+    "1.0.0".to_string()
+}
 
 #[derive(Deserialize, Debug)]
 #[cfg_attr(
     feature = "server",
-    derive(ToSchema, Validate),
+    derive(JsonSchema, Validate),
     garde(allow_unvalidated)
 )]
 pub struct WorkspaceCallbackArgs {
@@ -26,12 +32,14 @@ pub struct WorkspaceCallbackArgs {
     pub proxy_security_group: String,
     pub direct_security_group: String,
     pub region: String,
+    #[serde(default = "default_cfn_template_version")]
+    pub cfn_template_version: String,
 }
 
 #[derive(Deserialize, Debug)]
 #[cfg_attr(
     feature = "server",
-    derive(ToSchema, Validate),
+    derive(JsonSchema, Validate),
     garde(allow_unvalidated)
 )]
 pub struct AWSWorkspaceDeleteCallbackArgs {
@@ -43,7 +51,7 @@ pub struct AWSWorkspaceDeleteCallbackArgs {
 #[derive(Deserialize, Debug)]
 #[cfg_attr(
     feature = "server",
-    derive(ToSchema, Validate),
+    derive(JsonSchema, Validate),
     garde(allow_unvalidated)
 )]
 pub struct AWSWorkspaceStartCallbackArgs {
@@ -52,18 +60,18 @@ pub struct AWSWorkspaceStartCallbackArgs {
     pub stack_url: Option<String>,
 }
 
-#[cfg_attr(feature = "pyo3", pyclass(get_all))]
-#[cfg_attr(feature = "server", derive(ToSchema))]
+#[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
 #[derive(Deserialize, Serialize, Debug)]
-pub struct DeleteWorkspaceSchema {
+pub struct DeleteWorkspaceModel {
     pub stack_name: String,
     pub url: String,
 }
 
-#[cfg_attr(feature = "pyo3", pyclass(get_all))]
-#[cfg_attr(feature = "server", derive(ToSchema))]
+#[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
 #[derive(Deserialize, Serialize, Debug)]
-pub struct WorkspaceSetupUrlSchema {
+pub struct WorkspaceSetupUrlModel {
     #[serde(rename = "setup_url", alias = "full_setup_url")]
     pub full_setup_url: String,
     pub barebones_setup_url: String,
@@ -72,12 +80,14 @@ pub struct WorkspaceSetupUrlSchema {
     pub barebones_template_url: String,
 }
 
-#[cfg_attr(feature = "pyo3", pyclass(get_all))]
-#[cfg_attr(feature = "server", derive(ToSchema))]
+#[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
 #[derive(Deserialize, Serialize, Debug)]
-pub struct WorkspaceAWSSettingsOutputSchema {
+pub struct WorkspaceAWSSettingsOutputModel {
     pub worker_role_arn: Option<String>,
     pub region: String,
     pub workspace_id: Uuid,
     pub account_id: String,
+    pub cfn_template_version: String,
+    pub latest_cfn_template_version: String,
 }

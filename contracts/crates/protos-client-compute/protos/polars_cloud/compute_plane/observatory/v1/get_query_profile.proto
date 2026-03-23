@@ -11,6 +11,7 @@ message QueryProfile {
   optional string phys_plan_dot = 4;
   // IPC encoded dataframe
   bytes data = 5;
+  repeated string errors = 6;
 }
 
 message GetQueryProfileRequest {

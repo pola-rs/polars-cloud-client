@@ -1,13 +1,13 @@
 #[cfg(feature = "pyo3")]
 use pyo3::pyclass;
-use serde::{Deserialize, Serialize};
 #[cfg(feature = "server")]
-use utoipa::ToSchema;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
-#[cfg_attr(feature = "pyo3", pyclass(get_all, eq, eq_int))]
-#[cfg_attr(feature = "server", derive(ToSchema))]
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all, eq, eq_int))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub enum QueryStatusCodeSchema {
+pub enum QueryStatusCodeModel {
     Queued,
     Scheduled,
     InProgress,

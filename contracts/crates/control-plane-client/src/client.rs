@@ -16,7 +16,7 @@ use crate::builder::ApiRequestBuilder;
 use crate::error::*;
 use crate::middleware::RetryTransientMiddleware;
 
-#[cfg_attr(feature = "pyo3", pyclass)]
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object))]
 #[derive(Clone)]
 pub struct ApiClient {
     pub client: reqwest_middleware::ClientWithMiddleware,
@@ -189,7 +189,7 @@ impl ApiClient {
     pub async fn delete_workspace(
         &self,
         workspace_id: Uuid,
-    ) -> Result<Option<DeleteWorkspaceSchema>> {
+    ) -> Result<Option<DeleteWorkspaceModel>> {
         let response = self
             .delete(&format!("/api/v1/workspace/aws/{workspace_id}"))
             .await?
@@ -202,7 +202,7 @@ impl ApiClient {
         }
     }
 
-    pub async fn create_workspace(&self, params: WorkSpaceArgs) -> Result<WorkspaceWithUrlSchema> {
+    pub async fn create_workspace(&self, params: WorkSpaceArgs) -> Result<WorkspaceWithUrlModel> {
         self.post("/api/v1/workspace/aws")
             .json(params)
             .await?
@@ -213,7 +213,7 @@ impl ApiClient {
     pub async fn get_workspace_setup_url(
         &self,
         workspace_id: Uuid,
-    ) -> Result<WorkspaceSetupUrlSchema> {
+    ) -> Result<WorkspaceSetupUrlModel> {
         self.get(&format!("/api/v1/workspace/aws/{workspace_id}/setup-url"))
             .await?
             .json()
@@ -223,7 +223,7 @@ impl ApiClient {
     pub async fn get_available_instance_types(
         &self,
         workspace_id: Uuid,
-    ) -> Result<Vec<WorkspaceComputeInstanceTypeSchema>> {
+    ) -> Result<Vec<WorkspaceComputeInstanceTypeModel>> {
         self.get(&format!(
             "/api/v1/workspace/aws/{workspace_id}/instance-types"
         ))
@@ -235,8 +235,8 @@ impl ApiClient {
     pub async fn find_compute_cluster_manifest(
         &self,
         workspace_id: Uuid,
-        params: ManifestQuery,
-    ) -> Result<ManifestSchema> {
+        params: ManifestQueryArgs,
+    ) -> Result<ManifestModel> {
         self.get(&format!("/api/v1/workspace/{workspace_id}/manifest/find"))
             .parameter("name", params.name.clone())
             .await?
@@ -261,7 +261,7 @@ impl ApiClient {
         &self,
         workspace_id: Uuid,
         pagination: Pagination,
-    ) -> Result<Paginated<ManifestSchema>> {
+    ) -> Result<Paginated<ManifestModel>> {
         self.get(&format!("/api/v1/workspace/{workspace_id}/manifest"))
             .pagination(&pagination)
             .await?
@@ -274,7 +274,7 @@ impl ApiClient {
         workspace_id: Uuid,
         manifest_id: Uuid,
         params: PatchManifestArgs,
-    ) -> Result<ManifestSchema> {
+    ) -> Result<ManifestModel> {
         self.patch(&format!(
             "/api/v1/workspace/{workspace_id}/manifest/{manifest_id}"
         ))
@@ -287,9 +287,9 @@ impl ApiClient {
     pub async fn get_compute_clusters(
         &self,
         workspace_id: Uuid,
-        filters: GetClusterFilterParams,
+        filters: GetClusterFilterArgs,
         pagination: Pagination,
-    ) -> Result<Paginated<ComputeSchema>> {
+    ) -> Result<Paginated<ComputeModel>> {
         self.get(&format!("/api/v1/workspace/{workspace_id}/compute"))
             .parameter_vec_opt("status", filters.status)
             .pagination(&pagination)
@@ -302,7 +302,7 @@ impl ApiClient {
         &self,
         workspace_id: Uuid,
         cluster_id: Uuid,
-    ) -> Result<ComputeSchema> {
+    ) -> Result<ComputeModel> {
         self.get(&format!(
             "/api/v1/workspace/{workspace_id}/compute/{cluster_id}"
         ))
@@ -315,7 +315,7 @@ impl ApiClient {
         &self,
         workspace_id: Uuid,
         params: RegisterComputeClusterArgs,
-    ) -> Result<ManifestSchema> {
+    ) -> Result<ManifestModel> {
         self.post(&format!("/api/v1/workspace/{workspace_id}/manifest"))
             .json(params)
             .await?
@@ -339,7 +339,7 @@ impl ApiClient {
         &self,
         workspace_id: Uuid,
         params: StartComputeClusterManifestArgs,
-    ) -> Result<ComputeSchema> {
+    ) -> Result<ComputeModel> {
         self.post(&format!("/api/v1/workspace/{workspace_id}/manifest/start"))
             .json(params)
             .await?
@@ -351,7 +351,7 @@ impl ApiClient {
         &self,
         workspace_id: Uuid,
         params: StartComputeClusterArgs,
-    ) -> Result<ComputeSchema> {
+    ) -> Result<ComputeModel> {
         self.post(&format!("/api/v1/workspace/{workspace_id}/compute/start"))
             .json(params)
             .await?
@@ -363,7 +363,7 @@ impl ApiClient {
         &self,
         workspace_id: Uuid,
         compute_id: Uuid,
-    ) -> Result<ComputeTokenSchema> {
+    ) -> Result<ComputeTokenModel> {
         self.get(&format!(
             "/api/v1/workspace/{workspace_id}/compute/{compute_id}/token"
         ))
@@ -385,7 +385,7 @@ impl ApiClient {
         &self,
         workspace_id: Uuid,
         cluster_id: Uuid,
-    ) -> Result<TokenPaginated<Vec<AwsLogEventSchema>>> {
+    ) -> Result<TokenPaginated<Vec<AwsLogEventModel>>> {
         self.get(&format!(
             "/api/v1/workspace/{workspace_id}/compute/{cluster_id}/logs"
         ))
@@ -398,7 +398,7 @@ impl ApiClient {
         &self,
         workspace_id: Uuid,
         cluster_id: Uuid,
-    ) -> Result<ComputeClusterPublicInfoSchema> {
+    ) -> Result<ComputeClusterPublicInfoModel> {
         self.get(&format!(
             "/api/v1/workspace/{workspace_id}/compute/{cluster_id}/public_info"
         ))
@@ -411,7 +411,7 @@ impl ApiClient {
         &self,
         workspace_id: Uuid,
         cluster_id: Uuid,
-    ) -> Result<TokenPaginated<AwsMetricsSchema>> {
+    ) -> Result<TokenPaginated<AwsMetricsModel>> {
         self.get(&format!(
             "/api/v1/workspace/{workspace_id}/compute/{cluster_id}/metrics"
         ))
@@ -429,7 +429,7 @@ impl ApiClient {
         self.post(&format!(
             "/api/v1/workspace/{workspace_id}/compute/{cluster_id}/label"
         ))
-        .json(&LabelIdSchema { label_id })
+        .json(&LabelIdModel { label_id })
         .await?
         .empty()
         .await
@@ -439,7 +439,7 @@ impl ApiClient {
         &self,
         workspace_id: Uuid,
         cluster_id: Uuid,
-    ) -> Result<Vec<LabelOutputSchema>> {
+    ) -> Result<Vec<LabelOutputModel>> {
         self.get(&format!(
             "/api/v1/workspace/{workspace_id}/compute/{cluster_id}/label"
         ))
@@ -465,8 +465,8 @@ impl ApiClient {
     pub async fn create_label(
         &self,
         workspace_id: Uuid,
-        params: &LabelSchema,
-    ) -> Result<LabelOutputSchema> {
+        params: &LabelModel,
+    ) -> Result<LabelOutputModel> {
         self.post(&format!("/api/v1/workspace/{workspace_id}/label"))
             .json(params)
             .await?
@@ -474,7 +474,7 @@ impl ApiClient {
             .await
     }
 
-    pub async fn get_label(&self, workspace_id: Uuid, label_id: Uuid) -> Result<LabelOutputSchema> {
+    pub async fn get_label(&self, workspace_id: Uuid, label_id: Uuid) -> Result<LabelOutputModel> {
         self.get(&format!(
             "/api/v1/workspace/{workspace_id}/label/{label_id}"
         ))
@@ -496,7 +496,7 @@ impl ApiClient {
         &self,
         workspace_id: Uuid,
         label_id: Uuid,
-        params: &LabelUpdateSchema,
+        params: &LabelUpdateModel,
     ) -> Result<()> {
         self.patch(&format!(
             "/api/v1/workspace/{workspace_id}/label/{label_id}"
@@ -509,8 +509,8 @@ impl ApiClient {
 
     pub async fn create_organization(
         &self,
-        params: OrganizationCreateSchema,
-    ) -> Result<OrganizationSchema> {
+        params: OrganizationCreateArgs,
+    ) -> Result<OrganizationModel> {
         self.post("/api/v1/organization")
             .json(params)
             .await?
@@ -521,8 +521,8 @@ impl ApiClient {
     pub async fn get_organizations(
         &self,
         pagination: Pagination,
-        filters: OrganizationQuery,
-    ) -> Result<Paginated<OrganizationSchema>> {
+        filters: OrganizationQueryArgs,
+    ) -> Result<Paginated<OrganizationModel>> {
         self.get("/api/v1/organization")
             .pagination(&pagination)
             .parameter_opt("name", filters.name)
@@ -531,7 +531,7 @@ impl ApiClient {
             .await
     }
 
-    pub async fn get_organization(&self, organization_id: Uuid) -> Result<OrganizationSchema> {
+    pub async fn get_organization(&self, organization_id: Uuid) -> Result<OrganizationModel> {
         self.get(&format!("/api/v1/organization/{organization_id}"))
             .await?
             .json()
@@ -572,7 +572,7 @@ impl ApiClient {
     pub async fn patch_organization_details(
         &self,
         organization_id: Uuid,
-        params: &OrganizationDetails,
+        params: &OrganizationDetailsArgs,
     ) -> Result<()> {
         self.patch(&format!("/api/v1/organization/{organization_id}"))
             .json(params)
@@ -591,7 +591,7 @@ impl ApiClient {
     pub async fn post_organization_billing_details(
         &self,
         organization_id: Uuid,
-        params: &BillingSubscribeSchema,
+        params: &BillingSubscribeModel,
     ) -> Result<()> {
         self.post(&format!("/api/v1/organization/{organization_id}/billing"))
             .json(params)
@@ -603,7 +603,7 @@ impl ApiClient {
     pub async fn get_organization_billing_details(
         &self,
         organization_id: Uuid,
-    ) -> Result<OrganizationBillingDetailsSchema> {
+    ) -> Result<OrganizationBillingDetailsModel> {
         self.get(&format!("/api/v1/organization/{organization_id}/billing"))
             .await?
             .json()
@@ -614,7 +614,7 @@ impl ApiClient {
         &self,
         organization_id: Uuid,
         window: &MetricWindow,
-    ) -> Result<Vec<BillingHistogramSchema>> {
+    ) -> Result<Vec<BillingHistogramModel>> {
         let TimeWindow { start, end } = window.window;
 
         self.get(&format!(
@@ -632,7 +632,7 @@ impl ApiClient {
         &self,
         organization_id: Uuid,
         params: &InviteArgs,
-    ) -> Result<OrganizationInviteWithUrlSchema> {
+    ) -> Result<OrganizationInviteWithUrlModel> {
         self.post(&format!("/api/v1/organization/{organization_id}/invite"))
             .json(params)
             .await?
@@ -644,7 +644,7 @@ impl ApiClient {
         &self,
         pagination: &Pagination,
         organization_id: Uuid,
-    ) -> Result<Paginated<OrganizationInviteSchema>> {
+    ) -> Result<Paginated<OrganizationInviteModel>> {
         self.get(&format!("/api/v1/organization/{organization_id}/invite"))
             .pagination(pagination)
             .await?
@@ -656,7 +656,7 @@ impl ApiClient {
         &self,
         organization_id: Uuid,
         invite_id: Uuid,
-    ) -> Result<OrganizationInviteSchema> {
+    ) -> Result<OrganizationInviteModel> {
         self.get(&format!(
             "/api/v1/organization/{organization_id}/invite/{invite_id}"
         ))
@@ -686,7 +686,7 @@ impl ApiClient {
         &self,
         organization_id: Uuid,
         pagination: &Pagination,
-    ) -> Result<Paginated<OrganizationUserSchema>> {
+    ) -> Result<Paginated<OrganizationUserModel>> {
         self.get(&format!("/api/v1/organization/{organization_id}/member"))
             .pagination(pagination)
             .await?
@@ -698,7 +698,7 @@ impl ApiClient {
         &self,
         organization_id: Uuid,
         user_id: Uuid,
-    ) -> Result<OrganizationUserSchema> {
+    ) -> Result<OrganizationUserModel> {
         self.get(&format!(
             "/api/v1/organization/{organization_id}/member/{user_id}"
         ))
@@ -711,12 +711,12 @@ impl ApiClient {
         &self,
         organization_id: Uuid,
         user_id: Uuid,
-        role: OrganizationRoleSchema,
+        role: OrganizationRoleModel,
     ) -> Result<()> {
         self.patch(&format!(
             "/api/v1/organization/{organization_id}/member/{user_id}/role"
         ))
-        .json(OrganizationMemberRole { role })
+        .json(OrganizationMemberRoleArgs { role })
         .await?
         .empty()
         .await
@@ -738,9 +738,9 @@ impl ApiClient {
     pub async fn get_queries(
         &self,
         workspace_id: Uuid,
-        filters: QueryParamsFilter,
+        filters: GetQueryArgs,
         pagination: Pagination,
-    ) -> Result<Paginated<QueryWithStateTimingSchema>> {
+    ) -> Result<Paginated<QueryWithStateTimingModel>> {
         self.get(&format!("/api/v1/workspace/{workspace_id}/query"))
             .pagination(&pagination)
             .parameter("order_direction", "asc")
@@ -755,7 +755,7 @@ impl ApiClient {
         &self,
         workspace_id: Uuid,
         query_id: Uuid,
-    ) -> Result<QueryWithStateTimingAndResultSchema> {
+    ) -> Result<QueryWithStateTimingAndResultModel> {
         self.get(&format!(
             "/api/v1/workspace/{workspace_id}/query/{query_id}"
         ))
@@ -768,9 +768,22 @@ impl ApiClient {
         &self,
         workspace_id: Uuid,
         query_id: Uuid,
-    ) -> Result<QueryPlansSchema> {
+    ) -> Result<QueryPlansModel> {
         self.get(&format!(
             "/api/v1/workspace/{workspace_id}/query/{query_id}/plans"
+        ))
+        .await?
+        .json()
+        .await
+    }
+
+    pub async fn get_observatory_query(
+        &self,
+        workspace_id: Uuid,
+        query_id: Uuid,
+    ) -> Result<serde_json::Value> {
+        self.get(&format!(
+            "/api/v1/workspace/{workspace_id}/observatory/query/{query_id}"
         ))
         .await?
         .json()
@@ -780,9 +793,9 @@ impl ApiClient {
     pub async fn get_query_count(
         &self,
         workspace_id: Uuid,
-        filters: &QueryCountParams,
+        filters: &QueryCountArgs,
         window: &MetricWindow,
-    ) -> Result<Vec<QueryCountSchema>> {
+    ) -> Result<Vec<QueryCountModel>> {
         let TimeWindow { start, end } = window.window;
         // A custom limit as otherwise we get the default pagination which is 25
         let limit = (end - start).num_days() + 1;
@@ -795,7 +808,7 @@ impl ApiClient {
             .parameter("limit", limit)
             .parameter_opt("cluster_id", filters.cluster_id)
             .await?
-            .json::<Paginated<QueryCountSchema>>()
+            .json::<Paginated<QueryCountModel>>()
             .await?
             .result)
     }
@@ -818,7 +831,7 @@ impl ApiClient {
         self.post(&format!(
             "/api/v1/workspace/{workspace_id}/query/{query_id}/label"
         ))
-        .json(&LabelIdSchema { label_id })
+        .json(&LabelIdModel { label_id })
         .await?
         .empty()
         .await
@@ -828,7 +841,7 @@ impl ApiClient {
         &self,
         workspace_id: Uuid,
         query_id: Uuid,
-    ) -> Result<Vec<LabelOutputSchema>> {
+    ) -> Result<Vec<LabelOutputModel>> {
         self.get(&format!(
             "/api/v1/workspace/{workspace_id}/query/{query_id}/label"
         ))
@@ -860,7 +873,7 @@ impl ApiClient {
         self.post(&format!(
             "/api/v1/workspace/{workspace_id}/manifest/{manifest_id}/label"
         ))
-        .json(&LabelIdSchema { label_id })
+        .json(&LabelIdModel { label_id })
         .await?
         .empty()
         .await
@@ -870,7 +883,7 @@ impl ApiClient {
         &self,
         workspace_id: Uuid,
         manifest_id: Uuid,
-    ) -> Result<Vec<LabelOutputSchema>> {
+    ) -> Result<Vec<LabelOutputModel>> {
         self.get(&format!(
             "/api/v1/workspace/{workspace_id}/manifest/{manifest_id}/label"
         ))
@@ -922,14 +935,14 @@ impl ApiClient {
         self.patch("/api/v1/user").json(params).await?.empty().await
     }
 
-    pub async fn get_notifications(&self) -> Result<Paginated<NotificationSchema>> {
+    pub async fn get_notifications(&self) -> Result<Paginated<NotificationModel>> {
         self.get("/api/v1/notifications").await?.json().await
     }
 
     pub async fn patch_notification(
         &self,
         notification_id: Uuid,
-        params: NotificationDetail,
+        params: NotificationDetailArgs,
     ) -> Result<()> {
         self.patch(&format!("/api/v1/user/notifications/{notification_id}"))
             .json(&params)
@@ -945,15 +958,15 @@ impl ApiClient {
             .await
     }
 
-    pub async fn get_logged_in_user(&self) -> Result<UserSchema> {
+    pub async fn get_logged_in_user(&self) -> Result<UserModel> {
         self.get("/api/v1/user/me").await?.json().await
     }
 
     pub async fn get_workspaces(
         &self,
-        filters: WorkspaceQuery,
+        filters: WorkspaceQueryArgs,
         pagination: Pagination,
-    ) -> Result<Paginated<WorkspaceSchema>> {
+    ) -> Result<Paginated<WorkspaceModel>> {
         self.get("/api/v1/workspace")
             .pagination(&pagination)
             .parameter_opt("name", filters.name.clone())
@@ -963,7 +976,7 @@ impl ApiClient {
             .await
     }
 
-    pub async fn get_workspace(&self, workspace_id: Uuid) -> Result<WorkspaceSchema> {
+    pub async fn get_workspace(&self, workspace_id: Uuid) -> Result<WorkspaceModel> {
         self.get(&format!("/api/v1/workspace/{workspace_id}"))
             .await?
             .json()
@@ -973,7 +986,7 @@ impl ApiClient {
     pub async fn patch_workspace_details(
         &self,
         workspace_id: Uuid,
-        params: &WorkspaceDetails,
+        params: &WorkspaceDetailsArgs,
     ) -> Result<()> {
         self.patch(&format!("/api/v1/workspace/{workspace_id}"))
             .json(params)
@@ -986,7 +999,7 @@ impl ApiClient {
         &self,
         workspace_id: Uuid,
         params: MetricWindow,
-    ) -> Result<Vec<ComputeTimeSchema>> {
+    ) -> Result<Vec<ComputeTimeModel>> {
         let TimeWindow { start, end } = params.window;
         let interval = params.interval.num_seconds();
         // A custom limit as otherwise we get the default pagination which is 25
@@ -999,7 +1012,7 @@ impl ApiClient {
             .parameter("interval", interval)
             .parameter("limit", limit)
             .await?
-            .json::<Paginated<ComputeTimeSchema>>()
+            .json::<Paginated<ComputeTimeModel>>()
             .await?
             .result)
     }
@@ -1007,7 +1020,7 @@ impl ApiClient {
     pub async fn get_cluster_defaults(
         &self,
         workspace_id: Uuid,
-    ) -> Result<Option<WorkspaceClusterDefaultsSchema>> {
+    ) -> Result<Option<WorkspaceClusterDefaultsModel>> {
         self.get(&format!(
             "/api/v1/workspace/{workspace_id}/cluster-defaults"
         ))
@@ -1019,7 +1032,7 @@ impl ApiClient {
     pub async fn set_cluster_defaults(
         &self,
         workspace_id: Uuid,
-        params: &WorkspaceClusterDefaultsSchema,
+        params: &WorkspaceClusterDefaultsModel,
     ) -> Result<()> {
         self.put(&format!(
             "/api/v1/workspace/{workspace_id}/cluster-defaults"
@@ -1044,7 +1057,7 @@ impl ApiClient {
         workspace_id: Uuid,
         compute_id: Uuid,
         pagination: Pagination,
-    ) -> Result<Paginated<ComputeClusterNodeInfoSchema>> {
+    ) -> Result<Paginated<ComputeClusterNodeInfoModel>> {
         self.get(&format!(
             "/api/v1/workspace/{workspace_id}/compute/{compute_id}/node"
         ))
@@ -1074,7 +1087,7 @@ impl ApiClient {
         workspace_id: Uuid,
         implicit_users: Option<bool>,
         service_accounts: Option<bool>,
-    ) -> Result<Vec<WorkspaceUserSchema>> {
+    ) -> Result<Vec<WorkspaceUserModel>> {
         self.get(&format!("/api/v1/workspace/{workspace_id}/member"))
             .parameter_opt("implicit_users", implicit_users)
             .parameter_opt("service_accounts", service_accounts)
@@ -1087,7 +1100,7 @@ impl ApiClient {
         &self,
         workspace_id: Uuid,
         user_id: Uuid,
-    ) -> Result<WorkspaceUserSchema> {
+    ) -> Result<WorkspaceUserModel> {
         self.get(&format!(
             "/api/v1/workspace/{workspace_id}/member/{user_id}"
         ))
@@ -1100,7 +1113,7 @@ impl ApiClient {
         &self,
         workspace_id: Uuid,
         user_id: Uuid,
-        role: WorkspaceRoleSchema,
+        role: WorkspaceRoleModel,
     ) -> Result<()> {
         self.patch(&format!(
             "/api/v1/workspace/{workspace_id}/member/{user_id}/role"
@@ -1123,7 +1136,7 @@ impl ApiClient {
     pub async fn get_workspace_tokens(
         &self,
         workspace_id: Uuid,
-    ) -> Result<Vec<WorkspaceApiTokenWithNameSchema>> {
+    ) -> Result<Vec<WorkspaceApiTokenWithNameModel>> {
         self.get(&format!("/api/v1/workspace/{workspace_id}/token"))
             .await?
             .json()
@@ -1133,8 +1146,8 @@ impl ApiClient {
     pub async fn create_workspace_token(
         &self,
         workspace_id: Uuid,
-        params: WorkSpaceTokenBody,
-    ) -> Result<WorkspaceAPIToken> {
+        params: WorkSpaceTokenBodyArgs,
+    ) -> Result<WorkspaceAPITokenModel> {
         self.post(&format!("/api/v1/workspace/{workspace_id}/token"))
             .json(params)
             .await?

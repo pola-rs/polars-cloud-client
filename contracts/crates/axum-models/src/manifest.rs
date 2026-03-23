@@ -2,25 +2,22 @@
 use garde::Validate;
 #[cfg(feature = "pyo3")]
 use pyo3::pyclass;
+#[cfg(feature = "server")]
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "server")]
-use utoipa::IntoParams;
-#[cfg(feature = "server")]
-use utoipa::ToSchema;
 use uuid::Uuid;
 use version_number::VersionNumber;
 
 #[cfg(feature = "server")]
 use crate::common::validate_alphanumeric_name;
 use crate::{
-    DBCPUArchitectureSchema, DBClusterModeSchema, EntityOrdering, InstanceSpecsSchema,
-    LogLevelSchema, PythonVersion,
+    DBCPUArchitectureModel, DBClusterModeModel, EntityOrdering, InstanceSpecsModel, LogLevelModel,
+    PythonVersion,
 };
 
 #[derive(Default, Debug, Deserialize)]
-#[cfg_attr(feature = "server", derive(Validate, IntoParams))]
-#[cfg_attr(feature="server", into_params(parameter_in = Query))]
-pub struct ManifestQuery {
+#[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
+pub struct ManifestQueryArgs {
     #[cfg_attr(
         feature = "server",
         garde(length(min = 3, max = 32), custom(validate_alphanumeric_name))
@@ -29,14 +26,14 @@ pub struct ManifestQuery {
 }
 
 #[cfg_attr(feature = "pyo3", pyclass)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ManifestSchema {
+pub struct ManifestModel {
     pub id: Uuid,
     pub workspace_id: Uuid,
     pub name: String,
     pub instance_type: Option<String>,
-    pub cpu_architectures: Option<Vec<DBCPUArchitectureSchema>>,
+    pub cpu_architectures: Option<Vec<DBCPUArchitectureModel>>,
     pub big_instance_type: Option<String>,
     pub req_ram_gb: Option<u32>,
     pub req_cpu_cores: Option<u32>,
@@ -44,12 +41,12 @@ pub struct ManifestSchema {
     pub req_big_instance_multiplier: Option<u32>,
     pub req_big_instance_storage: Option<i32>,
     pub cluster_size: u32,
-    pub mode: DBClusterModeSchema,
+    pub mode: DBClusterModeModel,
     pub idle_timeout_mins: Option<i32>,
-    #[cfg_attr(feature="server", schema(value_type = String))]
+    #[cfg_attr(feature = "server", schemars(with = "String"))]
     pub polars_version: VersionNumber,
     pub python_version: String,
-    pub log_level: LogLevelSchema,
+    pub log_level: LogLevelModel,
     pub requirements_txt: Option<String>,
     /// ID of the cluster for this manifest if one is active
     pub live_cluster_id: Option<Uuid>,
@@ -57,7 +54,7 @@ pub struct ManifestSchema {
 
 #[cfg_attr(feature = "pyo3", pyo3::pymethods)]
 #[cfg(feature = "pyo3")]
-impl ManifestSchema {
+impl ManifestModel {
     #[getter]
     pub fn id(&self) -> pyo3::PyResult<Uuid> {
         Ok(self.id)
@@ -89,7 +86,7 @@ impl ManifestSchema {
     }
 
     #[getter]
-    pub fn cpu_architectures(&self) -> pyo3::PyResult<Option<Vec<DBCPUArchitectureSchema>>> {
+    pub fn cpu_architectures(&self) -> pyo3::PyResult<Option<Vec<DBCPUArchitectureModel>>> {
         Ok(self.cpu_architectures.clone())
     }
 
@@ -119,7 +116,7 @@ impl ManifestSchema {
     }
 
     #[getter]
-    pub fn mode(&self) -> pyo3::PyResult<DBClusterModeSchema> {
+    pub fn mode(&self) -> pyo3::PyResult<DBClusterModeModel> {
         Ok(self.mode)
     }
 
@@ -139,7 +136,7 @@ impl ManifestSchema {
     }
 
     #[getter]
-    pub fn log_level(&self) -> pyo3::PyResult<LogLevelSchema> {
+    pub fn log_level(&self) -> pyo3::PyResult<LogLevelModel> {
         Ok(self.log_level.clone())
     }
 
@@ -154,7 +151,7 @@ impl ManifestSchema {
     }
 }
 
-impl EntityOrdering for ManifestSchema {
+impl EntityOrdering for ManifestModel {
     fn order_fields() -> &'static [&'static str] {
         &[
             "name",
@@ -168,14 +165,14 @@ impl EntityOrdering for ManifestSchema {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
-#[cfg_attr(feature = "server", derive(ToSchema, Validate))]
+#[cfg_attr(feature = "server", derive(JsonSchema, Validate))]
 #[serde(deny_unknown_fields)]
 pub struct PatchManifestArgs {
     #[cfg_attr(feature = "server", garde(skip))]
     pub name: String,
     #[serde(flatten)]
     #[cfg_attr(feature = "server", garde(dive))]
-    pub instance: InstanceSpecsSchema,
+    pub instance: InstanceSpecsModel,
     #[cfg_attr(feature = "server", garde(range(min = 16)))]
     pub storage: Option<u32>,
     #[cfg_attr(feature = "server", garde(range(min = 16)))]
@@ -183,13 +180,13 @@ pub struct PatchManifestArgs {
     #[cfg_attr(feature = "server", garde(range(min = 1)))]
     pub cluster_size: u32,
     #[cfg_attr(feature = "server", garde(skip))]
-    pub mode: DBClusterModeSchema,
+    pub mode: DBClusterModeModel,
     #[cfg_attr(feature = "server", garde(dive))]
     pub python_version: PythonVersion,
-    #[cfg_attr(feature = "server", garde(skip), schema(value_type = String))]
+    #[cfg_attr(feature = "server", garde(skip), schemars(with = "String"))]
     pub polars_version: VersionNumber,
     #[cfg_attr(feature = "server", garde(skip))]
-    pub log_level: LogLevelSchema,
+    pub log_level: LogLevelModel,
     #[cfg_attr(feature = "server", garde(range(min = 10)))]
     pub idle_timeout_mins: Option<u32>,
     #[cfg_attr(feature = "server", garde(skip))]

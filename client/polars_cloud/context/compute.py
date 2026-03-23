@@ -13,13 +13,8 @@ import polars_cloud
 import polars_cloud.polars_cloud as pcr
 from polars_cloud import constants
 from polars_cloud.context.compute_connect_select import select_compute_cluster
-from polars_cloud.context.compute_specs import (
-    ComputeContextSpecs,
-    resolve_compute_context_specs,
-)
 from polars_cloud.context.compute_status import ComputeContextStatus
-from polars_cloud.exceptions import ComputeClusterMisspecified
-from polars_cloud.polars_cloud import ClientOptions
+from polars_cloud.polars_cloud import ClientOptions, ComputeClusterMisspecified
 from polars_cloud.workspace import Workspace, WorkspaceStatus
 
 logger = logging.getLogger(__name__)
@@ -39,6 +34,7 @@ if TYPE_CHECKING:
 
 _deprecation_sentinel = object()
 DEFAULT_SCHEDULER_PORT = 5051
+DEFAULT_OBSERVATORY_PORT = 3001
 
 
 class ClientContext:
@@ -50,7 +46,7 @@ class ClientContext:
 
     def __init__(self) -> None:
         self._compute_id: UUID | None = None
-        self._connection_mode = pcr.DBClusterModeSchema.Direct
+        self._connection_mode = pcr.DBClusterModeModel.Direct
         self._direct_client: pcr.SchedulerClient | None = None
 
     def _get_direct_client(self) -> pcr.SchedulerClient | None:
@@ -98,14 +94,15 @@ class ClusterContext(ClientContext):
         self,
         compute_address: str,
         *,
-        compute_port: int = DEFAULT_SCHEDULER_PORT,
+        scheduler_port: int = DEFAULT_SCHEDULER_PORT,
+        observatory_port: int = DEFAULT_OBSERVATORY_PORT,
         insecure: bool = False,
         tls_cert_domain: str | None = None,
         public_server_crt: bytes | None = None,
         tls_certificate: bytes | None = None,
         tls_private_key: bytes | None = None,
     ) -> None:
-        self._connection_mode = pcr.DBClusterModeSchema.Direct
+        self._connection_mode = pcr.DBClusterModeModel.Direct
         self._compute_id = uuid4()
         client_options = ClientOptions()
 
@@ -114,8 +111,12 @@ class ClusterContext(ClientContext):
         client_options.tls_certificate = tls_certificate
         client_options.tls_private_key = tls_private_key
         client_options.insecure = insecure
-        compute_address = f"{compute_address}:{compute_port}"
-        self._direct_client = pcr.SchedulerClient(compute_address, client_options)
+        self._direct_client = pcr.SchedulerClient(
+            address=compute_address,
+            grpc_port=scheduler_port,
+            observatory_port=observatory_port,
+            client_options=client_options,
+        )
 
 
 class ComputeContext(ClientContext, ContextDecorator):
@@ -185,7 +186,7 @@ class ComputeContext(ClientContext, ContextDecorator):
         mode="direct",
         workspace_name="workspace-name",
         labels=["docs"],
-        log_level=LogLevelSchema.Info,
+        log_level=LogLevelModel.Info,
     )
     >>> ctx.register("compute-name")
     >>> pc.ComputeContext(workspace="workspace-name", name="compute-name")
@@ -200,7 +201,7 @@ class ComputeContext(ClientContext, ContextDecorator):
         cluster_size=2,
         mode="direct",
         labels=["docs"],
-        log_level=LogLevelSchema.Info,
+        log_level=LogLevelModel.Info,
     )
 
     The ComputeContext can also be used as a decorator or context manager,
@@ -282,21 +283,17 @@ class ComputeContext(ClientContext, ContextDecorator):
             m = constants.API_CLIENT.get_compute_cluster_manifest(
                 self._workspace.id, name
             )
-            self._specs = ComputeContextSpecs(
+            self._specs = pcr.ComputeContextSpecs(
                 cpus=m.req_cpu_cores,
                 memory=m.req_ram_gb,
-                cpu_architectures=[
-                    cpu_architectures.as_str()
-                    for cpu_architectures in m.cpu_architectures
-                ]
-                if m.cpu_architectures is not None
-                else None,
+                cpu_architectures=m.cpu_architectures,
                 instance_type=m.instance_type,
                 storage=m.req_storage,
                 big_instance_type=m.big_instance_type,
                 big_instance_multiplier=m.req_big_instance_multiplier,
                 cluster_size=m.cluster_size,
             )
+
             if m.live_cluster_id is None:
                 self._last_known_status = ComputeContextStatus.UNINITIALIZED
             else:
@@ -304,14 +301,14 @@ class ComputeContext(ClientContext, ContextDecorator):
                     self.workspace.id, m.live_cluster_id
                 )
                 self._compute_id = cluster.id
-                self._last_known_status = ComputeContextStatus._from_api_schema(
+                self._last_known_status = ComputeContextStatus._from_api_model(
                     cluster.status
                 )
 
             # TODO: Get the labels as well
             self._labels = None
-            self._connection_mode: pcr.DBClusterModeSchema = m.mode
-            self._log_level: pcr.LogLevelSchema = m.log_level
+            self._connection_mode: pcr.DBClusterModeModel = m.mode
+            self._log_level: pcr.LogLevelModel = m.log_level
             self._idle_timeout_mins = m.idle_timeout_mins
 
             self._polars_version = pcr.polars_version()
@@ -325,19 +322,23 @@ class ComputeContext(ClientContext, ContextDecorator):
                 raise ComputeClusterMisspecified(msg)
 
         else:
-            self._specs = resolve_compute_context_specs(
-                self._workspace,
+            self._specs = pcr.resolve_compute_context_specs(
+                self._workspace.id,
                 cpus=cpus,
                 memory=memory,
-                cpu_architectures=cpu_architectures,
+                cpu_architectures=[
+                    pcr.DBCPUArchitectureModel.from_str(a) for a in cpu_architectures
+                ]
+                if cpu_architectures
+                else None,
                 instance_type=instance_type,
                 storage=storage,
                 cluster_size=cluster_size,
             )
 
             self._labels = [labels] if isinstance(labels, str) else labels
-            self._connection_mode = pcr.DBClusterModeSchema.from_str(connection_mode)
-            self._log_level = pcr.LogLevelSchema.from_str(log_level)
+            self._connection_mode = pcr.DBClusterModeModel.from_str(connection_mode)
+            self._log_level = pcr.LogLevelModel.from_str(log_level)
             self._idle_timeout_mins = idle_timeout_mins
             self._polars_version = pcr.polars_version()
             self._last_known_status = ComputeContextStatus.UNINITIALIZED
@@ -375,25 +376,25 @@ class ComputeContext(ClientContext, ContextDecorator):
         )
 
     @classmethod
-    def _from_api_schema(cls, schema: pcr.ComputeSchema) -> Self:
+    def _from_api_model(cls, model: pcr.ComputeModel) -> Self:
         self = cls(
-            cpus=schema.req_cpu_cores,
-            memory=schema.req_ram_gb,
-            cpu_architectures=[a.as_str() for a in schema.cpu_architectures]
-            if schema.cpu_architectures
+            cpus=model.req_cpu_cores,
+            memory=model.req_ram_gb,
+            cpu_architectures=[a.as_str() for a in model.cpu_architectures]
+            if model.cpu_architectures
             else None,
-            cluster_size=schema.cluster_size,
-            instance_type=schema.instance_type,
-            storage=schema.req_storage,
-            workspace=Workspace(id=schema.workspace_id),
-            connection_mode=schema.mode.as_str(),
+            cluster_size=model.cluster_size,
+            instance_type=model.instance_type,
+            storage=model.req_storage,
+            workspace=Workspace(id=model.workspace_id),
+            connection_mode=model.mode.as_str(),
             # TODO: Get the labels as well
             labels=None,
-            log_level=schema.log_level.as_str(),
+            log_level=model.log_level.as_str(),
         )
-        self._compute_id = schema.id
-        self._polars_version = schema.polars_version
-        self._last_known_status = ComputeContextStatus._from_api_schema(schema.status)
+        self._compute_id = model.id
+        self._polars_version = model.polars_version
+        self._last_known_status = ComputeContextStatus._from_api_model(model.status)
         return self
 
     def get_status(self) -> ComputeContextStatus:
@@ -414,7 +415,7 @@ class ComputeContext(ClientContext, ContextDecorator):
             status = constants.API_CLIENT.get_compute_cluster(
                 self.workspace.id, self._compute_id
             ).status
-            self._last_known_status = ComputeContextStatus._from_api_schema(status)
+            self._last_known_status = ComputeContextStatus._from_api_model(status)
 
         return self._last_known_status
 
@@ -446,12 +447,7 @@ class ComputeContext(ClientContext, ContextDecorator):
             mode=self._connection_mode,
             cpus=self._specs.cpus,
             ram_gb=self._specs.memory,
-            cpu_architectures=[
-                pcr.DBCPUArchitectureSchema.from_str(a)
-                for a in self._specs.cpu_architectures
-            ]
-            if self._specs.cpu_architectures
-            else None,
+            cpu_architectures=self._specs.cpu_architectures,
             instance_type=self._specs.instance_type,
             storage=self._specs.storage,
             big_instance_type=self._specs.big_instance_type,
@@ -510,12 +506,7 @@ class ComputeContext(ClientContext, ContextDecorator):
                 mode=self._connection_mode,
                 cpus=self._specs.cpus,
                 ram_gb=self._specs.memory,
-                cpu_architectures=[
-                    pcr.DBCPUArchitectureSchema.from_str(a)
-                    for a in self._specs.cpu_architectures
-                ]
-                if self._specs.cpu_architectures
-                else None,
+                cpu_architectures=self._specs.cpu_architectures,
                 instance_type=self._specs.instance_type,
                 storage=self._specs.storage,
                 big_instance_type=self._specs.big_instance_type,
@@ -533,7 +524,7 @@ class ComputeContext(ClientContext, ContextDecorator):
         msg = f"View your compute metrics on: https://cloud.pola.rs/portal/{self.organization.id}/{self.workspace.id}/compute/{self._compute_id}"
         logger.info(msg)
 
-        wait = True if self._connection_mode == pcr.DBClusterModeSchema.Direct else wait
+        wait = True if self._connection_mode == pcr.DBClusterModeModel.Direct else wait
         if wait:
             _poll_compute_status_until(self, ComputeContextStatus.IDLE)
 
@@ -596,7 +587,7 @@ class ComputeContext(ClientContext, ContextDecorator):
 
         result = []
         for c in compute_contexts:
-            ctx = cls._from_api_schema(c)
+            ctx = cls._from_api_model(c)
             result.append((ctx, ctx._last_known_status))
         return result
 
@@ -625,7 +616,7 @@ class ComputeContext(ClientContext, ContextDecorator):
         compute_uuid = compute_id if isinstance(compute_id, UUID) else UUID(compute_id)
         workspace = Workspace._parse(workspace)
         details = constants.API_CLIENT.get_compute_cluster(workspace.id, compute_uuid)
-        ctx = cls._from_api_schema(details)
+        ctx = cls._from_api_model(details)
         if not ctx._last_known_status.is_available():
             msg = f"Context is in an incorrect state: {ctx._last_known_status}"
             raise RuntimeError(msg)
@@ -665,16 +656,16 @@ class ComputeContext(ClientContext, ContextDecorator):
             for context in constants.API_CLIENT.get_compute_clusters(
                 w.id,
                 status=[
-                    pcr.ComputeStatusSchema.Starting,
-                    pcr.ComputeStatusSchema.Idle,
-                    pcr.ComputeStatusSchema.Running,
+                    pcr.ComputeStatusModel.Starting,
+                    pcr.ComputeStatusModel.Idle,
+                    pcr.ComputeStatusModel.Running,
                 ],
             )
         ]
         contexts.sort(key=lambda x: x[1].request_time, reverse=True)
         idx = select_compute_cluster(contexts)
         if idx is not None:
-            return cls._from_api_schema(contexts[idx][1])
+            return cls._from_api_model(contexts[idx][1])
         return None
 
     @property
@@ -690,7 +681,11 @@ class ComputeContext(ClientContext, ContextDecorator):
     @property
     def cpu_architectures(self) -> list[CPUArchitecture] | None:  # type: ignore[valid-type]
         """The cpu_architectures of the compute context."""
-        return self._specs.cpu_architectures
+        return (
+            [a.as_str() for a in self._specs.cpu_architectures]
+            if self._specs.cpu_architectures
+            else None
+        )
 
     @property
     def instance_type(self) -> str | None:
@@ -728,7 +723,7 @@ class ComputeContext(ClientContext, ContextDecorator):
         return self._workspace
 
     @property
-    def log_level(self) -> pcr.LogLevelSchema:
+    def log_level(self) -> pcr.LogLevelModel:
         return self._log_level
 
     def _get_direct_client(self) -> pcr.SchedulerClient | None:
@@ -749,8 +744,12 @@ class ComputeContext(ClientContext, ContextDecorator):
         client_options = ClientOptions()
         client_options.public_server_crt = str.encode(server_info.public_server_key)
         client_options.insecure = self._insecure
-        compute_address = f"{server_info.public_address}:{DEFAULT_SCHEDULER_PORT}"
-        client = pcr.SchedulerClient(compute_address, client_options)
+        client = pcr.SchedulerClient(
+            server_info.public_address,
+            DEFAULT_SCHEDULER_PORT,
+            DEFAULT_OBSERVATORY_PORT,
+            client_options,
+        )
         self._direct_client = client
         return self._direct_client
 
@@ -839,7 +838,7 @@ def _poll_compute_status_until(
     timeout: int = 300,
 ) -> ComputeContextStatus:
     """Poll the compute status until the compute context is in desired_state."""
-    # Poll at least once for fast response
+    # Poll at least once for a fast response
     status = compute.get_status()
     if status == desired_state:
         return status

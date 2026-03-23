@@ -2,15 +2,15 @@
 use garde::Validate;
 #[cfg(feature = "pyo3")]
 use pyo3::pyclass;
-use serde::{Deserialize, Serialize};
 #[cfg(feature = "server")]
-use utoipa::ToSchema;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Deserialize, Serialize, Debug, PartialEq)]
-#[cfg_attr(feature = "server", derive(ToSchema))]
-#[cfg_attr(feature = "pyo3", pyclass(get_all))]
-pub struct UserSchema {
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
+pub struct UserModel {
     pub id: Uuid,
     pub email: Option<String>,
     pub first_name: Option<String>,
@@ -22,7 +22,7 @@ pub struct UserSchema {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-#[cfg_attr(feature = "server", derive(Validate, ToSchema))]
+#[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
 pub struct UserBodyArgs {
     #[cfg_attr(feature = "server", garde(length(min = 1, max = 32)))]
     pub first_name: Option<String>,

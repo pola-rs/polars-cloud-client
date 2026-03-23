@@ -6,7 +6,7 @@ build-backend = "maturin"
 name = "polars-cloud"
 dynamic = ["version"]
 authors = [{ name = "Polars", email = "info@polars.tech" }]
-description = "Execute your Polars workloads in the cloud"
+description = "Run Polars remotely, either in the Cloud or On-Prem"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
@@ -30,17 +30,20 @@ dependencies = [
   # uncomment if we want a specific commit
   # "polars[rt64, cloudpickle]@git+https://github.com/pola-rs/polars.git@86323eebc9bb44bbb234200bce339de5ebf48f5f#subdirectory=py-polars",
   # "polars-runtime-64@git+https://github.com/pola-rs/polars.git@86323eebc9bb44bbb234200bce339de5ebf48f5f#subdirectory=py-polars/runtime",
-  "polars[rt64,cloudpickle] == 1.38.1",
+  "polars[rt64,cloudpickle] == 1.39.3",
   # 'polars @ file:///home/jesse/dev/oss/polars/py-polars',
   # 'polars @ file:///home/ritchie46/code/polars/py-polars',
   'typing-extensions >= 4.0; python_version <= "3.12"',
 ]
 
 [project.scripts]
-pc = "polars_cloud.__main__:cli"
+pc = "polars_cloud:cli_main"
 
 [project.urls]
 Homepage = "https://cloud.pola.rs/"
+
+[tool.maturin]
+manifest-path = "crates/lib/Cargo.toml"
 
 [tool.mypy]
 files = ["$MYPY_CONFIG_FILE_DIR/polars_cloud", "$MYPY_CONFIG_FILE_DIR/tests"]
@@ -49,7 +52,7 @@ strict = true
 enable_error_code = ["redundant-expr", "truthy-bool", "ignore-without-code"]
 
 [[tool.mypy.overrides]]
-module = ["polars_cloud.polars_cloud"]
+module = ["polars_cloud.polars_cloud", "IPython.display"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

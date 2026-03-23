@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import builtins
 import json
+import keyword
 import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, overload
@@ -41,7 +43,7 @@ if TYPE_CHECKING:
 
     import polars_cloud.polars_cloud as pcr
     from polars_cloud._typing import FileType
-    from polars_cloud.query.query import DirectQuery
+    from polars_cloud.query import DirectQuery
     from polars_cloud.query.query_info import QueryInfo
     from polars_cloud.query.query_profile import QueryProfile
 
@@ -143,18 +145,22 @@ class QueryResult:
         """The file type where the result is written to."""
         return self.finished_task_info.sink_type
 
-    def await_profile(self) -> QueryProfile:
+    def await_profile(self, *, raise_on_failure: bool = True) -> QueryProfile:
         """Await the query profile if direct mode is enabled."""
         if self._query:
-            return self._query.await_profile()
+            return self._query.await_profile(raise_on_failure=raise_on_failure)
         else:
             msg = "profile can only be obtained from Direct mode queries"
             raise InvalidOperationError(msg)
 
-    async def await_profile_async(self) -> QueryProfile:
+    async def await_profile_async(
+        self, *, raise_on_failure: bool = True
+    ) -> QueryProfile:
         """Await the query profile asynchronously if direct mode is enabled."""
         if self._query:
-            return await self._query.await_profile_async()
+            return await self._query.await_profile_async(
+                raise_on_failure=raise_on_failure
+            )
         else:
             msg = "profile can only be obtained from Direct mode queries"
             raise InvalidOperationError(msg)
@@ -234,63 +240,91 @@ class QueryResult:
 
     def _repr_html_(self) -> str:
         """Format output data in HTML for display in Jupyter Notebooks."""
-        if self.finished_task_info.head is not None:
-            # If the query is successful, just show the (truncated) result
-            with pl.Config(tbl_hide_dataframe_shape=True):
-                return format_result(
-                    self.finished_task_info, lambda df: df._repr_html_()
+
+        def _format_table(rows: list[tuple[str, Any]]) -> str:
+            """Generate HTML table rows from a list of (label, value) tuples."""
+            table_rows = "".join(
+                f"""
+                    <tr>
+                        <td style="padding: 4px 12px 4px 0; color: #666;">{label}:</td>
+                        <td style="padding: 4px 0; font-weight: 500;">{value}</td>
+                    </tr>"""
+                for label, value in rows
+            )
+            return f"""
+                <table style="border-collapse: collapse; font-family: monospace; font-size: 12px;">
+                    {table_rows}
+                </table>"""
+
+        def _format_section(title: str, content: str) -> str:
+            """Generate an HTML section with a title and content."""
+            return f"""
+        <div style="margin-bottom: 16px;">
+            <h3 style="margin: 0 0 8px 0; color: #333; font-family: sans-serif; font-size: 14px; font-weight: 600;">{title}</h3>
+            <div style="font-family: monospace; font-size: 12px;">
+                {content}
+            </div>
+        </div>
+        """
+
+        info = self.finished_task_info
+        sections = []
+
+        # Status section (show for all queries)
+        status_color = "#4CAF50" if self.status == QueryStatus.SUCCESS else "#f44336"
+        status_content = f'<span style="color: {status_color}; font-weight: 600;">{self.status}</span>'
+        sections.append(_format_section("Query Status", status_content))
+
+        if self.status == QueryStatus.SUCCESS:
+            # Query metrics section
+            metrics_rows = [
+                ("Total Stages", info.total_stages),
+                ("Finished Stages", info.finished_stages),
+                (
+                    "Total Rows",
+                    info.n_rows_result if info.n_rows_result is not None else "N/A",
+                ),
+            ]
+            metrics_table = _format_table(metrics_rows)
+            sections.append(_format_section("Query Metrics", metrics_table))
+
+            # Location section
+            if info.sink_dst:
+                locations_html = "<br>".join(
+                    f'<code style="background: #f5f5f5; padding: 2px 6px; border-radius: 3px; font-size: 11px;">{loc}</code>'
+                    for loc in info.sink_dst
                 )
+                sections.append(_format_section("Output Location", locations_html))
+
+            # Head section (only if head is available)
+            if info.head is not None:
+                with pl.Config(tbl_hide_dataframe_shape=True):
+                    head_html = info.head._repr_html_()
+
+                head_section = f"""
+        <div style="margin-bottom: 16px;">
+            <h3 style="margin: 0 0 8px 0; color: #333; font-family: sans-serif; font-size: 14px; font-weight: 600;">Result Preview</h3>
+            <div>{head_html}</div>
+        </div>
+        """
+                sections.append(head_section)
         else:
-            return repr(self)
+            # For failed/non-successful queries, show additional info
+            error_content = (
+                f'<div style="white-space: pre-wrap;">{info.__repr__()}</div>'
+            )
+            sections.append(_format_section("Details", error_content))
+
+        # Combine all sections
+        return f"""
+        <div style="padding: 12px; border: 1px solid #ddd; border-radius: 4px; background: white;">
+            {"".join(sections)}
+        </div>
+        """
 
     def raise_err(self) -> None:
-        errors = {}  # type: ignore[var-annotated]
         assert self.finished_task_info.errors is not None
-
-        # This doesn't get passed user input, but only error types,
-        # just to be sure guard the input
-        def guarded_eval(msg: str) -> Any:
-            if msg.isalnum():
-                return eval(msg)
-            return None
-
-        # Deduplicate the errors, by converting to set.
-        for err in set(self.finished_task_info.errors):
-            # We expect {"worker/scheduler", "error: msg"}
-            payload = json.loads(err)
-            for key, value in payload.items():
-                # Example data
-                # key: "worker_id" or "scheduler"
-                # value: ValueError: msg
-
-                error_value = decode_error(value)
-
-                # Store the errors per worker/scheduler
-                if key not in errors:
-                    errors[key] = []
-                errors[key].append(error_value)
-
-        # Remove the scheduler
-        scheduler_err = errors.pop("scheduler")[0]
-        worker_errors = {}
-
-        for worker, err_list in errors.items():
-            worker_errors[worker] = err_list
-
-        try:
-            exc = next(iter(worker_errors.values()))[0]
-            if sys.version_info >= (3, 11):
-                exc.__cause__ = QueryError(
-                    f"scheduler failed with:\n{scheduler_err}",
-                    [error for errors in worker_errors.values() for error in errors],
-                )
-            else:
-                msg = f"workers failed with: {errors}"
-                exc.__cause__ = PolarsError(msg)
-            raise exc
-
-        except StopIteration:
-            raise scheduler_err from None
+        raise_query_errors(self.finished_task_info.errors)
 
     def graph(
         self,
@@ -363,23 +397,77 @@ def decode_error(encoded: str) -> BaseException:
     # This doesn't get passed user input, but only error types,
     # just to be sure guard the input
     def guarded_eval(msg: str) -> Any:
-        if msg.isalnum():
-            return eval(msg)
-        return None
+        if not msg.isidentifier() or keyword.iskeyword(msg):
+            err = f"{msg!r} is not a valid identifier"
+            raise ValueError(err)
+        obj = getattr(builtins, msg, None) or globals().get(msg)
+        if obj is None or not (
+            isinstance(obj, type) and issubclass(obj, BaseException)
+        ):
+            err = f"{msg!r} is not a known exception"
+            raise ValueError(err)
+        return obj
 
     split = encoded.split(":", 1)
     # Evaluate the string to get the class of the error type
     try:
         error_type = guarded_eval(split[0])
-        msg = split[1]
+        msg = split[1].lstrip()
 
         # Recreate the instance e.g. `ValueError(msg)`
         error_value = error_type(msg)
     # Fallback if we cannot restore the message
-    except SyntaxError:
+    except (SyntaxError, ValueError):
         error_value = pl.exceptions.ComputeError(f"spawn failed with: {encoded}")
     assert isinstance(error_value, BaseException)
     return error_value
+
+
+def raise_query_errors(errors: list[str]) -> None:
+    """Raise a Python exception from query error strings.
+
+    The errors are JSON-encoded strings from the compute plane, each containing
+    a mapping from worker/scheduler to error message.
+    """
+    parsed_errors = {}  # type: ignore[var-annotated]
+
+    # Deduplicate the errors, by converting to set.
+    for err in set(errors):
+        # We expect {"worker/scheduler", "error: msg"}
+        payload = json.loads(err)
+        for key, value in payload.items():
+            # Example data
+            # key: "worker_id" or "scheduler"
+            # value: ValueError: msg
+
+            error_value = decode_error(value)
+
+            # Store the errors per worker/scheduler
+            if key not in parsed_errors:
+                parsed_errors[key] = []
+            parsed_errors[key].append(error_value)
+
+    # Remove the scheduler
+    scheduler_err = parsed_errors.pop("scheduler")[0]
+    worker_errors = {}
+
+    for worker, err_list in parsed_errors.items():
+        worker_errors[worker] = err_list
+
+    try:
+        exc = next(iter(worker_errors.values()))[0]
+        if sys.version_info >= (3, 11):
+            exc.__cause__ = QueryError(
+                f"scheduler failed with:\n{scheduler_err}",
+                [error for errs in worker_errors.values() for error in errs],
+            )
+        else:
+            msg = f"workers failed with: {parsed_errors}"
+            exc.__cause__ = PolarsError(msg)
+        raise exc
+
+    except StopIteration:
+        raise scheduler_err from None
 
 
 if sys.version_info >= (3, 11):

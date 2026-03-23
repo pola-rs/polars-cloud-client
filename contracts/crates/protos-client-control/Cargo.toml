@@ -12,6 +12,7 @@ prost = { workspace = true }
 protos-client-compute = { workspace = true }
 protos-common = { workspace = true }
 tonic = { workspace = true }
+tonic-prost = { workspace = true }
 trait-variant = { workspace = true }
 
 [build-dependencies]
@@ -19,3 +20,7 @@ build-deps = { workspace = true }
 
 [lints]
 workspace = true
+
+[lib]
+test = false
+doctest = false
