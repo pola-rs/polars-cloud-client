@@ -2,10 +2,14 @@ syntax = "proto3";
 
 package polars_cloud.common;
 
+import "polars_cloud/common/lineage_context.proto";
+
 message Label {
   string name = 1;
 }
 
 message QueryInfo {
   repeated Label labels = 1;
+  optional string execution_id = 2;
+  optional polars_cloud.common.LineageContext lineage_context = 3;
 }

@@ -7,7 +7,6 @@ import polars as pl
 from polars._utils.cloud import prepare_cloud_plan
 from polars.exceptions import ComputeError, InvalidOperationError
 
-from polars_cloud.constants import ALLOW_LOCAL_SCANS
 from polars_cloud.context import ComputeContext
 from polars_cloud.query.dst import CsvDst, IpcDst, ParquetDst, TmpDst
 
@@ -48,6 +47,7 @@ def prepare_query(
     n_retries: int,
     sink_to_single_file: bool | None = None,
     optimizations: QueryOptFlags,
+    allow_local_scans: bool,
 ) -> tuple[bytes, PyQuerySettings]:
     """Parse query inputs as a serialized plan and settings object."""
     if pl.get_index_type() == pl.UInt32:
@@ -167,7 +167,7 @@ If you want to:
 
     try:
         plan = prepare_cloud_plan(
-            lf, optimizations=optimizations, allow_local_scans=ALLOW_LOCAL_SCANS
+            lf, optimizations=optimizations, allow_local_scans=allow_local_scans
         )
 
         if isinstance(plan, tuple):

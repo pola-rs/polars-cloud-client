@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use deprecation_macro::deprecated_since_client;
 #[cfg(feature = "pyo3")]
 use pyo3::pyclass;
 #[cfg(feature = "server")]
@@ -6,8 +7,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::EntityOrdering;
 use crate::query_status::QueryStatusCodeModel;
+use crate::{DefaultSortDirection, EntityOrdering};
 
 #[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all))]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
@@ -137,25 +138,39 @@ pub struct QueryCountModel {
     pub count_in_progress: i64,
 }
 
+fn default_datetime() -> DateTime<Utc> {
+    DateTime::UNIX_EPOCH
+}
+
+fn default_status_code() -> QueryStatusCodeModel {
+    QueryStatusCodeModel::Canceled
+}
+
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 #[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[deprecated_since_client]
 pub struct QueryStateTimingModel {
-    // TODO: Remove once version client version 0.3.0 is unused
     /// Last known state for this query
+    #[deprecated_since_client("0.7.0")]
+    #[serde(default)]
     pub final_known_state: Option<QueryStatusCodeModel>,
-    // TODO: Remove once version client version 0.3.0 is unused
     /// Time for the final state for this query
-    pub final_status_time: Option<chrono::DateTime<chrono::Utc>>,
-    // TODO: Remove once version client version 0.3.0 is unused
+    #[deprecated_since_client("0.7.0")]
+    #[serde(default)]
+    pub final_status_time: Option<DateTime<Utc>>,
     /// The last known state that this query has
+    #[deprecated_since_client("0.7.0")]
+    #[serde(default = "default_status_code")]
     pub last_known_state: QueryStatusCodeModel,
-    // TODO: Remove once version client version 0.3.0 is unused
     /// Last known status time for this query, belongs to last_known_state
-    pub last_known_status_time: chrono::DateTime<chrono::Utc>,
-    // TODO: Remove once version client version 0.3.0 is unused
+    #[deprecated_since_client("0.7.0")]
+    #[serde(default = "default_datetime")]
+    pub last_known_status_time: DateTime<Utc>,
     /// Time for the last InProgress time
-    pub last_progress_time: Option<chrono::DateTime<chrono::Utc>>,
+    #[deprecated_since_client("0.7.0")]
+    #[serde(default)]
+    pub last_progress_time: Option<DateTime<Utc>>,
 
     /// Latest state for this query
     pub latest_status: QueryStatusCodeModel,
@@ -180,6 +195,10 @@ pub struct QueryWithStateTimingModel {
 impl EntityOrdering for QueryWithStateTimingModel {
     fn order_fields() -> &'static [&'static str] {
         &["id", "latest_status_time", "request_time"]
+    }
+
+    fn default_ordering() -> Option<(&'static str, DefaultSortDirection)> {
+        Some(("id", DefaultSortDirection::Desc))
     }
 }
 

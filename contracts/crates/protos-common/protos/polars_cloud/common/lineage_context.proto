@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package polars_cloud.common;
+
+message LineageContext {
+  string job_namespace = 1;
+  string job_name = 2;
+  optional string parent_run_id = 3;
+  optional string parent_job_namespace = 4;
+  optional string parent_job_name = 5;
+}

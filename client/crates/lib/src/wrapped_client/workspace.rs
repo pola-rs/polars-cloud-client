@@ -1,11 +1,9 @@
 #![allow(clippy::result_large_err)]
 
-use client_core::{ApiError, CTRL_PLN_CLIENT_GLOBAL};
+use client_core::{ApiError, RUNTIME};
 use polars_axum_models::{
-    DBCPUArchitectureModel, InstanceSpecsModel, Pagination, WorkspaceClusterDefaultsModel,
-    WorkspaceModel, WorkspaceQueryArgs,
+    DBCPUArchitectureModel, InstanceSpecsModel, WorkspaceClusterDefaultsModel, WorkspaceModel,
 };
-use polars_backend_client::client::ApiClient;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::{Python, pyclass, pymethods};
 use uuid::Uuid;
@@ -31,9 +29,7 @@ impl WrappedAPIClient {
         py: Python,
         workspace_id: Uuid,
     ) -> Result<WorkspaceModel, ApiError> {
-        py.enter_rust(|| {
-            CTRL_PLN_CLIENT_GLOBAL.call(|client: &ApiClient| client.get_workspace(workspace_id))
-        })
+        py.enter_rust(|| RUNTIME.block_on(self.client.get_workspace(workspace_id))?)
     }
 
     #[pyo3(signature=(workspace_id))]
@@ -42,10 +38,7 @@ impl WrappedAPIClient {
         py: Python,
         workspace_id: Uuid,
     ) -> Result<Option<WorkspaceClusterDefaultsModel>, ApiError> {
-        py.enter_rust(|| {
-            CTRL_PLN_CLIENT_GLOBAL
-                .call(|client: &ApiClient| client.get_cluster_defaults(workspace_id))
-        })
+        py.enter_rust(|| RUNTIME.block_on(self.client.get_cluster_defaults(workspace_id))?)
     }
 
     #[pyo3(signature=(workspace_id, instance_type, cpus, ram_gb, storage, cpu_architectures, cluster_size)
@@ -89,8 +82,7 @@ impl WrappedAPIClient {
         };
 
         py.enter_rust(|| {
-            CTRL_PLN_CLIENT_GLOBAL
-                .call(|client: &ApiClient| client.set_cluster_defaults(workspace_id, &params))
+            RUNTIME.block_on(self.client.set_cluster_defaults(workspace_id, &params))?
         })
     }
 
@@ -101,21 +93,7 @@ impl WrappedAPIClient {
         name: Option<String>,
         organization_id: Option<Uuid>,
     ) -> Result<Vec<WorkspaceModel>, ApiError> {
-        py.enter_rust(|| {
-            CTRL_PLN_CLIENT_GLOBAL.call_paginated(|client: &ApiClient, page: i64| {
-                // TODO: offset is overridden later by (page - 1) * limit, confusing
-                let pagination = Pagination {
-                    page,
-                    limit: 1000,
-                    offset: 0,
-                };
-                let query = WorkspaceQueryArgs {
-                    name: name.clone(),
-                    organization_id,
-                };
-                client.get_workspaces(query, pagination)
-            })
-        })
+        py.enter_rust(|| RUNTIME.block_on(self.client.get_workspaces(name, organization_id))?)
     }
 
     #[pyo3(signature=(workspace_id))]

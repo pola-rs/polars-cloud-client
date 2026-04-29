@@ -88,6 +88,14 @@ pub struct WorkspaceWithUrlModel {
 #[cfg_attr(feature = "pyo3", pyclass(from_py_object, eq, eq_int))]
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
+pub enum WorkspaceDeploymentModel {
+    Aws,
+    OnPrem,
+}
+
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object, eq, eq_int))]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
 pub enum WorkspaceStateModel {
     Uninitialized,
     Pending,
@@ -114,6 +122,8 @@ pub struct WorkspaceModel {
     pub name: String,
     /// Workspace Description
     pub description: String,
+    /// Which location the workspace is deployed in
+    pub deployment: WorkspaceDeploymentModel,
     /// User who owns the Workspace
     pub creator_id: Uuid,
     /// Status of the workspace

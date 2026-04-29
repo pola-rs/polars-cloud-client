@@ -1,9 +1,10 @@
 use std::io;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
-use client_core::{CTRL_PLN_CLIENT_GLOBAL, RUNTIME};
+use client_core::{AutoRefreshApiControlPlaneClient, Client, RUNTIME};
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
@@ -246,55 +247,66 @@ async fn async_main(args: Vec<String>) -> anyhow::Result<()> {
         println!("Logging level set to DEBUG");
     }
 
+    let client = AutoRefreshApiControlPlaneClient::default();
+
     if let Some(token) = cli.token {
-        CTRL_PLN_CLIENT_GLOBAL.set_token_override(token);
+        client.set_token_override(token);
     }
 
     if let Some(token_path) = cli.token_path {
-        CTRL_PLN_CLIENT_GLOBAL.set_token_path_override(PathBuf::from(token_path));
+        client.set_token_path_override(PathBuf::from(token_path));
     }
 
+    let client: Client = Arc::new(client);
+
     match command {
-        Commands::Authenticate => {
-            CTRL_PLN_CLIENT_GLOBAL
-                .authenticate(None, None, true)
-                .await?
-        },
-        Commands::Login => CTRL_PLN_CLIENT_GLOBAL.login().await?,
+        Commands::Authenticate => client.authenticate(None, None, true).await?,
+        Commands::Login => client.login().await?,
         Commands::Setup {
             organization_name,
             workspace_name,
             no_verify,
-        } => setup(organization_name, workspace_name, !no_verify).await?,
+        } => setup(&client, organization_name, workspace_name, !no_verify).await?,
         Commands::Organization(args) => match args.command {
-            OrganizationCommands::List => print_organizations().await?,
+            OrganizationCommands::List => print_organizations(&client).await?,
             OrganizationCommands::Setup { name } => {
-                set_up_organization(name).await?;
+                set_up_organization(&client, name).await?;
             },
-            OrganizationCommands::Delete { name } => delete_organization(name).await?,
-            OrganizationCommands::Details { name } => print_organization_details(name).await?,
+            OrganizationCommands::Delete { name } => delete_organization(&client, name).await?,
+            OrganizationCommands::Details { name } => {
+                print_organization_details(&client, name).await?
+            },
         },
         Commands::Workspace(args) => match args.command {
-            WorkspaceCommands::List => print_workspaces().await?,
+            WorkspaceCommands::List => print_workspaces(&client).await?,
             WorkspaceCommands::Setup {
                 organization_name,
                 workspace_name,
                 no_verify,
-            } => setup(organization_name, workspace_name, !no_verify).await?,
+            } => setup(&client, organization_name, workspace_name, !no_verify).await?,
             WorkspaceCommands::Verify {
                 organization_name,
                 workspace_name,
                 interval,
                 timeout,
-            } => verify_workspace(organization_name, workspace_name, interval, timeout).await?,
+            } => {
+                verify_workspace(
+                    &client,
+                    organization_name,
+                    workspace_name,
+                    interval,
+                    timeout,
+                )
+                .await?
+            },
             WorkspaceCommands::Delete {
                 organization_name,
                 workspace_name,
-            } => delete_workspace(organization_name, workspace_name).await?,
+            } => delete_workspace(&client, organization_name, workspace_name).await?,
             WorkspaceCommands::Details {
                 organization_name,
                 workspace_name,
-            } => print_workspace_details(organization_name, workspace_name).await?,
+            } => print_workspace_details(&client, organization_name, workspace_name).await?,
         },
         Commands::Compute(args) => match args.command {
             ComputeCommands::Start {
@@ -308,6 +320,7 @@ async fn async_main(args: Vec<String>) -> anyhow::Result<()> {
                 wait,
             } => {
                 start_compute_cluster(
+                    &client,
                     organization_name,
                     workspace_name,
                     cpus,
@@ -323,13 +336,16 @@ async fn async_main(args: Vec<String>) -> anyhow::Result<()> {
                 organization_name,
                 workspace_name,
                 id,
-            } => stop_compute_cluster(organization_name, workspace_name, id).await?,
+            } => stop_compute_cluster(&client, organization_name, workspace_name, id).await?,
             ComputeCommands::Details {
                 organization_name,
                 workspace_name,
                 id,
-            } => print_compute_cluster_details(organization_name, workspace_name, id).await?,
-            ComputeCommands::List => print_compute_clusters().await?,
+            } => {
+                print_compute_cluster_details(&client, organization_name, workspace_name, id)
+                    .await?
+            },
+            ComputeCommands::List => print_compute_clusters(&client).await?,
         },
     };
 

@@ -8,9 +8,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::EntityOrdering;
 #[cfg(feature = "server")]
 use crate::common::validate_alphanumeric_name;
+use crate::{DefaultSortDirection, EntityOrdering};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
@@ -55,5 +55,9 @@ pub struct WorkspaceApiTokenWithNameModel {
 impl EntityOrdering for WorkspaceApiTokenWithNameModel {
     fn order_fields() -> &'static [&'static str] {
         &["created_at"]
+    }
+
+    fn default_ordering() -> Option<(&'static str, DefaultSortDirection)> {
+        Some(("created_at", DefaultSortDirection::Desc))
     }
 }

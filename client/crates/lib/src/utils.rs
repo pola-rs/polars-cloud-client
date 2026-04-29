@@ -3,6 +3,7 @@ use polars_axum_models::DBCPUArchitectureModel;
 use pyo3::{Python, pyfunction};
 use uuid::Uuid;
 
+use crate::CTRL_PLN_CLIENT_GLOBAL;
 use crate::entry::EnterRustExt;
 
 #[pyfunction]
@@ -23,6 +24,7 @@ pub fn resolve_compute_context_specs(
 ) -> Result<ComputeContextSpecs, ApiError> {
     py.enter_rust(|| {
         RUNTIME.block_on(client_core::resolve_compute_context_specs(
+            CTRL_PLN_CLIENT_GLOBAL.clone(),
             workspace_id,
             cpus,
             memory,

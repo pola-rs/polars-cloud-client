@@ -1,9 +1,9 @@
 [package]
 name = "polars-axum-models"
-version = "0.1.0"
 edition.workspace = true
 homepage.workspace = true
 license.workspace = true
+publish.workspace = true
 repository.workspace = true
 
 [lib]
@@ -12,6 +12,7 @@ doctest = false
 
 [dependencies]
 chrono = { workspace = true }
+deprecation-macro = { workspace = true }
 garde = { workspace = true, optional = true }
 pyo3 = { workspace = true, optional = true }
 regex = { workspace = true, optional = true }

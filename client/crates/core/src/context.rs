@@ -7,32 +7,30 @@ use polars_axum_models::{
 use pyo3::{pyclass, pymethods};
 use uuid::Uuid;
 
-use crate::{ApiError, ApiResult, CTRL_PLN_CLIENT_GLOBAL};
+use crate::{ApiError, ApiResult, Client};
 
-async fn get_or_fetch_defaults(
-    cached: &mut Option<Option<WorkspaceClusterDefaultsModel>>,
+async fn get_defaults<'a>(
+    client: &Client,
+    cached: &'a mut Option<Option<WorkspaceClusterDefaultsModel>>,
     workspace_id: Uuid,
-) -> anyhow::Result<&Option<WorkspaceClusterDefaultsModel>> {
+) -> anyhow::Result<&'a Option<WorkspaceClusterDefaultsModel>> {
     if cached.is_none() {
-        *cached = Some(
-            CTRL_PLN_CLIENT_GLOBAL
-                .call_async(|client| client.get_cluster_defaults(workspace_id))
-                .await?,
-        );
+        *cached = Some(client.get_cluster_defaults(workspace_id).await?);
     }
     Ok(cached.as_ref().unwrap())
 }
 
 #[expect(clippy::too_many_arguments)]
 pub async fn resolve_compute_context_specs(
+    client: Client,
     workspace_id: Uuid,
     mut cpus: Option<u32>,
     mut memory: Option<u32>,
-    mut cpu_architectures: Option<Vec<DBCPUArchitectureModel>>,
+    cpu_architectures: Option<Vec<DBCPUArchitectureModel>>,
     mut instance_type: Option<String>,
     storage: Option<u32>,
-    big_instance_type: Option<String>,
-    big_instance_multiplier: Option<u32>,
+    mut big_instance_type: Option<String>,
+    mut big_instance_multiplier: Option<u32>,
     big_instance_storage: Option<u32>,
     cluster_size: Option<u32>,
 ) -> ApiResult<ComputeContextSpecs> {
@@ -69,39 +67,62 @@ pub async fn resolve_compute_context_specs(
         ));
     }
 
-    if instance_type.is_none() && cpu_architectures.as_ref().is_none_or(|v| v.is_empty()) {
-        cpu_architectures = Some(vec![DBCPUArchitectureModel::X86_64]);
+    if (memory.is_none() || cpus.is_none()) && big_instance_multiplier.is_some() {
+        return Err(ApiError::ComputeClusterMisspecified(
+            "cannot specify `big_instance_multiplier` without (`memory` AND `cpus`)".into(),
+        ));
+    }
+
+    if instance_type.is_none() && big_instance_type.is_some() {
+        return Err(ApiError::ComputeClusterMisspecified(
+            "cannot specify a `big_instance_type` while no `instance_type` is set".into(),
+        ));
     }
 
     let mut defaults = None;
 
     if memory.is_none() && cpus.is_none() && instance_type.is_none() {
-        if let Some(defaults) = get_or_fetch_defaults(&mut defaults, workspace_id).await? {
-            match &defaults.instance_specs {
-                InstanceSpecsModel::InstanceType { standard, big: _ } => {
-                    instance_type = Some(standard.clone());
-                },
-                InstanceSpecsModel::Specs {
-                    cpus: cpus_d,
-                    ram_gb: ram_gb_d,
-                    ..
-                } => {
-                    cpus = Some(*cpus_d);
-                    memory = Some(*ram_gb_d);
-                },
-            }
-        } else {
+        let Some(defaults) = get_defaults(&client, &mut defaults, workspace_id).await? else {
             return Err(ApiError::ComputeClusterMisspecified(
                 "Compute specification not provided and no defaults available for workspace."
                     .into(),
             ));
+        };
+
+        match &defaults.instance_specs {
+            InstanceSpecsModel::InstanceType { standard, big } => {
+                instance_type = Some(standard.clone());
+                big_instance_type = big.clone();
+            },
+            InstanceSpecsModel::Specs {
+                cpus: cpus_d,
+                ram_gb: ram_gb_d,
+                multiplier,
+                ..
+            } => {
+                cpus = Some(*cpus_d);
+                memory = Some(*ram_gb_d);
+                big_instance_multiplier = *multiplier;
+            },
         }
     }
+
+    let cpu_architectures_resolved = if instance_type.is_some() {
+        None
+    } else if let Some(cpu_architectures) = cpu_architectures
+        && !cpu_architectures.is_empty()
+    {
+        Some(cpu_architectures)
+    }
+    // TODO: Add cpu_architecture to workspace cluster defaults table in control plane. Then we can retrieve defaults from there.
+    else {
+        Some(vec![DBCPUArchitectureModel::X86_64])
+    };
 
     let storage_resolved = if let Some(storage) = storage {
         Some(storage)
     } else {
-        get_or_fetch_defaults(&mut defaults, workspace_id)
+        get_defaults(&client, &mut defaults, workspace_id)
             .await?
             .as_ref()
             .and_then(|d| d.storage.map(|x| x as u32))
@@ -110,7 +131,7 @@ pub async fn resolve_compute_context_specs(
     let cluster_size_resolved = if let Some(cluster_size) = cluster_size {
         cluster_size
     } else {
-        get_or_fetch_defaults(&mut defaults, workspace_id)
+        get_defaults(&client, &mut defaults, workspace_id)
             .await?
             .as_ref()
             .map(|d| d.cluster_size as u32)
@@ -126,7 +147,7 @@ pub async fn resolve_compute_context_specs(
     Ok(ComputeContextSpecs {
         cpus,
         memory,
-        cpu_architectures,
+        cpu_architectures: cpu_architectures_resolved,
         instance_type,
         big_instance_type,
         big_instance_multiplier,
@@ -137,6 +158,7 @@ pub async fn resolve_compute_context_specs(
 }
 
 pub async fn poll_compute_status_until(
+    client: Client,
     workspace_id: Uuid,
     cluster_id: Uuid,
     desired_state: ComputeStatusModel,
@@ -144,8 +166,8 @@ pub async fn poll_compute_status_until(
     interval: Duration,
     timeout: Duration,
 ) -> ApiResult<ComputeStatusModel> {
-    let status = CTRL_PLN_CLIENT_GLOBAL
-        .call_async(|client| client.get_compute_cluster(workspace_id, cluster_id))
+    let status = client
+        .get_compute_cluster(workspace_id, cluster_id)
         .await?
         .status;
 
@@ -160,8 +182,8 @@ pub async fn poll_compute_status_until(
     for i in 0..max_polls {
         tracing::debug!("Polling compute status (try {i})");
 
-        let status = CTRL_PLN_CLIENT_GLOBAL
-            .call_async(|client| client.get_compute_cluster(workspace_id, cluster_id))
+        let status = client
+            .get_compute_cluster(workspace_id, cluster_id)
             .await?
             .status;
 
@@ -203,7 +225,8 @@ pub struct ComputeContextSpecs {
 #[pymethods]
 impl ComputeContextSpecs {
     #[new]
-    #[pyo3(signature=(*, cpus=None, memory=None, cpu_architectures=None, instance_type=None, big_instance_type=None, big_instance_multiplier=None, storage=None, big_instance_storage=None, cluster_size))]
+    #[pyo3(signature=(*, cpus=None, memory=None, cpu_architectures=None, instance_type=None, big_instance_type=None, big_instance_multiplier=None, storage=None, big_instance_storage=None, cluster_size)
+    )]
     #[expect(clippy::too_many_arguments)]
     pub fn new(
         cpus: Option<u32>,
@@ -232,21 +255,31 @@ impl ComputeContextSpecs {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use polars_axum_models::DBCPUArchitectureModel;
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use testresult::TestResult;
     use uuid::Uuid;
 
     use super::*;
+    use crate::{Client, MockControlPlaneClient};
+
+    #[fixture]
+    fn client() -> Client {
+        Arc::new(MockControlPlaneClient::new())
+    }
 
     // Helper to call with commonly used defaults for storage and cluster_size
     async fn resolve(
+        client: Client,
         cpus: Option<u32>,
         memory: Option<u32>,
         cpu_architectures: Option<Vec<DBCPUArchitectureModel>>,
         instance_type: Option<String>,
     ) -> ApiResult<ComputeContextSpecs> {
         resolve_compute_context_specs(
+            client,
             Uuid::now_v7(),
             cpus,
             memory,
@@ -263,8 +296,8 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn test_instance_type_and_cpus_rejected() -> TestResult {
-        let err = resolve(Some(4), None, None, Some("t3.micro".into()))
+    async fn test_resolve_instance_type_and_cpus(client: Client) -> TestResult {
+        let err = resolve(client, Some(4), None, None, Some("t3.micro".into()))
             .await
             .unwrap_err();
         assert!(
@@ -278,8 +311,8 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn test_instance_type_and_memory_rejected() -> TestResult {
-        let err = resolve(None, Some(8), None, Some("t3.micro".into()))
+    async fn test_resolve_instance_type_and_memory(client: Client) -> TestResult {
+        let err = resolve(client, None, Some(8), None, Some("t3.micro".into()))
             .await
             .unwrap_err();
         assert!(
@@ -292,8 +325,9 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn test_instance_type_and_cpu_architectures_rejected() -> TestResult {
+    async fn test_resolve_instance_type_and_cpu_architectures(client: Client) -> TestResult {
         let err = resolve(
+            client,
             None,
             None,
             Some(vec![DBCPUArchitectureModel::X86_64]),
@@ -309,9 +343,12 @@ mod tests {
         Ok(())
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn test_cpus_without_memory_rejected() -> TestResult {
-        let err = resolve(Some(4), None, None, None).await.unwrap_err();
+    async fn test_resolve_cpus_without_memory(client: Client) -> TestResult {
+        let err = resolve(client, Some(4), None, None, None)
+            .await
+            .unwrap_err();
         assert!(
             err.to_string()
                 .contains("`cpus` and `memory` must be specified together")
@@ -322,8 +359,10 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn test_memory_without_cpus_rejected() -> TestResult {
-        let err = resolve(None, Some(8), None, None).await.unwrap_err();
+    async fn test_resolve_memory_without_cpus(client: Client) -> TestResult {
+        let err = resolve(client, None, Some(8), None, None)
+            .await
+            .unwrap_err();
         assert!(
             err.to_string()
                 .contains("`cpus` and `memory` must be specified together")
@@ -334,8 +373,9 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn test_big_instance_type_and_multiplier_rejected() -> TestResult {
+    async fn test_resolve_big_instance_type_and_multiplier(client: Client) -> TestResult {
         let err = resolve_compute_context_specs(
+            client,
             Uuid::now_v7(),
             None,
             None,
@@ -359,8 +399,9 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn test_instance_type_and_big_instance_multiplier_rejected() -> TestResult {
+    async fn test_resolve_instance_type_and_big_instance_multiplier(client: Client) -> TestResult {
         let err = resolve_compute_context_specs(
+            client,
             Uuid::now_v7(),
             None,
             None,
@@ -384,8 +425,9 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn test_cpus_memory_and_big_instance_type_rejected() -> TestResult {
+    async fn test_resolve_cpus_memory_and_big_instance_type(client: Client) -> TestResult {
         let err = resolve_compute_context_specs(
+            client,
             Uuid::now_v7(),
             Some(4),
             Some(8),
@@ -409,10 +451,8 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn test_instance_type_succeeds() -> TestResult {
-        let specs = resolve(None, None, None, Some("t3.micro".into()))
-            .await
-            .unwrap();
+    async fn test_resolve_instance_type(client: Client) -> TestResult {
+        let specs = resolve(client, None, None, None, Some("t3.micro".into())).await?;
         assert_eq!(specs.instance_type, Some("t3.micro".into()));
         assert_eq!(specs.cpu_architectures, None);
         assert_eq!(specs.cluster_size, 1);
@@ -422,8 +462,15 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn test_cpus_and_memory_succeeds() -> TestResult {
-        let specs = resolve(Some(4), Some(8), None, None).await.unwrap();
+    async fn test_resolve_cpus_and_memory(client: Client) -> TestResult {
+        let specs = resolve(
+            client,
+            Some(4),
+            Some(8),
+            Some(vec![DBCPUArchitectureModel::X86_64]),
+            None,
+        )
+        .await?;
         assert_eq!(specs.cpus, Some(4));
         assert_eq!(specs.memory, Some(8));
 
@@ -432,8 +479,12 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn test_cpus_memory_defaults_to_x86_64() -> TestResult {
-        let specs = resolve(Some(4), Some(8), None, None).await.unwrap();
+    async fn test_resolve_cpus_memory_defaults_to_x86_64() -> TestResult {
+        let mut mock = MockControlPlaneClient::new();
+        mock.expect_get_cluster_defaults()
+            .returning(move |_| Ok(None));
+        let client = Arc::new(mock);
+        let specs = resolve(client, Some(4), Some(8), None, None).await?;
         assert_eq!(
             specs.cpu_architectures,
             Some(vec![DBCPUArchitectureModel::X86_64])
@@ -444,15 +495,15 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn test_explicit_cpu_architecture_preserved() -> TestResult {
+    async fn test_resolve_explicit_cpu_architecture_preserved(client: Client) -> TestResult {
         let specs = resolve(
+            client,
             Some(4),
             Some(8),
             Some(vec![DBCPUArchitectureModel::Arm64]),
             None,
         )
-        .await
-        .unwrap();
+        .await?;
         assert_eq!(
             specs.cpu_architectures,
             Some(vec![DBCPUArchitectureModel::Arm64])
@@ -463,11 +514,62 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn test_instance_type_cpu_architectures_stays_none() -> TestResult {
-        let specs = resolve(None, None, None, Some("t3.micro".into()))
-            .await
-            .unwrap();
+    async fn test_resolve_instance_type_cpu_architectures_stays_none(client: Client) -> TestResult {
+        let specs = resolve(client, None, None, None, Some("t3.micro".into())).await?;
         assert_eq!(specs.cpu_architectures, None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_resolve_get_defaults() -> TestResult {
+        // mock default specs
+        let mut mock = MockControlPlaneClient::new();
+        mock.expect_get_cluster_defaults().returning(move |_| {
+            Ok(Some(WorkspaceClusterDefaultsModel {
+                instance_specs: InstanceSpecsModel::Specs {
+                    cpus: 5,
+                    ram_gb: 10,
+                    cpu_architectures: vec![DBCPUArchitectureModel::Arm64],
+                    multiplier: None,
+                },
+                storage: None,
+                cluster_size: 0,
+            }))
+        });
+        let client = Arc::new(mock);
+
+        let specs = resolve(client, None, None, None, None).await?;
+
+        assert_eq!(specs.cpus, Some(5));
+        assert_eq!(specs.memory, Some(10));
+        assert_eq!(
+            specs.cpu_architectures,
+            Some(vec![DBCPUArchitectureModel::Arm64])
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_resolve_get_defaults_big_instance() -> TestResult {
+        let mut mock = MockControlPlaneClient::new();
+        mock.expect_get_cluster_defaults().returning(move |_| {
+            Ok(Some(WorkspaceClusterDefaultsModel {
+                instance_specs: InstanceSpecsModel::InstanceType {
+                    standard: "small".to_string(),
+                    big: Some("big".into()),
+                },
+                storage: None,
+                cluster_size: 0,
+            }))
+        });
+        let client = Arc::new(mock);
+
+        let specs = resolve(client, None, None, None, None).await?;
+
+        assert_eq!(specs.instance_type, Some("small".into()));
+        assert_eq!(specs.big_instance_type, Some("big".into()));
+
         Ok(())
     }
 }

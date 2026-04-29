@@ -33,7 +33,7 @@ use uuid::Uuid;
 
 use crate::VERSIONS;
 use crate::entry::EnterRustExt;
-use crate::query_settings::PyQuerySettings;
+use crate::query_settings::{PyLineageContext, PyQuerySettings};
 use crate::serde_types::{
     QueryDetailPy, QueryInfoPy, QueryProfilePy, query_profile_to_py, query_result_to_py,
 };
@@ -239,7 +239,8 @@ impl SchedulerClient {
         )
     }
 
-    #[pyo3(signature = (plan, settings, token, username=None, labels=None))]
+    #[pyo3(signature = (plan, settings, token, username=None, labels=None, execution_id=None, lineage_context=None))]
+    #[expect(clippy::too_many_arguments)]
     pub fn do_query(
         &self,
         py: Python<'_>,
@@ -248,11 +249,15 @@ impl SchedulerClient {
         token: Option<String>,
         username: Option<String>,
         labels: Option<Vec<String>>,
+        execution_id: Option<String>,
+        lineage_context: Option<PyLineageContext>,
     ) -> ApiResult<Uuid> {
         py.enter_rust(|| {
             let request = SubmitQueryRequest {
                 query_info: QueryInfo {
                     labels: labels.unwrap_or_default(),
+                    execution_id,
+                    lineage_context: lineage_context.map(protos_common::LineageContext::from),
                 },
                 plan: plan.into(),
                 query_settings: settings.into(),

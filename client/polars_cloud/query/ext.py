@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import copy
 from typing import TYPE_CHECKING, Any, overload
+from uuid import UUID
 
 import polars as pl
 from polars.lazyframe.opt_flags import DEFAULT_QUERY_OPT_FLAGS
 
 from polars_cloud import config as pc_cfg
 from polars_cloud.query.dst import CsvDst, IpcDst, ParquetDst, TmpDst
+from polars_cloud.query.lineage import LineageContext
 from polars_cloud.query.query import DistributionSettings, spawn
 
 if TYPE_CHECKING:
@@ -33,7 +35,7 @@ if TYPE_CHECKING:
         ShuffleFormat,
         SingleWorkerOps,
     )
-    from polars_cloud.context import ComputeContext
+    from polars_cloud.context import ClientContext
     from polars_cloud.query import DirectQuery, ProxyQuery
     from polars_cloud.query.query_result import QueryResult
 
@@ -47,19 +49,20 @@ class LazyFrameRemote:
     def __init__(
         self,
         lf: pl.LazyFrame,
-        context: ComputeContext | None = None,
+        context: ClientContext | None = None,
         plan_type: PlanTypePreference = "dot",
         n_retries: int = 0,
         engine: Engine = "auto",
         scaling_mode: ScalingMode = "auto",
     ) -> None:
         self.lf: pl.LazyFrame = lf
-        self.context: ComputeContext | None = context
+        self.context: ClientContext | None = context
         self._engine: Engine = engine
         self._labels: None | list[str] = None
         self._n_retries = n_retries
         self.plan_type: PlanTypePreference = plan_type
         self.scaling_mode = scaling_mode
+        self._lineage: LineageContext | None = None
 
     def distributed(
         self,
@@ -69,7 +72,7 @@ class LazyFrameRemote:
         shuffle_compression_level: int | None = None,
         sort_partitioned: bool = True,
         pre_aggregation: bool = True,
-        expression_extraction: bool = False,
+        expression_lowering: bool = False,
         equi_join_broadcast_limit: int = 256 * 1024**2,
         partitions_per_worker: int | None = None,
         single_worker_ops: SingleWorkerOps = "auto",
@@ -94,10 +97,8 @@ class LazyFrameRemote:
         pre_aggregation
             Whether group-by and selected aggregations are pre-aggregated on
             worker nodes if possible.
-        expression_extraction
-            Whether sub-expressions are extracted into a form amenable to distributed
-            processing. For example `filter(pl.col.x < pl.col.y.mean())`, here the
-            `mean` would be pre-aggregated if the option is set to `True`.
+        expression_lowering
+            Whether individual expressions can be lowered into distributed operations.
 
             .. warning::
                 This functionality is experimental. It may be
@@ -146,7 +147,7 @@ class LazyFrameRemote:
         distributed_settings = DistributionSettings(
             sort_partitioned=sort_partitioned,
             pre_aggregation=pre_aggregation,
-            expression_extraction=expression_extraction,
+            expression_lowering=expression_lowering,
             equi_join_broadcast_limit=equi_join_broadcast_limit,
             partitions_per_worker=partitions_per_worker,
             single_worker_ops=single_worker_ops,
@@ -162,6 +163,7 @@ class LazyFrameRemote:
             shuffle_compression=shuffle_compression,
             shuffle_compression_level=shuffle_compression_level,
             shuffle_format=shuffle_format,
+            lineage=self._lineage,
         )
 
         return exec
@@ -175,6 +177,7 @@ class LazyFrameRemote:
             n_retries=self._n_retries,
             labels=self._labels,
             engine=self._engine,
+            lineage=self._lineage,
         )
 
     def labels(self, labels: list[str] | str) -> LazyFrameRemote:
@@ -190,6 +193,94 @@ class LazyFrameRemote:
         >>> query.remote(ctx).labels("docs").sink_parquet(...)
         """
         self._labels = [labels] if isinstance(labels, str) else labels
+        return self
+
+    @overload
+    def with_lineage(
+        self,
+        *,
+        job_namespace: str,
+        job_name: str,
+        parent_run_id: None = None,
+        parent_job_namespace: None = None,
+        parent_job_name: None = None,
+    ) -> LazyFrameRemote: ...
+
+    @overload
+    def with_lineage(
+        self,
+        *,
+        job_namespace: str,
+        job_name: str,
+        parent_run_id: UUID | str,
+        parent_job_namespace: str,
+        parent_job_name: str,
+    ) -> LazyFrameRemote: ...
+
+    def with_lineage(
+        self,
+        *,
+        job_namespace: str,
+        job_name: str,
+        parent_run_id: UUID | str | None = None,
+        parent_job_namespace: str | None = None,
+        parent_job_name: str | None = None,
+    ) -> LazyFrameRemote:
+        """Configure OpenLineage metadata for this query.
+
+        Note. Supported for on-premises infrastructure only. For lineage to work,
+        the lineage transport must be set in the cluster configuration file in
+        addition to configuring the job metadata here.
+
+        .. warning::
+            This functionality is considered **unstable**. It may be changed
+            at any point without it being considered a breaking change.
+
+        Parameters
+        ----------
+        job_namespace
+            The job namespace.
+        job_name
+            The job name to use in OpenLineage events.
+        parent_run_id
+            The run ID of the parent orchestrator run (e.g. Airflow task run UUID).
+            To configure a parent run, every `parent_run_*` field must be set to
+            a non-empty value.
+        parent_job_namespace
+            The namespace of the parent orchestrator job.
+        parent_job_name
+            The job name of the parent orchestrator job.
+        """
+        if not job_name:
+            msg = "'job_name' must not be empty"
+            raise ValueError(msg)
+        if not job_namespace:
+            msg = "'job_namespace' must not be empty"
+            raise ValueError(msg)
+
+        if isinstance(parent_run_id, UUID):
+            parent_run_uuid = parent_run_id
+        elif isinstance(parent_run_id, str):
+            parent_run_uuid = UUID(parent_run_id)
+        elif parent_run_id is None:
+            parent_run_uuid = None
+        else:
+            msg = f"unable to parse 'parent_run_id' {parent_run_id!r} as a UUID"
+            raise TypeError(msg)
+
+        parent_fields = [parent_run_id, parent_job_name, parent_job_namespace]
+        n_provided = sum(v is not None for v in parent_fields)
+        if n_provided not in (0, 3):
+            msg = "lineage parent run requires all three parent parameters to be set"
+            raise ValueError(msg)
+
+        self._lineage = LineageContext(
+            job_namespace=job_namespace,
+            job_name=job_name,
+            parent_run_id=parent_run_uuid,
+            parent_job_namespace=parent_job_namespace,
+            parent_job_name=parent_job_name,
+        )
         return self
 
     def _scaling_mode(self) -> ExecuteRemote:
@@ -289,7 +380,7 @@ class LazyFrameRemote:
 
         This is syntactic sugar for:
 
-        ``.execute().await_result().lazy()``
+        ``.execute().lazy()``
 
         Examples
         --------
@@ -684,7 +775,7 @@ class ExecuteRemote:
     def __init__(
         self,
         lf: pl.LazyFrame,
-        context: ComputeContext | None,
+        context: ClientContext | None,
         plan_type: PlanTypePreference,
         n_retries: int,
         engine: Engine,
@@ -693,9 +784,10 @@ class ExecuteRemote:
         shuffle_format: ShuffleFormat = "auto",
         shuffle_compression_level: int | None = None,
         distributed_settings: DistributionSettings | None = None,
+        lineage: LineageContext | None = None,
     ) -> None:
         self.lf: pl.LazyFrame = lf
-        self.context: ComputeContext | None = context
+        self.context: ClientContext | None = context
         self._engine: Engine = engine
         self._labels: None | list[str] = labels
         self._n_retries = n_retries
@@ -705,6 +797,7 @@ class ExecuteRemote:
         self._shuffle_format: ShuffleFormat = shuffle_format
         self._shuffle_compression_level = shuffle_compression_level
         self._distributed_settings: DistributionSettings | None = distributed_settings
+        self._lineage: LineageContext | None = lineage
 
     @overload
     def execute(
@@ -784,6 +877,7 @@ class ExecuteRemote:
             n_retries=self._n_retries,
             distributed=self._distributed_settings,
             optimizations=optimizations,
+            lineage=self._lineage,
         )
 
         if blocking:
@@ -987,7 +1081,6 @@ class ExecuteRemote:
             metadata=metadata,
             arrow_schema=arrow_schema,
         )
-
         return spawn(
             lf=self.lf,
             dst=dst,
@@ -1002,6 +1095,7 @@ class ExecuteRemote:
             n_retries=self._n_retries,
             distributed=self._distributed_settings,
             optimizations=optimizations,
+            lineage=self._lineage,
         )
 
     def sink_csv(
@@ -1179,6 +1273,7 @@ class ExecuteRemote:
             distributed=self._distributed_settings,
             sink_to_single_file=sink_to_single_file,
             optimizations=optimizations,
+            lineage=self._lineage,
         )
 
     def sink_ipc(
@@ -1284,12 +1379,13 @@ class ExecuteRemote:
             distributed=self._distributed_settings,
             sink_to_single_file=sink_to_single_file,
             optimizations=optimizations,
+            lineage=self._lineage,
         )
 
 
 def _lf_remote(
     lf: pl.LazyFrame,
-    context: ComputeContext | None = None,
+    context: ClientContext | None = None,
     *,
     plan_type: PlanTypePreference = "dot",
     n_retries: int = 0,

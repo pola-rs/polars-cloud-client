@@ -188,12 +188,13 @@ pub enum IRNodeProperties {
 
     // New TaskPlan specific variants
     ShuffleRead {
-        stage_number: u32,
+        shuffle_number: u32,
         partitioning: PartitioningModel,
         is_local: bool,
         schema_names: Vec<String>,
     },
     ShuffleWrite {
+        shuffle_number: u32,
         partitioning: Option<PartitioningModel>,
         collect_samples_col: Option<String>,
     },

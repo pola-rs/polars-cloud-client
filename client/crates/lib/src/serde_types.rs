@@ -17,7 +17,7 @@ use crate::query_settings::{
 pub struct DistributedSettings {
     sort_partitioned: bool,
     pre_aggregation: bool,
-    expression_extraction: bool,
+    expression_lowering: bool,
     equi_join_broadcast_limit: u64,
     partitions_per_worker: Option<u32>,
     single_worker_ops: PySingleWorkerOps,
@@ -29,7 +29,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for DistributedSettings {
     fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
         let sort_partitioned = obj.getattr("sort_partitioned")?.extract()?;
         let pre_aggregation = obj.getattr("pre_aggregation")?.extract()?;
-        let expression_extraction = obj.getattr("expression_extraction")?.extract()?;
+        let expression_lowering = obj.getattr("expression_lowering")?.extract()?;
         let equi_join_broadcast_limit = obj.getattr("equi_join_broadcast_limit")?.extract()?;
         let partitions_per_worker = obj.getattr("partitions_per_worker")?.extract()?;
         let single_worker_ops = match obj.getattr("single_worker_ops")?.extract::<&str>()? {
@@ -45,7 +45,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for DistributedSettings {
         Ok(DistributedSettings {
             sort_partitioned,
             pre_aggregation,
-            expression_extraction,
+            expression_lowering,
             equi_join_broadcast_limit,
             partitions_per_worker,
             single_worker_ops,
@@ -70,7 +70,7 @@ pub fn serialize_query_settings(
         Some(settings) => PyQueryType::Distributed {
             shuffle_opts,
             pre_aggregation: settings.pre_aggregation,
-            expression_extraction: settings.expression_extraction,
+            expression_lowering: settings.expression_lowering,
             sort_partitioned: settings.sort_partitioned,
             equi_join_broadcast_limit: settings.equi_join_broadcast_limit,
             partitions_per_worker: settings.partitions_per_worker,

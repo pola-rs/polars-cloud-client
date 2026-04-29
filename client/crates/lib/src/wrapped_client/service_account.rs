@@ -1,10 +1,9 @@
 #![allow(clippy::result_large_err)]
 
-use client_core::{ApiError, CTRL_PLN_CLIENT_GLOBAL};
+use client_core::{ApiError, RUNTIME};
 use polars_axum_models::{
     WorkSpaceTokenBodyArgs, WorkspaceAPITokenModel, WorkspaceApiTokenWithNameModel,
 };
-use polars_backend_client::client::ApiClient;
 use pyo3::{Python, pymethods};
 use uuid::Uuid;
 
@@ -18,10 +17,7 @@ impl WrappedAPIClient {
         py: Python,
         workspace_id: Uuid,
     ) -> Result<Vec<WorkspaceApiTokenWithNameModel>, ApiError> {
-        py.enter_rust(|| {
-            CTRL_PLN_CLIENT_GLOBAL
-                .call(|client: &ApiClient| client.get_workspace_tokens(workspace_id))
-        })
+        py.enter_rust(|| RUNTIME.block_on(self.client.get_workspace_tokens(workspace_id))?)
     }
 
     pub fn create_service_account(
@@ -32,10 +28,8 @@ impl WrappedAPIClient {
         description: Option<String>,
     ) -> Result<WorkspaceAPITokenModel, ApiError> {
         py.enter_rust(|| {
-            CTRL_PLN_CLIENT_GLOBAL.call(move |client: &ApiClient| {
-                let body = WorkSpaceTokenBodyArgs { name, description };
-                client.create_workspace_token(workspace_id, body)
-            })
+            let body = WorkSpaceTokenBodyArgs { name, description };
+            RUNTIME.block_on(self.client.create_workspace_token(workspace_id, body))?
         })
     }
 
@@ -46,9 +40,7 @@ impl WrappedAPIClient {
         user_id: Uuid,
     ) -> Result<(), ApiError> {
         py.enter_rust(|| {
-            CTRL_PLN_CLIENT_GLOBAL.call(move |client: &ApiClient| {
-                client.delete_workspace_token(workspace_id, user_id)
-            })
+            RUNTIME.block_on(self.client.delete_workspace_token(workspace_id, user_id))?
         })
     }
 }

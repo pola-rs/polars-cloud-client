@@ -88,6 +88,30 @@ class ClusterContext(ClientContext):
     The cluster context is an abstraction of some remote cluster that is routable
     from the client. This will bypass any calls to the Polars Cloud control plane
     and talk to the cluster's scheduler directly.
+
+    Parameters
+    ----------
+    compute_address
+        The address of the scheduler that is reachable from the client.
+    scheduler_port
+        The port on which the scheduler is listening. Defaults to `5051`.
+    observatory_port
+        The port on which the observatory is listening. Defaults to `3001`.
+    insecure
+        Disable TLS for the connection. Defaults to `False`.
+    tls_cert_domain
+        Override the domain name used for TLS certificate verification.
+    public_server_crt
+        Public certificate of the server, used to verify the server's TLS certificate.
+    tls_certificate
+        Client certificate for mutual TLS authentication.
+    tls_private_key
+        Private key corresponding to `tls_certificate`.
+
+    Examples
+    --------
+    >>> ctx = pc.ClusterContext(compute_address="your-cluster-compute-address")
+    >>> lf.remote(ctx).execute()
     """
 
     def __init__(
@@ -101,9 +125,11 @@ class ClusterContext(ClientContext):
         public_server_crt: bytes | None = None,
         tls_certificate: bytes | None = None,
         tls_private_key: bytes | None = None,
+        allow_filesystem_scans: bool | None = None,
     ) -> None:
         self._connection_mode = pcr.DBClusterModeModel.Direct
         self._compute_id = uuid4()
+        self.allow_filesystem_scans = allow_filesystem_scans
         client_options = ClientOptions()
 
         client_options.tls_cert_domain = tls_cert_domain

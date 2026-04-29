@@ -1,7 +1,11 @@
-use client_core::{ApiError, CTRL_PLN_CLIENT_GLOBAL, RUNTIME};
-use polars_backend_client::client::ApiClient;
+#![allow(clippy::result_large_err)]
+
+use std::sync::Arc;
+
+use client_core::{ApiError, ControlPlaneClient, RUNTIME};
 use pyo3::{Python, pyclass, pymethods};
 
+use crate::CTRL_PLN_CLIENT_GLOBAL;
 use crate::entry::EnterRustExt;
 
 pub mod aws;
@@ -14,8 +18,18 @@ pub mod user;
 pub mod workspace;
 
 #[pyclass(from_py_object, name = "ApiClient")]
-#[derive(Clone, Default)]
-pub struct WrappedAPIClient {}
+#[derive(Clone)]
+pub struct WrappedAPIClient {
+    pub(crate) client: Arc<dyn ControlPlaneClient>,
+}
+
+impl Default for WrappedAPIClient {
+    fn default() -> Self {
+        Self {
+            client: CTRL_PLN_CLIENT_GLOBAL.clone(),
+        }
+    }
+}
 
 #[pymethods]
 impl WrappedAPIClient {
@@ -25,27 +39,15 @@ impl WrappedAPIClient {
     }
 
     fn login(&self, py: Python) -> Result<(), ApiError> {
-        py.enter_rust(|| RUNTIME.block_on(CTRL_PLN_CLIENT_GLOBAL.login())?)
+        py.enter_rust(|| RUNTIME.block_on(self.client.login())?)
     }
 
     fn clear_authentication(&self, py: Python) {
-        let _ = py.enter_rust_ok(|| CTRL_PLN_CLIENT_GLOBAL.clear_authentication());
+        let _ = py.enter_rust_ok(|| self.client.clear_authentication());
     }
 
     fn get_auth_header(&self, py: Python) -> Result<String, ApiError> {
-        let out = py.enter_rust(|| {
-            CTRL_PLN_CLIENT_GLOBAL
-                .call(|_api_client: &ApiClient| async { Ok(()) })
-                .map(|_| {
-                    CTRL_PLN_CLIENT_GLOBAL
-                        .rest()
-                        .auth_header
-                        .read()
-                        .unwrap()
-                        .clone()
-                })
-        })?;
-        Ok(out)
+        py.enter_rust(|| RUNTIME.block_on(self.client.get_auth_header())?)
     }
 
     #[pyo3(signature = (client_id=None, client_secret=None, interactive=true))]
@@ -57,11 +59,10 @@ impl WrappedAPIClient {
         interactive: bool,
     ) -> Result<(), ApiError> {
         py.enter_rust(|| {
-            RUNTIME.block_on(CTRL_PLN_CLIENT_GLOBAL.authenticate(
-                client_id,
-                client_secret,
-                interactive,
-            ))?
+            RUNTIME.block_on(
+                self.client
+                    .authenticate(client_id, client_secret, interactive),
+            )?
         })
     }
 }

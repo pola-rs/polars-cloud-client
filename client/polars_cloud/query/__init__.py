@@ -1,5 +1,6 @@
 from polars_cloud.query.dst import CsvDst, IpcDst, ParquetDst
 from polars_cloud.query.ext import ExecuteRemote, LazyFrameRemote
+from polars_cloud.query.lineage import LineageContext
 from polars_cloud.query.query import (
     spawn,
     spawn_blocking,
@@ -19,6 +20,7 @@ __all__ = [
     "ExecuteRemote",
     "IpcDst",
     "LazyFrameRemote",
+    "LineageContext",
     "ParquetDst",
     "ProxyQuery",
     "QueryDetail",

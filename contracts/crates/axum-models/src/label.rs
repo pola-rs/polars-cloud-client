@@ -10,7 +10,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::EntityOrdering;
+use crate::{DefaultSortDirection, EntityOrdering};
 
 #[cfg(feature = "server")]
 static COLOR_HEX: LazyLock<Regex> =
@@ -42,9 +42,14 @@ pub struct LabelOutputModel {
     /// Label color
     pub color: String,
 }
+
 impl EntityOrdering for LabelOutputModel {
     fn order_fields() -> &'static [&'static str] {
         &["id", "name"]
+    }
+
+    fn default_ordering() -> Option<(&'static str, DefaultSortDirection)> {
+        Some(("id", DefaultSortDirection::Desc))
     }
 }
 

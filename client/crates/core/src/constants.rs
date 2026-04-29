@@ -27,11 +27,14 @@ pub static AUTH_DOMAIN: LazyLock<String> = LazyLock::new(|| {
 });
 
 pub static API_ADDR: LazyLock<String> = LazyLock::new(|| {
+    if let Ok(addr) = std::env::var("POLARS_CLOUD_API_ADDR") {
+        return addr;
+    }
     let domain =
         std::env::var("POLARS_CLOUD_DOMAIN").unwrap_or_else(|_e| "prd.cloud.pola.rs".to_string());
     let prefix =
         std::env::var("POLARS_CLOUD_API_DOMAIN_PREFIX").unwrap_or_else(|_e| "api".to_string());
-    format!("https://{prefix}.{domain}")
+    format!("https://{prefix}.{domain}:443")
 });
 
 pub static CONFIG_DIR: LazyLock<PathBuf> = LazyLock::new(|| {

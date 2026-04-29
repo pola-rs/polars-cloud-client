@@ -5,7 +5,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::EntityOrdering;
+use crate::{DefaultSortDirection, EntityOrdering};
 
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -31,8 +31,13 @@ pub struct OrganizationUserModel {
     pub avatar_url: String,
     pub role: OrganizationRoleModel,
 }
+
 impl EntityOrdering for OrganizationUserModel {
     fn order_fields() -> &'static [&'static str] {
         &["id", "first_name", "last_name"]
+    }
+
+    fn default_ordering() -> Option<(&'static str, DefaultSortDirection)> {
+        Some(("id", DefaultSortDirection::Desc))
     }
 }
