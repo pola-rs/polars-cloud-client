@@ -1,8 +1,8 @@
 use std::fmt;
 use std::str::FromStr;
 
-use prost::Message;
 pub use prost::bytes::Bytes;
+use prost::{DecodeError, Message};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -41,6 +41,8 @@ impl From<common::User> for User {
 #[derive(Default, Clone)]
 pub struct QueryInfo {
     pub labels: Vec<String>,
+    pub execution_id: Option<String>,
+    pub lineage_context: Option<common::LineageContext>,
 }
 
 impl QueryInfo {
@@ -50,6 +52,10 @@ impl QueryInfo {
 
     pub fn decode(bytes: Bytes) -> Self {
         common::QueryInfo::decode(bytes).unwrap().into()
+    }
+
+    pub fn try_decode(bytes: Bytes) -> Result<Self, DecodeError> {
+        common::QueryInfo::decode(bytes).map(|info| info.into())
     }
 }
 
@@ -61,6 +67,8 @@ impl From<QueryInfo> for common::QueryInfo {
                 .into_iter()
                 .map(|name| common::Label { name })
                 .collect(),
+            execution_id: value.execution_id,
+            lineage_context: value.lineage_context,
         }
     }
 }
@@ -69,6 +77,8 @@ impl From<common::QueryInfo> for QueryInfo {
     fn from(value: common::QueryInfo) -> Self {
         Self {
             labels: value.labels.into_iter().map(|label| label.name).collect(),
+            execution_id: value.execution_id,
+            lineage_context: value.lineage_context,
         }
     }
 }

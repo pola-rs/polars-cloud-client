@@ -67,6 +67,7 @@ pub enum PhysNodeProperties {
         maintain_order: bool,
         mkdir: bool,
         cloud_options: bool,
+        sinked_paths_callback: Option<String>,
     },
     Filter {
         predicate: String,
@@ -239,6 +240,7 @@ pub enum PhysNodeProperties {
         cloud_options: bool,
         max_rows_per_file: u64,
         approximate_bytes_per_file: u64,
+        sinked_paths_callback: Option<String>,
     },
     PeakMin,
     PeakMax,
@@ -273,6 +275,12 @@ pub enum PhysNodeProperties {
         multithreaded: bool,
         maintain_order: bool,
         limit: Option<u64>,
+    },
+    SortedUnique {
+        keys: Vec<String>,
+    },
+    IsFirstDistinct {
+        keys: Vec<String>,
     },
     Slice {
         offset: i64,
@@ -312,7 +320,9 @@ pub enum PhysNodeProperties {
         nulls_equal: bool,
         output_as_bool: bool,
     },
-    MergeSorted,
+    MergeSorted {
+        maintain_order: bool,
+    },
     PythonScan {
         scan_source_type: String,
         n_rows: Option<u64>,
@@ -321,6 +331,14 @@ pub enum PhysNodeProperties {
         schema_names: Vec<String>,
         is_pure: bool,
         validate_schema: bool,
+    },
+    StrptimeInfer {
+        format: Option<String>,
+        strict: bool,
+        exact: bool,
+    },
+    Interpolate {
+        method: String,
     },
 }
 

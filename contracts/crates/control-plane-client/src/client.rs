@@ -186,7 +186,45 @@ impl ApiClient {
         )
     }
 
-    pub async fn delete_workspace(
+    pub async fn create_on_prem_workspace(&self, params: WorkSpaceArgs) -> Result<WorkspaceModel> {
+        self.post("/api/v1/workspace/on-prem")
+            .json(params)
+            .await?
+            .json()
+            .await
+    }
+
+    pub async fn delete_on_prem_workspace(&self, workspace_id: Uuid) -> Result<()> {
+        self.delete(&format!("/api/v1/workspace/on-prem/{workspace_id}"))
+            .await?
+            .empty()
+            .await
+    }
+
+    pub async fn register_compute(
+        &self,
+        workspace_id: Uuid,
+        params: RegisterComputeClusterArgs,
+    ) -> Result<ComputeTokenModel> {
+        self.post(&format!("/api/v1/workspace/on-prem/{workspace_id}/compute"))
+            .json(params)
+            .await?
+            .json()
+            .await
+    }
+
+    pub async fn create_aws_workspace(
+        &self,
+        params: WorkSpaceArgs,
+    ) -> Result<WorkspaceWithUrlModel> {
+        self.post("/api/v1/workspace/aws")
+            .json(params)
+            .await?
+            .json()
+            .await
+    }
+
+    pub async fn delete_aws_workspace(
         &self,
         workspace_id: Uuid,
     ) -> Result<Option<DeleteWorkspaceModel>> {
@@ -202,15 +240,7 @@ impl ApiClient {
         }
     }
 
-    pub async fn create_workspace(&self, params: WorkSpaceArgs) -> Result<WorkspaceWithUrlModel> {
-        self.post("/api/v1/workspace/aws")
-            .json(params)
-            .await?
-            .json()
-            .await
-    }
-
-    pub async fn get_workspace_setup_url(
+    pub async fn get_aws_workspace_setup_url(
         &self,
         workspace_id: Uuid,
     ) -> Result<WorkspaceSetupUrlModel> {
@@ -220,7 +250,7 @@ impl ApiClient {
             .await
     }
 
-    pub async fn get_available_instance_types(
+    pub async fn get_aws_available_instance_types(
         &self,
         workspace_id: Uuid,
     ) -> Result<Vec<WorkspaceComputeInstanceTypeModel>> {
@@ -314,7 +344,7 @@ impl ApiClient {
     pub async fn register_compute_cluster_manifest(
         &self,
         workspace_id: Uuid,
-        params: RegisterComputeClusterArgs,
+        params: RegisterComputeClusterManifestArgs,
     ) -> Result<ManifestModel> {
         self.post(&format!("/api/v1/workspace/{workspace_id}/manifest"))
             .json(params)
@@ -743,7 +773,7 @@ impl ApiClient {
     ) -> Result<Paginated<QueryWithStateTimingModel>> {
         self.get(&format!("/api/v1/workspace/{workspace_id}/query"))
             .pagination(&pagination)
-            .parameter("order_direction", "asc")
+            .parameter("order", "id,asc")
             .parameter_opt("cluster_id", filters.cluster_id)
             .parameter_opt("user_id", filters.user_id)
             .await?

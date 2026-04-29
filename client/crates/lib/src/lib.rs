@@ -5,10 +5,12 @@ mod serde_types;
 mod utils;
 mod wrapped_client;
 
+use std::sync::Arc;
+
 use client_core::utils::{polars_version, py_is_token_expired, python_version};
 use client_core::{
-    AuthLoadError, ComputeClusterMisspecified, ComputeContextSpecs, EncodedPolarsError,
-    NotFoundError, VERSIONS, get_versions,
+    AuthLoadError, AutoRefreshApiControlPlaneClient, ComputeClusterMisspecified,
+    ComputeContextSpecs, EncodedPolarsError, NotFoundError, RUNTIME, VERSIONS, get_versions,
 };
 use polars_axum_models::{
     ComputeClusterPublicInfoModel, ComputeModel, ComputeStatusModel, ComputeTokenModel,
@@ -23,10 +25,17 @@ use pyo3::prelude::*;
 
 use self::query_settings::PyShuffleOpts;
 use crate::query_scheduler::*;
-use crate::query_settings::PyQuerySettings;
+use crate::query_settings::{PyLineageContext, PyQuerySettings};
 use crate::serde_types::{QueryDetailPy, QueryPlanTimingPy};
 use crate::wrapped_client::WrappedAPIClient;
 use crate::wrapped_client::workspace::DefaultComputeSpecs;
+
+pub static CTRL_PLN_CLIENT_GLOBAL: std::sync::LazyLock<Arc<AutoRefreshApiControlPlaneClient>> =
+    std::sync::LazyLock::new(|| {
+        // `connect_lazy()` in tonic calls `tokio::task::spawn` internally, so we need to enter the runtime.
+        let _guard = RUNTIME.0.enter();
+        Arc::new(AutoRefreshApiControlPlaneClient::default())
+    });
 
 #[pymodule]
 fn polars_cloud(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
@@ -86,6 +95,8 @@ fn polars_cloud(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<QueryPlansPy>().unwrap();
     m.add_class::<PlanFormatPy>().unwrap();
     m.add_class::<ComputeVersionsPy>().unwrap();
+
+    m.add_class::<PyLineageContext>().unwrap();
 
     m.add("NotFoundError", m.py().get_type::<NotFoundError>())
         .unwrap();

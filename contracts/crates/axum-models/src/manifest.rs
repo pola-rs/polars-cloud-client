@@ -11,8 +11,8 @@ use version_number::VersionNumber;
 #[cfg(feature = "server")]
 use crate::common::validate_alphanumeric_name;
 use crate::{
-    DBCPUArchitectureModel, DBClusterModeModel, EntityOrdering, InstanceSpecsModel, LogLevelModel,
-    PythonVersion,
+    DBCPUArchitectureModel, DBClusterModeModel, DefaultSortDirection, EntityOrdering,
+    InstanceSpecsModel, LogLevelModel, PythonVersion,
 };
 
 #[derive(Default, Debug, Deserialize)]
@@ -154,13 +154,17 @@ impl ManifestModel {
 impl EntityOrdering for ManifestModel {
     fn order_fields() -> &'static [&'static str] {
         &[
-            "name",
             "id",
+            "name",
             "cluster_size",
             "req_storage",
             "req_ram_gb",
             "req_cpu_cores",
         ]
+    }
+
+    fn default_ordering() -> Option<(&'static str, DefaultSortDirection)> {
+        Some(("id", DefaultSortDirection::Desc))
     }
 }
 

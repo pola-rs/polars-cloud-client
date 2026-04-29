@@ -8,30 +8,33 @@ inherits = "dev"
 opt-level = 1
 
 [workspace.package]
-version = "0.6.0"
+version = "0.6.1"
 edition = "2024"
 homepage = "https://www.pola.rs/"
 license = "MIT"
-repository = "https://github.com/pola-rs/polars"
+publish = false
+repository = "https://github.com/pola-rs/polars-cloud-client"
 
 [workspace.lints.clippy]
 disallowed_methods = "deny"
 
 [workspace.dependencies]
 anyhow = "1.0.95"
+async-trait = "0.1"
 base64 = "0.22.1"
 clap = { version = "4", features = ["derive"] }
 client-cli = { path = "crates/cli" }
 client-core = { path = "crates/core" }
 comfy-table = "7.2"
 directories = "6.0.0"
+mockall = "0.13.1"
 pc-observatory-models = { path = "../contracts/crates/pc-observatory-models" }
 polars-axum-models = { path = "../contracts/crates/axum-models", features = ["pyo3"] }
 polars-backend-client = { path = "../contracts/crates/control-plane-client", features = ["pyo3"] }
 protos-client-compute = { path = "../contracts/crates/protos-client-compute" }
 protos-client-control = { path = "../contracts/crates/protos-client-control" }
 protos-common = { path = "../contracts/crates/protos-common" }
-pyo3 = { version = "0.28.0", features = ["abi3-py310", "multiple-pymethods"] }
+pyo3 = { version = "0.28.0", features = ["abi3-py310", "multiple-pymethods", "uuid"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 reqwest-middleware = "0.4.1"
 reqwest-retry = "0.7.0"

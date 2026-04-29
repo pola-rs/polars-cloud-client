@@ -42,11 +42,11 @@ class PyShuffleOpts:
 class WorkspaceStateModel(Enum):
     """Represents the state of a workspace."""
 
-    Uninitialized: int
-    Pending: int
-    Active: int
-    Failed: int
-    Deleted: int
+    Uninitialized = 0
+    Pending = 1
+    Active = 2
+    Failed = 3
+    Deleted = 4
 
 class WorkspaceModel:
     """Represents a workspace model."""
@@ -144,12 +144,12 @@ class QueryModel:
 class QueryStatusCodeModel(Enum):
     """Represents the status codes for a query."""
 
-    Queued: int
-    Scheduled: int
-    InProgress: int
-    Success: int
-    Failed: int
-    Canceled: int
+    Queued = 0
+    Scheduled = 1
+    InProgress = 2
+    Success = 3
+    Failed = 4
+    Canceled = 5
 
 class StatusModel:
     """Represents the status information for a query."""
@@ -184,11 +184,11 @@ class QueryWithStateTimingModel:
     """Details about the state of the query"""
 
 class FileTypeModel(Enum):
-    Parquet: int
-    IPC: int
-    Csv: int
-    NDJSON: int
-    JSON: int
+    Parquet = 0
+    IPC = 1
+    Csv = 2
+    NDJSON = 3
+    JSON = 4
 
 class ResultModel:
     total_stages: int
@@ -216,13 +216,13 @@ class QueryPlansModel:
 class TerminationReasonModel(Enum):
     """Enum representing the reasons for termination."""
 
-    StoppedByUser: int
+    StoppedByUser = 0
     """The instance was stopped by the user."""
 
-    StoppedInactive: int
+    StoppedInactive = 1
     """The instance was stopped due to inactivity."""
 
-    Failed: int
+    Failed = 2
     """The instance failed."""
 
 class TerminationModel:
@@ -244,8 +244,8 @@ class DBClusterModeModel(Enum):
     def from_str(s: ConnectionMode | None) -> DBClusterModeModel: ...
     def as_str(self) -> ConnectionMode: ...
 
-    Proxy: int
-    Direct: int
+    Proxy = 0
+    Direct = 1
 
 class DBCPUArchitectureModel(Enum):
     """CPU Architecture."""
@@ -254,8 +254,8 @@ class DBCPUArchitectureModel(Enum):
     def from_str(s: CPUArchitecture | None) -> DBCPUArchitectureModel: ...
     def as_str(self) -> CPUArchitecture: ...
 
-    X86_64: int
-    Arm64: int
+    X86_64 = 0
+    Arm64 = 1
 
 class ManifestModel:
     """Represents the model for a compute cluster manifest."""
@@ -405,9 +405,9 @@ class LogLevelModel(Enum):
     def from_str(s: LogLevel | None) -> LogLevelModel: ...
     def as_str(self) -> LogLevel: ...
 
-    Info: int
-    Debug: int
-    Trace: int
+    Info = 0
+    Debug = 1
+    Trace = 2
 
 class ComputeClusterPublicInfoModel:
     cluster_id: UUID
@@ -415,12 +415,12 @@ class ComputeClusterPublicInfoModel:
     public_server_key: str
 
 class ComputeStatusModel(Enum):
-    Starting: int
-    Idle: int
-    Running: int
-    Stopping: int
-    Stopped: int
-    Failed: int
+    Starting = 0
+    Idle = 1
+    Running = 2
+    Stopping = 3
+    Stopped = 4
+    Failed = 5
 
 class WorkspaceWithUrlModel:
     workspace: WorkspaceModel
@@ -578,6 +578,16 @@ class OrganizationModel:
     deleted_at: datetime | None
     """Timestamp of the last deletion."""
 
+class PyLineageContext:
+    def __init__(
+        self,
+        job_namespace: str,
+        job_name: str,
+        parent_run_id: UUID | None = None,
+        parent_job_namespace: str | None = None,
+        parent_job_name: str | None = None,
+    ) -> None: ...
+
 class ApiClient:
     def authenticate(
         self,
@@ -701,6 +711,7 @@ class ApiClient:
         plan: bytes,
         settings: PyQuerySettings,
         labels: list[str] | None,
+        lineage_context: PyLineageContext | None = None,
     ) -> UUID:
         pass
 
@@ -734,6 +745,8 @@ class SchedulerClient:
         token: str | None,
         username: str | None = None,
         labels: list[str] | None = None,
+        execution_id: str | None = None,
+        lineage_context: PyLineageContext | None = None,
     ) -> UUID: ...
     def get_direct_query_profile(
         self, query_id: UUID, tag: bytes | None, token: str | None
@@ -745,8 +758,8 @@ class SchedulerClient:
     def get_query_details(self, query_id: UUID, token: str | None) -> QueryDetailPy: ...
 
 class PlanFormatPy(Enum):
-    Dot: int
-    Explain: int
+    Dot = 0
+    Explain = 1
 
 class QueryPlansPy:
     format: PlanFormatPy

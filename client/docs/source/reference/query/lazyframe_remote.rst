@@ -18,3 +18,4 @@ This namespace becomes available by calling `LazyFrame.remote(...)`.
    LazyFrameRemote.sink_csv
    LazyFrameRemote.sink_ipc
    LazyFrameRemote.show
+   LazyFrameRemote.with_lineage

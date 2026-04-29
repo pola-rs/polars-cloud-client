@@ -1,9 +1,9 @@
 [package]
 name = "protos-client-compute"
-version = "0.1.0"
 edition.workspace = true
 homepage.workspace = true
 license.workspace = true
+publish.workspace = true
 repository.workspace = true
 
 [dependencies]
@@ -15,6 +15,7 @@ serde = { workspace = true }
 tonic = { workspace = true }
 tonic-prost = { workspace = true }
 trait-variant = { workspace = true }
+uuid = { workspace = true }
 
 [build-dependencies]
 build-deps = { workspace = true }

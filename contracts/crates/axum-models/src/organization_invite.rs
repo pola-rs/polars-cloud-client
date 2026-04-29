@@ -6,7 +6,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::EntityOrdering;
+use crate::{DefaultSortDirection, EntityOrdering};
 
 #[derive(Deserialize, Serialize, Debug)]
 #[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
@@ -51,6 +51,10 @@ pub struct OrganizationInviteModel {
 impl EntityOrdering for OrganizationInviteModel {
     fn order_fields() -> &'static [&'static str] {
         &["id", "organization_name", "accepted_at"]
+    }
+
+    fn default_ordering() -> Option<(&'static str, DefaultSortDirection)> {
+        Some(("id", DefaultSortDirection::Desc))
     }
 }
 

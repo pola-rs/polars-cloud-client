@@ -60,8 +60,9 @@ message DistributedOpts {
   uint64 allow_equi_join_broadcast_limit = 4;
   optional uint32 partitions_per_worker = 5;
   reserved 6; // Deprecated `bool cost_based_planner`
-  bool allow_expression_extraction = 7;
+  reserved 7; // Deprecated `bool allow_expression_extraction`
   optional SingleWorkerOps single_worker_ops = 8;
+  bool allow_expression_lowering = 9;
 }
 
 enum GraphFormat {

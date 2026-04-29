@@ -4,12 +4,13 @@ import contextlib
 import json
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 from polars._utils.various import normalize_filepath
 
 if TYPE_CHECKING:
     import sys
+    from collections.abc import Callable
     from types import TracebackType
 
     if sys.version_info >= (3, 11):

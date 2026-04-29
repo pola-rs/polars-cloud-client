@@ -1,9 +1,10 @@
 use protos_client_compute::client::{
-    DistributedOpts, Engine, GraphFormat, QuerySettings, QueryType, ShuffleCompression,
-    ShuffleFormat, ShuffleOpts, SingleWorkerOps,
+    DistributedOpts, Engine, GraphFormat, LineageContext, QuerySettings, QueryType,
+    ShuffleCompression, ShuffleFormat, ShuffleOpts, SingleWorkerOps,
 };
 use pyo3::exceptions::PyValueError;
-use pyo3::{PyResult, pyclass};
+use pyo3::{PyResult, pyclass, pymethods};
+use uuid::Uuid;
 
 #[pyclass(from_py_object)]
 #[derive(Debug, Clone, Copy)]
@@ -88,7 +89,7 @@ pub enum PyQueryType {
     Distributed {
         shuffle_opts: PyShuffleOpts,
         pre_aggregation: bool,
-        expression_extraction: bool,
+        expression_lowering: bool,
         sort_partitioned: bool,
         equi_join_broadcast_limit: u64,
         partitions_per_worker: Option<u32>,
@@ -180,7 +181,7 @@ impl From<PyQueryType> for QueryType {
             PyQueryType::Distributed {
                 shuffle_opts,
                 pre_aggregation,
-                expression_extraction,
+                expression_lowering,
                 sort_partitioned,
                 equi_join_broadcast_limit,
                 partitions_per_worker,
@@ -188,12 +189,67 @@ impl From<PyQueryType> for QueryType {
             } => Self::Distributed(DistributedOpts {
                 shuffle_opts: shuffle_opts.into(),
                 pre_aggregation,
-                expression_extraction,
+                expression_lowering,
                 sort_partitioned,
                 equi_join_broadcast_limit,
                 partitions_per_worker,
                 single_worker_ops: single_worker_ops.into(),
             }),
+        }
+    }
+}
+
+#[pyclass(from_py_object)]
+#[derive(Debug, Clone)]
+pub struct PyLineageContext {
+    pub job_namespace: String,
+    pub job_name: String,
+    pub parent_run_id: Option<Uuid>,
+    pub parent_job_namespace: Option<String>,
+    pub parent_job_name: Option<String>,
+}
+
+#[pymethods]
+impl PyLineageContext {
+    #[new]
+    #[pyo3(signature = (job_namespace, job_name, parent_run_id=None, parent_job_namespace=None, parent_job_name=None))]
+    pub fn new(
+        job_namespace: String,
+        job_name: String,
+        parent_run_id: Option<Uuid>,
+        parent_job_namespace: Option<String>,
+        parent_job_name: Option<String>,
+    ) -> Self {
+        Self {
+            job_namespace,
+            job_name,
+            parent_run_id,
+            parent_job_namespace,
+            parent_job_name,
+        }
+    }
+}
+
+impl From<PyLineageContext> for LineageContext {
+    fn from(value: PyLineageContext) -> Self {
+        Self {
+            job_namespace: value.job_namespace,
+            job_name: value.job_name,
+            parent_run_id: value.parent_run_id,
+            parent_job_namespace: value.parent_job_namespace,
+            parent_job_name: value.parent_job_name,
+        }
+    }
+}
+
+impl From<PyLineageContext> for protos_common::LineageContext {
+    fn from(value: PyLineageContext) -> Self {
+        Self {
+            job_namespace: value.job_namespace,
+            job_name: value.job_name,
+            parent_run_id: value.parent_run_id.map(|u| u.to_string()),
+            parent_job_namespace: value.parent_job_namespace,
+            parent_job_name: value.parent_job_name,
         }
     }
 }

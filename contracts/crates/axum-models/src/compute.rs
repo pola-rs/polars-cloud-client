@@ -13,7 +13,7 @@ use uuid::Uuid;
 use version_number::VersionNumber;
 
 use crate::termination::TerminationModel;
-use crate::{EntityOrdering, InstanceSpecsModel};
+use crate::{DefaultSortDirection, EntityOrdering, InstanceSpecsModel};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
@@ -69,7 +69,7 @@ impl LogLevelModel {
 pub struct PythonVersion {
     #[cfg_attr(feature = "server", garde(range(min = 3, max = 3)))]
     pub major: u8,
-    #[cfg_attr(feature = "server", garde(range(min = 9)))]
+    #[cfg_attr(feature = "server", garde(range(min = 10)))]
     pub minor: u8,
     #[cfg_attr(feature = "server", garde(skip))]
     pub patch: u8,
@@ -84,7 +84,7 @@ impl Display for PythonVersion {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[cfg_attr(feature = "server", derive(JsonSchema, Validate))]
 #[serde(deny_unknown_fields)]
-pub struct RegisterComputeClusterArgs {
+pub struct RegisterComputeClusterManifestArgs {
     #[cfg_attr(feature = "server", garde(skip))]
     pub name: String,
     #[serde(flatten)]
@@ -348,6 +348,10 @@ impl EntityOrdering for ComputeModel {
             "ram_mib",
             "vcpus",
         ]
+    }
+
+    fn default_ordering() -> Option<(&'static str, DefaultSortDirection)> {
+        Some(("id", DefaultSortDirection::Desc))
     }
 }
 

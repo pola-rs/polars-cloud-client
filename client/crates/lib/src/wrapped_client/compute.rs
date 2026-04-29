@@ -1,14 +1,12 @@
 #![allow(clippy::result_large_err)]
 
-use client_core::{ApiError, CTRL_PLN_CLIENT_GLOBAL, VERSIONS};
+use client_core::{ApiError, RUNTIME, VERSIONS};
 use polars_axum_models::{
     ClusterModeModel, ComputeClusterNodeInfoModel, ComputeClusterPublicInfoModel, ComputeModel,
     ComputeStatusModel, ComputeTokenModel, DBCPUArchitectureModel, DBClusterModeModel,
     GetClusterFilterArgs, InstanceSpecsModel, LogLevelModel, ManifestModel, ManifestQueryArgs,
-    Pagination, RegisterComputeClusterArgs, StartComputeClusterArgs,
-    StartComputeClusterManifestArgs,
+    RegisterComputeClusterManifestArgs, StartComputeClusterArgs, StartComputeClusterManifestArgs,
 };
-use polars_backend_client::client::ApiClient;
 use pyo3::exceptions::PyValueError;
 use pyo3::{Python, pymethods};
 use uuid::Uuid;
@@ -25,14 +23,12 @@ impl WrappedAPIClient {
         manifest_name: String,
     ) -> Result<ManifestModel, ApiError> {
         py.enter_rust(|| {
-            CTRL_PLN_CLIENT_GLOBAL.call(|client: &ApiClient| {
-                client.find_compute_cluster_manifest(
-                    workspace_id,
-                    ManifestQueryArgs {
-                        name: manifest_name,
-                    },
-                )
-            })
+            RUNTIME.block_on(self.client.find_compute_cluster_manifest(
+                workspace_id,
+                ManifestQueryArgs {
+                    name: manifest_name,
+                },
+            ))?
         })
     }
 
@@ -43,8 +39,7 @@ impl WrappedAPIClient {
         compute_id: Uuid,
     ) -> Result<ComputeModel, ApiError> {
         py.enter_rust(|| {
-            CTRL_PLN_CLIENT_GLOBAL
-                .call(|client: &ApiClient| client.get_compute_cluster(workspace_id, compute_id))
+            RUNTIME.block_on(self.client.get_compute_cluster(workspace_id, compute_id))?
         })
     }
 
@@ -55,8 +50,7 @@ impl WrappedAPIClient {
         compute_id: Uuid,
     ) -> Result<(), ApiError> {
         py.enter_rust(|| {
-            CTRL_PLN_CLIENT_GLOBAL
-                .call(|client: &ApiClient| client.stop_compute_cluster(workspace_id, compute_id))
+            RUNTIME.block_on(self.client.stop_compute_cluster(workspace_id, compute_id))?
         })
     }
 
@@ -67,8 +61,7 @@ impl WrappedAPIClient {
         compute_id: Uuid,
     ) -> Result<ComputeClusterPublicInfoModel, ApiError> {
         py.enter_rust(|| {
-            CTRL_PLN_CLIENT_GLOBAL
-                .call(|client: &ApiClient| client.get_public_server_info(workspace_id, compute_id))
+            RUNTIME.block_on(self.client.get_public_server_info(workspace_id, compute_id))?
         })
     }
 
@@ -79,9 +72,10 @@ impl WrappedAPIClient {
         compute_id: Uuid,
     ) -> Result<ComputeTokenModel, ApiError> {
         py.enter_rust(|| {
-            CTRL_PLN_CLIENT_GLOBAL.call(|client: &ApiClient| {
-                client.get_compute_cluster_token(workspace_id, compute_id)
-            })
+            RUNTIME.block_on(
+                self.client
+                    .get_compute_cluster_token(workspace_id, compute_id),
+            )?
         })
     }
     pub fn get_compute_cluster_nodes(
@@ -91,15 +85,10 @@ impl WrappedAPIClient {
         compute_id: Uuid,
     ) -> Result<Vec<ComputeClusterNodeInfoModel>, ApiError> {
         py.enter_rust(|| {
-            CTRL_PLN_CLIENT_GLOBAL.call_paginated(|client: &ApiClient, page: i64| {
-                // TODO: offset is overridden later by (page - 1) * limit, confusing
-                let pagination = Pagination {
-                    page,
-                    limit: 1000,
-                    offset: 0,
-                };
-                client.get_compute_cluster_nodes(workspace_id, compute_id, pagination)
-            })
+            RUNTIME.block_on(
+                self.client
+                    .get_compute_cluster_nodes(workspace_id, compute_id),
+            )?
         })
     }
 
@@ -154,13 +143,13 @@ impl WrappedAPIClient {
                     cpu_architectures,
                 },
                 _ => Err(PyValueError::new_err(
-                    "Invalid parameters: either (cpu & memory & cpu_architectures) or instance type must be specified.",
+                    "Invalid parameters: either all three (cpu, memory, and cpu_architectures) parameters or just the instance_type parameter must be specified.",
                 ))?,
             };
 
             let python_version = VERSIONS.get().unwrap().as_ref().unwrap().0.python;
             let polars_version = VERSIONS.get().unwrap().as_ref().unwrap().0.polars;
-            let params = RegisterComputeClusterArgs {
+            let params = RegisterComputeClusterManifestArgs {
                 name,
                 instance,
                 storage,
@@ -175,9 +164,10 @@ impl WrappedAPIClient {
                 idle_timeout_mins,
             };
 
-            CTRL_PLN_CLIENT_GLOBAL.call(|client: &ApiClient| {
-                client.register_compute_cluster_manifest(workspace_id, params)
-            })
+            RUNTIME.block_on(
+                self.client
+                    .register_compute_cluster_manifest(workspace_id, params),
+            )?
         })
     }
 
@@ -189,9 +179,10 @@ impl WrappedAPIClient {
         name: String,
     ) -> Result<(), ApiError> {
         py.enter_rust(|| {
-            CTRL_PLN_CLIENT_GLOBAL.call(|client: &ApiClient| {
-                client.unregister_compute_cluster_manifest(workspace_id, name)
-            })
+            RUNTIME.block_on(
+                self.client
+                    .unregister_compute_cluster_manifest(workspace_id, name),
+            )?
         })
     }
 
@@ -211,9 +202,10 @@ impl WrappedAPIClient {
                 polars_version,
             };
 
-            CTRL_PLN_CLIENT_GLOBAL.call(|client: &ApiClient| {
-                client.start_compute_cluster_manifest(workspace_id, params)
-            })
+            RUNTIME.block_on(
+                self.client
+                    .start_compute_cluster_manifest(workspace_id, params),
+            )?
         })
     }
 
@@ -269,7 +261,7 @@ impl WrappedAPIClient {
                     }
                 },
                 _ => Err(PyValueError::new_err(
-                    "Invalid parameters: either (cpu & memory) or instance type must be specified.",
+                    "Invalid parameters: either all three (cpu, memory, and cpu_architectures) parameters or just the instance_type parameter must be specified.",
                 ))?,
             };
 
@@ -289,8 +281,7 @@ impl WrappedAPIClient {
                 idle_timeout_mins,
             };
 
-            CTRL_PLN_CLIENT_GLOBAL
-                .call(|client: &ApiClient| client.start_compute_cluster(workspace_id, params))
+            RUNTIME.block_on(self.client.start_compute_cluster(workspace_id, params))?
         })
     }
 
@@ -302,22 +293,13 @@ impl WrappedAPIClient {
         status: Option<Vec<ComputeStatusModel>>,
     ) -> Result<Vec<ComputeModel>, ApiError> {
         py.enter_rust(|| {
-            CTRL_PLN_CLIENT_GLOBAL.call_paginated(|client: &ApiClient, page: i64| {
-                // TODO: offset is overridden later by (page - 1) * limit, confusing
-                let pagination = Pagination {
-                    page,
-                    limit: 1000,
-                    offset: 0,
-                };
-                client.get_compute_clusters(
-                    workspace_id,
-                    GetClusterFilterArgs {
-                        status: status.clone(),
-                        current_user_only: false,
-                    },
-                    pagination,
-                )
-            })
+            RUNTIME.block_on(self.client.get_compute_clusters(
+                workspace_id,
+                GetClusterFilterArgs {
+                    status,
+                    current_user_only: false,
+                },
+            ))?
         })
     }
 }

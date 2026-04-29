@@ -32,6 +32,7 @@ impl From<String> for common::Destination {
 pub type PlanFormat = common::PlanFormat;
 pub type QueryPlans = common::QueryPlans;
 pub type ComputeVersions = common::ComputeVersions;
+pub type LineageContext = common::LineageContext;
 
 mod identifier {
     use super::*;

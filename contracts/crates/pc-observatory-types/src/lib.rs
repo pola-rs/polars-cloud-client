@@ -3,6 +3,14 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[derive(Deserialize, Serialize, Debug, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OrderDirection {
+    Asc,
+    #[default]
+    Desc,
+}
+
 pub mod observatory_target;
 
 #[derive(PartialEq, Clone, Copy, Debug, Eq, Hash, Serialize, Deserialize)]
@@ -144,19 +152,19 @@ impl std::fmt::Display for StageAttemptNumber {
 
 #[derive(PartialEq, Clone, Copy, Debug, Hash, Eq, Serialize, Deserialize, PartialOrd, Ord)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
-pub struct PartitionIndex(pub u32);
+pub struct ProducerId(pub u32);
 
 // Manual sqlx::Type impl to avoid PgHasArrayType issues when postgres features are
 // unified in workspaces that also depend on sqlx with postgres.
 #[cfg(feature = "server")]
-impl sqlx::Type<sqlx::Sqlite> for PartitionIndex {
+impl sqlx::Type<sqlx::Sqlite> for ProducerId {
     fn type_info() -> <sqlx::Sqlite as sqlx::Database>::TypeInfo {
         <u32 as sqlx::Type<sqlx::Sqlite>>::type_info()
     }
 }
 
 #[cfg(feature = "server")]
-impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for PartitionIndex {
+impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for ProducerId {
     fn decode(
         value: <sqlx::Sqlite as sqlx::Database>::ValueRef<'r>,
     ) -> Result<Self, sqlx::error::BoxDynError> {
@@ -165,7 +173,7 @@ impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for PartitionIndex {
 }
 
 #[cfg(feature = "server")]
-impl sqlx::Encode<'_, sqlx::Sqlite> for PartitionIndex {
+impl sqlx::Encode<'_, sqlx::Sqlite> for ProducerId {
     fn encode_by_ref(
         &self,
         buf: &mut <sqlx::Sqlite as sqlx::Database>::ArgumentBuffer<'_>,
@@ -174,7 +182,7 @@ impl sqlx::Encode<'_, sqlx::Sqlite> for PartitionIndex {
     }
 }
 
-impl std::fmt::Display for PartitionIndex {
+impl std::fmt::Display for ProducerId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
     }

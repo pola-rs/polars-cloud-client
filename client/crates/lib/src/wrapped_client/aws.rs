@@ -1,10 +1,9 @@
 #![allow(clippy::result_large_err)]
 
-use client_core::{ApiError, CTRL_PLN_CLIENT_GLOBAL};
+use client_core::{ApiError, RUNTIME};
 use polars_axum_models::{
     DeleteWorkspaceModel, WorkSpaceArgs, WorkspaceSetupUrlModel, WorkspaceWithUrlModel,
 };
-use polars_backend_client::client::ApiClient;
 use pyo3::{Python, pymethods};
 use uuid::Uuid;
 
@@ -21,13 +20,11 @@ impl WrappedAPIClient {
         organization_id: Uuid,
     ) -> Result<WorkspaceWithUrlModel, ApiError> {
         py.enter_rust(|| {
-            CTRL_PLN_CLIENT_GLOBAL.call(|client: &ApiClient| {
-                let params = WorkSpaceArgs {
-                    name,
-                    organization_id,
-                };
-                client.create_workspace(params)
-            })
+            let params = WorkSpaceArgs {
+                name,
+                organization_id,
+            };
+            RUNTIME.block_on(self.client.create_aws_workspace(params))?
         })
     }
 
@@ -37,10 +34,7 @@ impl WrappedAPIClient {
         py: Python,
         workspace_id: Uuid,
     ) -> Result<WorkspaceSetupUrlModel, ApiError> {
-        py.enter_rust(|| {
-            CTRL_PLN_CLIENT_GLOBAL
-                .call(|client: &ApiClient| client.get_workspace_setup_url(workspace_id))
-        })
+        py.enter_rust(|| RUNTIME.block_on(self.client.get_aws_workspace_setup_url(workspace_id))?)
     }
 
     #[pyo3(signature=(workspace_id))]
@@ -49,8 +43,6 @@ impl WrappedAPIClient {
         py: Python,
         workspace_id: Uuid,
     ) -> Result<Option<DeleteWorkspaceModel>, ApiError> {
-        py.enter_rust(|| {
-            CTRL_PLN_CLIENT_GLOBAL.call(|client: &ApiClient| client.delete_workspace(workspace_id))
-        })
+        py.enter_rust(|| RUNTIME.block_on(self.client.delete_aws_workspace(workspace_id))?)
     }
 }

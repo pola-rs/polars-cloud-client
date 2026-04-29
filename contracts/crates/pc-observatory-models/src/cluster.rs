@@ -39,6 +39,12 @@ pub struct ClusterLiveMetricsModel {
     pub network_bytes_in_s: f64,
     /// Outbound network traffic in bytes/s
     pub network_bytes_out_s: f64,
+    /// Disk usage in bytes
+    pub disk_bytes_used: Option<f64>,
+    /// Disk read traffic in bytes/s
+    pub disk_bytes_read_s: Option<f64>,
+    /// Disk write traffic in bytes/s
+    pub disk_bytes_written_s: Option<f64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -53,4 +59,10 @@ pub struct ClusterMetricsModel {
     pub network_bytes_in_s: Vec<f64>,
     /// Outbound network traffic in bytes/s
     pub network_bytes_out_s: Vec<f64>,
+    /// Disk usage in bytes
+    pub disk_bytes_used: Option<Vec<f64>>,
+    /// Disk read traffic in bytes/s
+    pub disk_bytes_read_s: Option<Vec<f64>>,
+    /// Disk write traffic in bytes/s
+    pub disk_bytes_written_s: Option<Vec<f64>>,
 }

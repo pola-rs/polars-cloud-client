@@ -6,6 +6,7 @@ use prost_types::FieldMask;
 use protos_common::{ComputeVersions, QueryIdentifier, QueryPlans, QueryResult, map_trait};
 use serde::{Deserialize, Serialize};
 use tonic::{Request, Response, Status};
+use uuid::Uuid;
 
 use crate::client::proto::QueryStageStatistics;
 
@@ -248,7 +249,7 @@ pub enum QueryType {
 pub struct DistributedOpts {
     pub shuffle_opts: ShuffleOpts,
     pub pre_aggregation: bool,
-    pub expression_extraction: bool,
+    pub expression_lowering: bool,
     pub sort_partitioned: bool,
     pub equi_join_broadcast_limit: u64,
     pub partitions_per_worker: Option<u32>,
@@ -260,7 +261,7 @@ impl From<DistributedOpts> for proto::DistributedOpts {
         let DistributedOpts {
             shuffle_opts,
             pre_aggregation,
-            expression_extraction,
+            expression_lowering,
             sort_partitioned,
             equi_join_broadcast_limit,
             partitions_per_worker,
@@ -269,7 +270,7 @@ impl From<DistributedOpts> for proto::DistributedOpts {
         Self {
             shuffle_opts: proto::ShuffleOpts::from(shuffle_opts).into(),
             allow_pre_aggregation: pre_aggregation,
-            allow_expression_extraction: expression_extraction,
+            allow_expression_lowering: expression_lowering,
             allow_partitioned_sort: sort_partitioned,
             allow_equi_join_broadcast_limit: equi_join_broadcast_limit,
             partitions_per_worker,
@@ -282,7 +283,7 @@ impl From<proto::DistributedOpts> for DistributedOpts {
     fn from(value: proto::DistributedOpts) -> Self {
         let proto::DistributedOpts {
             allow_pre_aggregation,
-            allow_expression_extraction,
+            allow_expression_lowering,
             allow_partitioned_sort,
             allow_equi_join_broadcast_limit,
             shuffle_opts,
@@ -292,7 +293,7 @@ impl From<proto::DistributedOpts> for DistributedOpts {
         Self {
             shuffle_opts: shuffle_opts.unwrap_or_default().into(),
             pre_aggregation: allow_pre_aggregation,
-            expression_extraction: allow_expression_extraction,
+            expression_lowering: allow_expression_lowering,
             sort_partitioned: allow_partitioned_sort,
             equi_join_broadcast_limit: allow_equi_join_broadcast_limit,
             partitions_per_worker,
@@ -686,6 +687,46 @@ impl From<ComputeVersions> for proto::GetComputeVersionsResponse {
     fn from(value: ComputeVersions) -> Self {
         Self {
             versions: Some(value),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LineageContext {
+    pub job_namespace: String,
+    pub job_name: String,
+    pub parent_run_id: Option<Uuid>,
+    pub parent_job_namespace: Option<String>,
+    pub parent_job_name: Option<String>,
+}
+
+impl From<LineageContext> for protos_common::LineageContext {
+    fn from(value: LineageContext) -> Self {
+        Self {
+            job_namespace: value.job_namespace,
+            job_name: value.job_name,
+            parent_run_id: value.parent_run_id.map(|u| u.to_string()),
+            parent_job_namespace: value.parent_job_namespace,
+            parent_job_name: value.parent_job_name,
+        }
+    }
+}
+
+impl From<protos_common::LineageContext> for LineageContext {
+    fn from(value: protos_common::LineageContext) -> Self {
+        let parent_run_id = value
+            .parent_run_id
+            .as_deref()
+            .map(Uuid::parse_str)
+            .transpose()
+            .expect("Invalid parent_run_id");
+
+        Self {
+            job_namespace: value.job_namespace,
+            job_name: value.job_name,
+            parent_run_id,
+            parent_job_namespace: value.parent_job_namespace,
+            parent_job_name: value.parent_job_name,
         }
     }
 }

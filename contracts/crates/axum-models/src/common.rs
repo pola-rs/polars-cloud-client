@@ -33,8 +33,17 @@ pub mod duration_seconds {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum DefaultSortDirection {
+    Asc,
+    Desc,
+}
+
 pub trait EntityOrdering {
     fn order_fields() -> &'static [&'static str];
+    fn default_ordering() -> Option<(&'static str, DefaultSortDirection)> {
+        None
+    }
 }
 
 #[cfg(feature = "server")]

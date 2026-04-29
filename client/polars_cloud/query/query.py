@@ -5,6 +5,11 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+try:
+    from IPython.core.getipython import get_ipython as _get_ipython
+except ImportError:
+    _get_ipython = None  # type: ignore[assignment]
+
 import polars as pl
 
 # needed for eval
@@ -52,6 +57,7 @@ if TYPE_CHECKING:
     )
     from polars_cloud.context import ClientContext
     from polars_cloud.query.dst import Dst
+    from polars_cloud.query.lineage import LineageContext
     from polars_cloud.query.query_result import QueryResult
 
 
@@ -59,7 +65,7 @@ if TYPE_CHECKING:
 class DistributionSettings:
     sort_partitioned: bool = True
     pre_aggregation: bool = True
-    expression_extraction: bool = True
+    expression_lowering: bool = True
     equi_join_broadcast_limit: int = 256 * 1024**2
     partitions_per_worker: int | None = None
     single_worker_ops: SingleWorkerOps = "auto"
@@ -69,7 +75,7 @@ def spawn_many(
     lf: list[LazyFrame],
     *,
     dst: Path | str | Dst,
-    context: ComputeContext | None = None,
+    context: ClientContext | None = None,
     engine: Engine = "auto",
     plan_type: PlanTypePreference = "dot",
     labels: None | list[str] = None,
@@ -77,6 +83,7 @@ def spawn_many(
     shuffle_format: ShuffleFormat = "auto",
     distributed: DistributionSettings | None | bool = None,
     n_retries: int = 0,
+    lineage: LineageContext | None = None,
     **optimizations: bool,
 ) -> list[ProxyQuery] | list[DirectQuery]:
     """Spawn multiple remote queries and await them asynchronously.
@@ -119,9 +126,16 @@ def spawn_many(
         and available machines.
     n_retries
         How often failed tasks should be retried.
+    lineage
+        OpenLineage metadata for this query, typically provided by an orchestrator.
+
+        .. warning::
+            This functionality is considered **unstable**. It may be changed
+            at any point without it being considered a breaking change.
     **optimizations
         Optimizations to enable or disable in the query optimizer, e.g.
         `projection_pushdown=False`.
+
 
     See Also
     --------
@@ -144,6 +158,7 @@ def spawn_many(
             shuffle_format=shuffle_format,
             n_retries=n_retries,
             distributed=distributed,
+            lineage=lineage,
             **optimizations,  # type: ignore[arg-type]
         )
         for lf_ in lf
@@ -154,7 +169,7 @@ def spawn_many_blocking(
     lf: list[LazyFrame],
     *,
     dst: Path | str | Dst,
-    context: ComputeContext | None = None,
+    context: ClientContext | None = None,
     engine: Engine = "auto",
     plan_type: PlanTypePreference = "dot",
     labels: None | list[str] = None,
@@ -162,6 +177,7 @@ def spawn_many_blocking(
     shuffle_format: ShuffleFormat = "auto",
     distributed: DistributionSettings | None | bool = None,
     n_retries: int = 0,
+    lineage: LineageContext | None = None,
     **optimizations: bool,
 ) -> list[QueryResult]:
     """Spawn multiple remote queries and await them while blocking the thread.
@@ -204,6 +220,12 @@ def spawn_many_blocking(
         and available machines.
     n_retries
         How often failed tasks should be retried.
+    lineage
+        OpenLineage metadata for this query, typically provided by an orchestrator.
+
+        .. warning::
+            This functionality is considered **unstable**. It may be changed
+            at any point without it being considered a breaking change.
     **optimizations
         Optimizations to enable or disable in the query optimizer, e.g.
         `projection_pushdown=False`.
@@ -230,6 +252,7 @@ def spawn_many_blocking(
             shuffle_format=shuffle_format,
             n_retries=n_retries,
             distributed=distributed,
+            lineage=lineage,
             **optimizations,
         )
         tasks = [asyncio.create_task(t.await_result_async()) for t in in_process]
@@ -253,6 +276,7 @@ def spawn(
     n_retries: int = 0,
     sink_to_single_file: bool | None = None,
     optimizations: pl.QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
+    lineage: LineageContext | None = None,
 ) -> ProxyQuery | DirectQuery:
     """Spawn a remote query and await it asynchronously.
 
@@ -308,6 +332,12 @@ def spawn(
         .. warning::
             This functionality is considered **unstable**. It may be changed
             at any point without it being considered a breaking change.
+    lineage
+        OpenLineage metadata for this query, typically provided by an orchestrator.
+
+        .. warning::
+            This functionality is considered **unstable**. It may be changed
+            at any point without it being considered a breaking change.
 
     Examples
     --------
@@ -357,6 +387,11 @@ def spawn(
         if context._compute_id is None:
             context.start()
 
+    allow_local_scans = constants.ALLOW_LOCAL_SCANS
+    if isinstance(context, ClusterContext):
+        if context.allow_filesystem_scans is not None:
+            allow_local_scans = context.allow_filesystem_scans
+
     plan, settings = prepare_query(
         lf=lf,
         dst=dst,
@@ -369,6 +404,19 @@ def spawn(
         distributed_settings=distributed,
         sink_to_single_file=sink_to_single_file,
         optimizations=optimizations,
+        allow_local_scans=allow_local_scans,
+    )
+
+    lineage_context = (
+        pcr.PyLineageContext(
+            job_namespace=lineage.job_namespace,
+            job_name=lineage.job_name,
+            parent_run_id=lineage.parent_run_id,
+            parent_job_namespace=lineage.parent_job_namespace,
+            parent_job_name=lineage.parent_job_name,
+        )
+        if lineage
+        else None
     )
 
     if isinstance(context, ClusterContext) or (
@@ -378,8 +426,22 @@ def spawn(
         token = get_token(context)
         try:
             username = pc_cfg.Config.get(pc_cfg._USER_NAME)
+            execution_id: str | None = None
+            try:
+                if _get_ipython is not None:
+                    ip = _get_ipython()  # type: ignore[no-untyped-call]
+                    if ip is not None and hasattr(ip, "kernel"):
+                        parent = ip.kernel.get_parent("shell")
+                        execution_id = parent.get("header", {}).get("msg_id")
+            except Exception:
+                pass
             q_id = client.do_query(
-                plan=plan, settings=settings, token=token, username=username
+                plan=plan,
+                settings=settings,
+                token=token,
+                username=username,
+                execution_id=execution_id,
+                lineage_context=lineage_context,
             )
         except pcr.EncodedPolarsError as e:
             raise decode_error(str(e)) from None
@@ -392,7 +454,7 @@ def spawn(
     elif isinstance(context, ComputeContext):
         assert context._compute_id is not None
         q_id = constants.API_CLIENT.submit_query(
-            context._compute_id, plan, settings, labels
+            context._compute_id, plan, settings, labels, lineage_context
         )
         msg = f"View your query metrics on: https://cloud.pola.rs/portal/{context.workspace.id}/{context._compute_id}/queries/{q_id}"
         logger.debug(msg)
@@ -415,6 +477,7 @@ def spawn_blocking(
     n_retries: int = 0,
     sink_to_single_file: bool | None = None,
     optimizations: pl.QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
+    lineage: LineageContext | None = None,
 ) -> QueryResult:
     """Spawn a remote query and block the thread until the result is ready.
 
@@ -466,6 +529,12 @@ def spawn_blocking(
         .. warning::
             This functionality is considered **unstable**. It may be changed
             at any point without it being considered a breaking change.
+    lineage
+        OpenLineage metadata for this query, typically provided by an orchestrator.
+
+        .. warning::
+            This functionality is considered **unstable**. It may be changed
+            at any point without it being considered a breaking change.
 
     See Also
     --------
@@ -488,5 +557,6 @@ def spawn_blocking(
         n_retries=n_retries,
         sink_to_single_file=sink_to_single_file,
         optimizations=optimizations,
+        lineage=lineage,
     )
     return in_process.await_result()

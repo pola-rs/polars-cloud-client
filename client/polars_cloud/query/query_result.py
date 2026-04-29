@@ -5,11 +5,12 @@ import json
 import keyword
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, overload
+from typing import TYPE_CHECKING, overload
 
 import polars as pl
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from polars_cloud._typing import (

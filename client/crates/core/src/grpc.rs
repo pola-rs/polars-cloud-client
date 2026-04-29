@@ -11,8 +11,7 @@ pub type ControlPlaneGRPCClient =
     ClientServiceClient<InterceptedService<Channel, fn(Request<()>) -> tonic::Result<Request<()>>>>;
 
 pub fn get_control_plane_client() -> ControlPlaneGRPCClient {
-    let address = API_ADDR.to_string();
-    let endpoint: Endpoint = format!("{address}:443").parse().unwrap();
+    let endpoint: Endpoint = API_ADDR.parse().unwrap();
 
     let channel = endpoint
         .user_agent(user_agent(

@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use client_core::{ApiResult, CTRL_PLN_CLIENT_GLOBAL};
+use client_core::{ApiResult, Client};
 use polars_axum_models::{OrganizationModel, WorkSpaceArgs, WorkspaceModel, WorkspaceStateModel};
 
 use crate::get_user_input;
@@ -8,20 +8,21 @@ use crate::organization::{get_all_organizations, set_up_organization};
 use crate::workspace::{get_all_workspaces, wait_until_active};
 
 async fn select_or_set_up_organization(
+    client: &Client,
     organization_name: Option<String>,
 ) -> ApiResult<Option<OrganizationModel>> {
-    let organizations = get_all_organizations(organization_name.clone()).await?;
+    let organizations = get_all_organizations(client, organization_name.clone()).await?;
 
     if let Some(ref name) = organization_name {
         if let Some(org) = organizations.iter().find(|o| &o.name == name) {
             return Ok(Some(org.clone()));
         } else {
-            return Ok(Some(set_up_organization(organization_name).await?));
+            return Ok(Some(set_up_organization(client, organization_name).await?));
         }
     }
 
     if organizations.is_empty() {
-        return Ok(Some(set_up_organization(None).await?));
+        return Ok(Some(set_up_organization(client, None).await?));
     }
 
     // 4. Interactive selection
@@ -55,7 +56,7 @@ async fn select_or_set_up_organization(
             if idx > 0 && idx <= organizations.len() {
                 return Ok(Some(organizations[idx - 1].clone()));
             } else if idx == organizations.len() + 1 {
-                return Ok(Some(set_up_organization(None).await?));
+                return Ok(Some(set_up_organization(client, None).await?));
             }
         }
         println!("Enter 1-{} or q", organizations.len() + 1);
@@ -63,22 +64,22 @@ async fn select_or_set_up_organization(
 }
 
 async fn select_or_set_up_workspace(
+    client: &Client,
     org: &OrganizationModel,
     workspace_name: Option<String>,
 ) -> ApiResult<Option<WorkspaceModel>> {
-    let workspaces = get_all_workspaces(workspace_name.clone(), Some(org.id)).await?;
+    let workspaces = get_all_workspaces(client, workspace_name.clone(), Some(org.id)).await?;
 
     if let Some(ref name) = workspace_name {
         if let Some(ws) = workspaces.iter().find(|w| &w.name == name) {
             return Ok(Some(ws.clone()));
         }
+
         return Ok(Some(
-            CTRL_PLN_CLIENT_GLOBAL
-                .call_async(|client| {
-                    client.create_workspace(WorkSpaceArgs {
-                        organization_id: org.id,
-                        name: name.clone(),
-                    })
+            client
+                .create_aws_workspace(WorkSpaceArgs {
+                    organization_id: org.id,
+                    name: name.clone(),
                 })
                 .await?
                 .workspace,
@@ -98,13 +99,12 @@ async fn select_or_set_up_workspace(
 
     if deployable.is_empty() {
         let name = get_user_input("New workspace name: ").await?;
+
         return Ok(Some(
-            CTRL_PLN_CLIENT_GLOBAL
-                .call_async(|client| {
-                    client.create_workspace(WorkSpaceArgs {
-                        organization_id: org.id,
-                        name: name.clone(),
-                    })
+            client
+                .create_aws_workspace(WorkSpaceArgs {
+                    organization_id: org.id,
+                    name: name.clone(),
                 })
                 .await?
                 .workspace,
@@ -148,13 +148,12 @@ async fn select_or_set_up_workspace(
                 return Ok(Some(ws.clone()));
             } else if idx == deployable.len() + 1 {
                 let name = get_user_input("New workspace name: ").await?;
+
                 return Ok(Some(
-                    CTRL_PLN_CLIENT_GLOBAL
-                        .call_async(|client| {
-                            client.create_workspace(WorkSpaceArgs {
-                                organization_id: org.id,
-                                name: name.clone(),
-                            })
+                    client
+                        .create_aws_workspace(WorkSpaceArgs {
+                            organization_id: org.id,
+                            name: name.clone(),
                         })
                         .await?
                         .workspace,
@@ -166,15 +165,17 @@ async fn select_or_set_up_workspace(
 }
 
 pub async fn setup(
+    client: &Client,
     organization_name: Option<String>,
     workspace_name: Option<String>,
     verify: bool,
 ) -> ApiResult<()> {
-    let Some(organization) = select_or_set_up_organization(organization_name).await? else {
+    let Some(organization) = select_or_set_up_organization(client, organization_name).await? else {
         return Ok(());
     };
 
-    let Some(workspace) = select_or_set_up_workspace(&organization, workspace_name).await? else {
+    let Some(workspace) = select_or_set_up_workspace(client, &organization, workspace_name).await?
+    else {
         return Ok(());
     };
 
@@ -185,9 +186,7 @@ pub async fn setup(
         return Ok(());
     }
 
-    let url = CTRL_PLN_CLIENT_GLOBAL
-        .call_async(|client| client.get_workspace_setup_url(workspace.id))
-        .await?;
+    let url = client.get_aws_workspace_setup_url(workspace.id).await?;
 
     println!(
         r"Please complete the workspace setup process in your browser.
@@ -202,7 +201,7 @@ If your browser did not open automatically, please go to the following URL:
     }
 
     if verify {
-        wait_until_active(workspace, 2, 300).await?;
+        wait_until_active(client, workspace, 2, 300).await?;
         tracing::info!("Workspace setup completed");
     }
 
