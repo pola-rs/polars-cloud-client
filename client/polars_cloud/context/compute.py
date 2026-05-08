@@ -178,6 +178,8 @@ class ComputeContext(ClientContext, ContextDecorator):
     requirements
         Path to a file or a file-like object [#filelike]_ containing dependencies to
         install in the compute context, in the `requirements.txt format`_.
+    env_vars
+        `dict` of environment variables to override while running Polars queries.
     connection_mode
         How the context will connect to the compute cluster.
         - direct: connect directly to the compute cluster.
@@ -273,6 +275,7 @@ class ComputeContext(ClientContext, ContextDecorator):
         storage: int | None = None,
         cluster_size: int | None = None,
         requirements: str | Path | io.IOBase | bytes | None = None,
+        env_vars: dict[str, str] | None = None,
         connection_mode: ConnectionMode | None = None,
         workspace: str | UUID | Workspace | None = None,
         labels: list[str] | str | None = None,
@@ -286,6 +289,7 @@ class ComputeContext(ClientContext, ContextDecorator):
         self._compute_id: UUID | None = None
         self._compute_token: str | None = None
         self._requirements_txt: str | None
+        self._env_vars: dict[str, str]
         self._name: str | None = None
         self._last_known_status: ComputeContextStatus
 
@@ -302,6 +306,7 @@ class ComputeContext(ClientContext, ContextDecorator):
                 or labels is not None
                 or log_level is not None
                 or idle_timeout_mins is not None
+                or env_vars is not None
             ):
                 msg = "cannot specify both `name` and any other specs"
                 raise ComputeClusterMisspecified(msg)
@@ -336,6 +341,7 @@ class ComputeContext(ClientContext, ContextDecorator):
             self._connection_mode: pcr.DBClusterModeModel = m.mode
             self._log_level: pcr.LogLevelModel = m.log_level
             self._idle_timeout_mins = m.idle_timeout_mins
+            self._env_vars = m.env_vars
 
             self._polars_version = pcr.polars_version()
             if self._polars_version != m.polars_version:
@@ -368,6 +374,7 @@ class ComputeContext(ClientContext, ContextDecorator):
             self._idle_timeout_mins = idle_timeout_mins
             self._polars_version = pcr.polars_version()
             self._last_known_status = ComputeContextStatus.UNINITIALIZED
+            self._env_vars = env_vars or {}
 
             if requirements is not None:
                 if isinstance(requirements, (str, Path)):
@@ -483,6 +490,7 @@ class ComputeContext(ClientContext, ContextDecorator):
             labels=self._labels,
             log_level=self.log_level,
             idle_timeout_mins=self._idle_timeout_mins,
+            env_vars=self._env_vars,
         )
 
     def unregister(self) -> None:
@@ -542,6 +550,7 @@ class ComputeContext(ClientContext, ContextDecorator):
                 labels=self._labels,
                 log_level=self.log_level,
                 idle_timeout_mins=self._idle_timeout_mins,
+                env_vars=self._env_vars,
             )
             self._compute_id = compute.id
 
@@ -751,6 +760,10 @@ class ComputeContext(ClientContext, ContextDecorator):
     @property
     def log_level(self) -> pcr.LogLevelModel:
         return self._log_level
+
+    @property
+    def env_vars(self) -> dict[str, str]:
+        return self._env_vars
 
     def _get_direct_client(self) -> pcr.SchedulerClient | None:
         if self.connection_mode != "direct":

@@ -269,7 +269,7 @@ checksum = "c3e64b0cc0439b12df2fa678eae89a1c56a529fd067a9115f7827f1fffd22b32"
 
 [[package]]
 name = "client-cli"
-version = "0.6.1"
+version = "0.6.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -286,7 +286,7 @@ dependencies = [
 
 [[package]]
 name = "client-core"
-version = "0.6.1"
+version = "0.6.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -314,7 +314,7 @@ dependencies = [
 
 [[package]]
 name = "client-lib"
-version = "0.6.1"
+version = "0.6.3"
 dependencies = [
  "client-cli",
  "client-core",

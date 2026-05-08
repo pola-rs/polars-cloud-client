@@ -314,6 +314,9 @@ class ManifestModel:
     requirements_txt: str | None
     """Requirements.txt file contents."""
 
+    env_vars: dict[str, str]
+    """Environment variable overrides"""
+
     live_cluster_id: UUID | None
     """"ID of the cluster for this manifest if one is active"""
 
@@ -649,6 +652,7 @@ class ApiClient:
         storage: int | None,
         big_instance_storage: int | None,
         requirements_txt: str | None,
+        env_vars: dict[str, str],
         labels: list[str] | None,
         log_level: LogLevelModel | None,
         idle_timeout_mins: int | None,
@@ -675,6 +679,7 @@ class ApiClient:
         storage: int | None,
         big_instance_storage: int | None,
         requirements_txt: str | None,
+        env_vars: dict[str, str],
         labels: list[str] | None,
         log_level: LogLevelModel | None,
         idle_timeout_mins: int | None,
