@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::time::Duration;
 
 use client_core::{
@@ -120,6 +121,7 @@ pub async fn start_compute_cluster(
     instance_type: Option<String>,
     storage: Option<u32>,
     cluster_size: u32,
+    env_vars: HashMap<String, String>,
     wait: bool,
 ) -> ApiResult<()> {
     let workspace = if let Some(workspace_name) = workspace_name {
@@ -178,6 +180,7 @@ pub async fn start_compute_cluster(
                 log_level: None,
                 idle_timeout_mins: None,
                 requirements_txt: None,
+                env_vars,
             },
         )
         .await?;

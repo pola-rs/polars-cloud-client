@@ -3,6 +3,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use clap::builder::{NonEmptyStringValueParser, TypedValueParser, ValueParser};
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use client_core::{AutoRefreshApiControlPlaneClient, Client, RUNTIME};
 use tracing_subscriber::EnvFilter;
@@ -175,6 +176,23 @@ struct ComputeArgs {
     command: ComputeCommands,
 }
 
+fn parse_env_override() -> ValueParser {
+    NonEmptyStringValueParser::new()
+        .try_map(|value| {
+            let (key, value) = value
+                .split_once("=")
+                .and_then(|(key, value)| {
+                    (!key.is_empty() && !value.is_empty()).then_some((key, value))
+                })
+                .ok_or("Expected `<KEY>=<value>`")?;
+            if key.is_empty() || value.is_empty() {
+                return Err("");
+            }
+            Ok::<(String, String), &'static str>((key.to_owned(), value.to_owned()))
+        })
+        .into()
+}
+
 #[derive(Subcommand)]
 enum ComputeCommands {
     /// List available compute clusters
@@ -195,6 +213,8 @@ enum ComputeCommands {
         storage: Option<u32>,
         #[arg(long, default_value_t = 1)]
         cluster_size: u32,
+        #[arg(short, long, value_parser = parse_env_override())]
+        env_override: Vec<(String, String)>,
         #[arg(long)]
         wait: bool,
     },
@@ -317,6 +337,7 @@ async fn async_main(args: Vec<String>) -> anyhow::Result<()> {
                 instance_type,
                 storage,
                 cluster_size,
+                env_override,
                 wait,
             } => {
                 start_compute_cluster(
@@ -328,6 +349,7 @@ async fn async_main(args: Vec<String>) -> anyhow::Result<()> {
                     instance_type,
                     storage,
                     cluster_size,
+                    env_override.into_iter().collect(),
                     wait,
                 )
                 .await?
@@ -350,4 +372,36 @@ async fn async_main(args: Vec<String>) -> anyhow::Result<()> {
     };
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_env_vars() {
+        let cli = Cli::parse_from([
+            "pc",
+            "compute",
+            "start",
+            "--env-override",
+            "TEST_ARG=3",
+            "--env-override",
+            "TEST_ARG2=hello",
+        ]);
+        let command = cli.command.unwrap();
+        let Commands::Compute(ComputeArgs {
+            command: ComputeCommands::Start { env_override, .. },
+        }) = command
+        else {
+            panic!();
+        };
+        assert_eq!(
+            env_override,
+            vec![
+                ("TEST_ARG".into(), "3".into()),
+                ("TEST_ARG2".into(), "hello".into())
+            ]
+        )
+    }
 }

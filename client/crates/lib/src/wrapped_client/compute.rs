@@ -1,5 +1,7 @@
 #![allow(clippy::result_large_err)]
 
+use std::collections::HashMap;
+
 use client_core::{ApiError, RUNTIME, VERSIONS};
 use polars_axum_models::{
     ClusterModeModel, ComputeClusterNodeInfoModel, ComputeClusterPublicInfoModel, ComputeModel,
@@ -93,7 +95,7 @@ impl WrappedAPIClient {
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature=(workspace_id, name, cluster_size, mode, cpus, ram_gb, cpu_architectures, instance_type, storage, big_instance_type, big_instance_multiplier,  big_instance_storage, requirements_txt, labels, log_level, idle_timeout_mins))]
+    #[pyo3(signature=(workspace_id, name, cluster_size, mode, cpus, ram_gb, cpu_architectures, instance_type, storage, big_instance_type, big_instance_multiplier,  big_instance_storage, requirements_txt, env_vars, labels, log_level, idle_timeout_mins))]
     pub fn register_compute_cluster_manifest(
         &self,
         py: Python,
@@ -110,6 +112,7 @@ impl WrappedAPIClient {
         big_instance_multiplier: Option<u32>,
         big_instance_storage: Option<u32>,
         requirements_txt: Option<String>,
+        env_vars: HashMap<String, String>,
         labels: Option<Vec<String>>,
         log_level: LogLevelModel,
         idle_timeout_mins: Option<u32>,
@@ -159,6 +162,7 @@ impl WrappedAPIClient {
                 labels,
                 log_level,
                 requirements_txt,
+                env_vars,
                 python_version,
                 polars_version,
                 idle_timeout_mins,
@@ -210,7 +214,7 @@ impl WrappedAPIClient {
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature=(workspace_id, cluster_size, mode, cpus, ram_gb, cpu_architectures, instance_type, storage, big_instance_type, big_instance_multiplier,  big_instance_storage, requirements_txt, labels, log_level, idle_timeout_mins))]
+    #[pyo3(signature=(workspace_id, cluster_size, mode, cpus, ram_gb, cpu_architectures, instance_type, storage, big_instance_type, big_instance_multiplier,  big_instance_storage, requirements_txt, env_vars, labels, log_level, idle_timeout_mins))]
     pub fn start_compute(
         &self,
         py: Python<'_>,
@@ -226,6 +230,7 @@ impl WrappedAPIClient {
         big_instance_multiplier: Option<u32>,
         big_instance_storage: Option<u32>,
         requirements_txt: Option<String>,
+        env_vars: HashMap<String, String>,
         labels: Option<Vec<String>>,
         log_level: Option<LogLevelModel>,
         idle_timeout_mins: Option<u32>,
@@ -276,6 +281,7 @@ impl WrappedAPIClient {
                 labels,
                 log_level,
                 requirements_txt,
+                env_vars,
                 python_version,
                 polars_version,
                 idle_timeout_mins,

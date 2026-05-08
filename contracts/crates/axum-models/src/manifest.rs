@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 #[cfg(feature = "server")]
 use garde::Validate;
 #[cfg(feature = "pyo3")]
@@ -48,6 +50,7 @@ pub struct ManifestModel {
     pub python_version: String,
     pub log_level: LogLevelModel,
     pub requirements_txt: Option<String>,
+    pub env_vars: HashMap<String, String>,
     /// ID of the cluster for this manifest if one is active
     pub live_cluster_id: Option<Uuid>,
 }
@@ -143,6 +146,11 @@ impl ManifestModel {
     #[getter]
     pub fn requirements_txt(&self) -> pyo3::PyResult<Option<String>> {
         Ok(self.requirements_txt.clone())
+    }
+
+    #[getter]
+    pub fn env_vars(&self) -> pyo3::PyResult<HashMap<String, String>> {
+        Ok(self.env_vars.clone())
     }
 
     #[getter]

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::Display;
 
 use chrono::{DateTime, FixedOffset, Utc};
@@ -111,6 +112,9 @@ pub struct RegisterComputeClusterManifestArgs {
     pub idle_timeout_mins: Option<u32>,
     #[cfg_attr(feature = "server", garde(skip))]
     pub requirements_txt: Option<String>,
+    #[serde(default)]
+    #[cfg_attr(feature = "server", garde(skip))]
+    pub env_vars: HashMap<String, String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -153,6 +157,9 @@ pub struct StartComputeClusterArgs {
     pub idle_timeout_mins: Option<u32>,
     #[cfg_attr(feature = "server", garde(skip))]
     pub requirements_txt: Option<String>,
+    #[serde(default)]
+    #[cfg_attr(feature = "server", garde(skip))]
+    pub env_vars: HashMap<String, String>,
 }
 
 #[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
