@@ -1,5 +1,6 @@
 #![allow(clippy::result_large_err)]
 
+use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -13,13 +14,10 @@ use protos_client_compute::client::{
     ClientServiceClient, GetComputeVersionsRequest, GetQueryPlansRequest, GetQueryResultResponse,
     PlanSelection, QueryStatus,
 };
-use protos_client_compute::observatory::{
-    GetQueryProfileRequest, QueryProfile, QueryProfileServiceClient,
-};
 use protos_common::tonic::codegen::http::uri::Scheme;
 use protos_common::tonic::metadata::{MetadataKey, MetadataValue};
 use protos_common::tonic::service::interceptor::InterceptedService;
-use protos_common::tonic::transport::{Certificate, Channel, ClientTlsConfig, Identity, Uri};
+use protos_common::tonic::transport::{Certificate, Channel, ClientTlsConfig, Uri};
 use protos_common::tonic::{self, Code, Request};
 use protos_common::{
     ComputeVersions, MAX_MESSAGE_LENGTH_UNLIMITED, PlanFormat, QueryIdentifier, QueryInfo,
@@ -34,22 +32,15 @@ use uuid::Uuid;
 use crate::VERSIONS;
 use crate::entry::EnterRustExt;
 use crate::query_settings::{PyLineageContext, PyQuerySettings};
-use crate::serde_types::{
-    QueryDetailPy, QueryInfoPy, QueryProfilePy, query_profile_to_py, query_result_to_py,
-};
+use crate::serde_types::{QueryDetailPy, QueryInfoPy, query_result_to_py};
 
 type SchedulerGRPCClient =
     ClientServiceClient<InterceptedService<Channel, fn(Request<()>) -> tonic::Result<Request<()>>>>;
-
-type ObservatoryGRPCClient = QueryProfileServiceClient<
-    InterceptedService<Channel, fn(Request<()>) -> tonic::Result<Request<()>>>,
->;
 
 #[pyclass(from_py_object)]
 #[derive(Clone)]
 pub struct SchedulerClient {
     scheduler_client: SchedulerGRPCClient,
-    observatory_client_grpc: ObservatoryGRPCClient,
     observatory_client_rest: ObservatoryRestClient,
 }
 
@@ -89,26 +80,32 @@ impl ObservatoryRestClient {
             builder = builder.add_root_certificate(cert);
         }
 
-        if let (Some(cert), Some(key)) = (&options.tls_certificate, &options.tls_private_key) {
-            let mut pem = cert.clone();
-            pem.extend_from_slice(key);
-            let identity = reqwest::Identity::from_pem(&pem)?;
-            builder = builder.identity(identity);
-        }
-
-        if options.tls_cert_domain.is_some() {
-            builder = builder.https_only(true);
-        }
-
-        if options.insecure {
+        // Need to resolve the base URL to the TLS cert domain, to avoid invalid cert errors
+        let effective_base_url = if options.insecure {
             builder = builder
                 .danger_accept_invalid_certs(true)
                 .danger_accept_invalid_hostnames(true);
-        }
+            base_url
+        } else {
+            let domain = options.tls_cert_domain.as_deref().unwrap_or("pola.rs");
+            builder = builder.https_only(true);
+            let mut effective = base_url.clone();
+            if let Ok(mut url) = reqwest::Url::parse(&base_url) {
+                let port = url.port_or_known_default().unwrap_or(443);
+                let host = url.host_str().unwrap_or("").to_string();
+                if let Ok(addr) = format!("{host}:{port}").parse::<SocketAddr>() {
+                    builder = builder.resolve(domain, addr);
+                }
+                if url.set_host(Some(domain)).is_ok() {
+                    effective = url.to_string().trim_end_matches('/').to_string();
+                }
+            }
+            effective
+        };
 
         Ok(Self {
             inner: builder.build()?,
-            base_url,
+            base_url: effective_base_url,
         })
     }
 
@@ -145,7 +142,11 @@ impl SchedulerClient {
         let observatory_address = if address.starts_with("http") {
             format!("{address}:{observatory_port}")
         } else {
-            format!("http://{address}:{observatory_port}")
+            if client_options.insecure {
+                format!("http://{address}:{observatory_port}")
+            } else {
+                format!("https://{address}:{observatory_port}")
+            }
         };
 
         let observatory_client_rest =
@@ -158,14 +159,8 @@ impl SchedulerClient {
                 .max_encoding_message_size(MAX_MESSAGE_LENGTH_UNLIMITED)
                 .max_decoding_message_size(MAX_MESSAGE_LENGTH_UNLIMITED);
 
-        let observatory_client_grpc =
-            QueryProfileServiceClient::with_interceptor(channel, version_interceptor as _)
-                .max_encoding_message_size(MAX_MESSAGE_LENGTH_UNLIMITED)
-                .max_decoding_message_size(MAX_MESSAGE_LENGTH_UNLIMITED);
-
         Ok(SchedulerClient {
             scheduler_client,
-            observatory_client_grpc,
             observatory_client_rest,
         })
     }
@@ -278,38 +273,6 @@ impl SchedulerClient {
             })
         })?
         .map(|response| QueryIdentifier::from(response).inner)
-    }
-
-    pub fn get_direct_query_profile(
-        &self,
-        py: Python<'_>,
-        query_id: Uuid,
-        tag: Option<Vec<u8>>,
-        token: Option<String>,
-    ) -> ApiResult<Option<QueryProfilePy>> {
-        py.enter_rust(|| {
-            RUNTIME.block_on(async move {
-                let query_id = QueryIdentifier::from(query_id);
-
-                let mut req = Request::new(
-                    GetQueryProfileRequest {
-                        query_id,
-                        tag: tag.map(Into::into),
-                    }
-                    .into(),
-                );
-                req = insert_auth_token(req, token);
-                let response = self
-                    .observatory_client_grpc
-                    .clone()
-                    .get_query_profile(req)
-                    .await?;
-                Ok(response.into_inner().into())
-            })
-        })?
-        .map(|response: Option<QueryProfile>| {
-            response.map(|profile| query_profile_to_py(py, profile))
-        })
     }
 
     pub fn get_query_details(
@@ -449,10 +412,6 @@ pub struct ClientOptions {
     #[pyo3(get, set)]
     pub public_server_crt: Option<Vec<u8>>,
     #[pyo3(get, set)]
-    pub tls_certificate: Option<Vec<u8>>,
-    #[pyo3(get, set)]
-    pub tls_private_key: Option<Vec<u8>>,
-    #[pyo3(get, set)]
     pub insecure: bool,
 }
 
@@ -482,16 +441,9 @@ async fn get_channel(address: &str, client_options: ClientOptions) -> ApiResult<
             .tls_cert_domain
             .unwrap_or("pola.rs".to_string());
 
-        let mut tls = ClientTlsConfig::new()
+        let tls = ClientTlsConfig::new()
             .ca_certificate(ca)
             .domain_name(cert_domain);
-
-        if let Some(certificate) = client_options.tls_certificate
-            && let Some(private_key) = client_options.tls_private_key
-        {
-            let identity = Identity::from_pem(certificate, private_key);
-            tls = tls.identity(identity);
-        }
 
         Channel::builder(uri).tls_config(tls)?
     };

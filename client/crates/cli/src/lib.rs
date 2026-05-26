@@ -16,13 +16,15 @@ use crate::compute::{
 use crate::organization::{
     delete_organization, print_organization_details, print_organizations, set_up_organization,
 };
-use crate::setup::setup;
+use crate::service_account::create_service_account;
+use crate::setup::{WorkspaceKind, setup};
 use crate::workspace::{
     delete_workspace, print_workspace_details, print_workspaces, verify_workspace,
 };
 
 pub mod compute;
 pub mod organization;
+pub mod service_account;
 pub mod setup;
 pub mod workspace;
 
@@ -80,6 +82,8 @@ enum Commands {
         organization_name: Option<String>,
         #[arg(short, long)]
         workspace_name: Option<String>,
+        #[arg(long)]
+        workspace_type: Option<WorkspaceKind>,
         #[arg(long, default_value_t = false)]
         no_verify: bool,
     },
@@ -89,6 +93,8 @@ enum Commands {
     Workspace(WorkspaceArgs),
     /// Manage Polars Cloud compute clusters
     Compute(ComputeArgs),
+    /// Manage Polars Cloud service accounts
+    ServiceAccount(ServiceAccountArgs),
 }
 
 // --- Organization ---
@@ -132,12 +138,14 @@ struct WorkspaceArgs {
 enum WorkspaceCommands {
     /// List all active workspaces
     List,
-    /// Set up a workspace in AWS
+    /// Set up a workspace
     Setup {
         #[arg(short, long)]
         workspace_name: Option<String>,
         #[arg(short, long)]
         organization_name: Option<String>,
+        #[arg(short = 't', long)]
+        workspace_type: Option<WorkspaceKind>,
         #[arg(long, default_value_t = false)]
         no_verify: bool,
     },
@@ -165,6 +173,29 @@ enum WorkspaceCommands {
         organization_name: Option<String>,
         #[arg(short, long, required = true)]
         workspace_name: String,
+    },
+}
+
+// --- Service Account ---
+
+#[derive(Args)]
+struct ServiceAccountArgs {
+    #[command(subcommand)]
+    command: ServiceAccountCommands,
+}
+
+#[derive(Subcommand)]
+enum ServiceAccountCommands {
+    /// Create a new service account for a workspace
+    Create {
+        #[arg(short, long)]
+        organization_name: Option<String>,
+        #[arg(short, long, required = true)]
+        workspace_name: String,
+        #[arg(short, long, required = true)]
+        name: String,
+        #[arg(short, long)]
+        description: Option<String>,
     },
 }
 
@@ -285,8 +316,18 @@ async fn async_main(args: Vec<String>) -> anyhow::Result<()> {
         Commands::Setup {
             organization_name,
             workspace_name,
+            workspace_type,
             no_verify,
-        } => setup(&client, organization_name, workspace_name, !no_verify).await?,
+        } => {
+            setup(
+                &client,
+                organization_name,
+                workspace_name,
+                workspace_type,
+                !no_verify,
+            )
+            .await?
+        },
         Commands::Organization(args) => match args.command {
             OrganizationCommands::List => print_organizations(&client).await?,
             OrganizationCommands::Setup { name } => {
@@ -302,8 +343,18 @@ async fn async_main(args: Vec<String>) -> anyhow::Result<()> {
             WorkspaceCommands::Setup {
                 organization_name,
                 workspace_name,
+                workspace_type,
                 no_verify,
-            } => setup(&client, organization_name, workspace_name, !no_verify).await?,
+            } => {
+                setup(
+                    &client,
+                    organization_name,
+                    workspace_name,
+                    workspace_type,
+                    !no_verify,
+                )
+                .await?
+            },
             WorkspaceCommands::Verify {
                 organization_name,
                 workspace_name,
@@ -327,6 +378,23 @@ async fn async_main(args: Vec<String>) -> anyhow::Result<()> {
                 organization_name,
                 workspace_name,
             } => print_workspace_details(&client, organization_name, workspace_name).await?,
+        },
+        Commands::ServiceAccount(args) => match args.command {
+            ServiceAccountCommands::Create {
+                organization_name,
+                workspace_name,
+                name,
+                description,
+            } => {
+                create_service_account(
+                    &client,
+                    organization_name,
+                    workspace_name,
+                    name,
+                    description,
+                )
+                .await?
+            },
         },
         Commands::Compute(args) => match args.command {
             ComputeCommands::Start {

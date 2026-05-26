@@ -6,6 +6,15 @@ from uuid import UUID
 from polars_cloud._typing import ConnectionMode, CPUArchitecture, FileType, LogLevel
 from polars_cloud.query.query import DistributionSettings
 
+class PyShuffleOpts:
+    @staticmethod
+    def new(
+        format: str, compression: str, compression_level: int | None
+    ) -> PyShuffleOpts: ...
+
+class PyQuerySettings:
+    pass
+
 def serialize_query_settings(
     *,
     engine: str,
@@ -13,6 +22,7 @@ def serialize_query_settings(
     prefer_dot: bool = ...,
     shuffle_opts: PyShuffleOpts = ...,
     n_retries: int = ...,
+    n_workers: int | None = ...,
     distributed_settings: DistributionSettings | None = ...,
     optimization_flags: int | None,
 ) -> PyQuerySettings: ...
@@ -23,21 +33,12 @@ def polars_version() -> str: ...
 def python_version() -> str: ...
 def cli_main() -> None: ...
 
-class PyQuerySettings:
-    pass
-
 class ComputeTokenModel:
     id: UUID
     """Compute id"""
 
     token: str
     """Compute Token"""
-
-class PyShuffleOpts:
-    @staticmethod
-    def new(
-        format: str, compression: str, compression_level: int | None
-    ) -> PyShuffleOpts: ...
 
 class WorkspaceStateModel(Enum):
     """Represents the state of a workspace."""
@@ -47,6 +48,12 @@ class WorkspaceStateModel(Enum):
     Active = 2
     Failed = 3
     Deleted = 4
+
+class WorkspaceDeploymentModel(Enum):
+    """Represents the deployment location of a workspace."""
+
+    Aws = 0
+    OnPrem = 1
 
 class WorkspaceModel:
     """Represents a workspace model."""
@@ -62,6 +69,9 @@ class WorkspaceModel:
 
     description: str
     """Workspace Description."""
+
+    deployment: WorkspaceDeploymentModel
+    """Which location the workspace is deployed in."""
 
     creator_id: UUID
     """User who owns the Workspace."""
@@ -204,14 +214,6 @@ class QueryWithStateTimingAndResultModel:
     state_timing: QueryStateTimingModel
     """Details about the state of the query"""
     result: ResultModel | None
-
-class QueryPlansModel:
-    id: UUID
-    """Query ID."""
-    ir_plan: str | None
-    """The intermediate representation in dotfile format."""
-    phys_plan: str | None
-    """The physical plan in dotfile format."""
 
 class TerminationReasonModel(Enum):
     """Enum representing the reasons for termination."""
@@ -386,6 +388,9 @@ class ComputeModel:
     polars_version: str
     """The version of polars running on the cluster."""
 
+    compute_plane_version: str | None
+    """The version of the compute cluster."""
+
     tunnel_addr: str | None
     """Address for the compute cluster tunnel."""
 
@@ -506,17 +511,7 @@ class QueryInfoPy:
 class ClientOptions:
     tls_cert_domain: str | None
     public_server_crt: bytes | None
-    tls_certificate: bytes | None
-    tls_private_key: bytes | None
     insecure: bool
-
-class QueryProfilePy:
-    tag: bytes
-    total_stages: int | None
-    phys_plan_explain: str | None
-    phys_plan_dot: str | None
-    data: bytes | None
-    errors: list[str]
 
 class QueryPlanTimingPy:
     plan_start_time: str | None
@@ -608,6 +603,12 @@ class ApiClient:
     ) -> WorkspaceWithUrlModel: ...
     def get_workspace_setup_url(self, workspace_id: UUID) -> WorkspaceSetupUrlModel: ...
     def delete_workspace(self, workspace_id: UUID) -> DeleteWorkspaceModel | None: ...
+
+    # On-prem workspace methods
+    def create_on_prem_workspace(
+        self, name: str, organization_id: UUID
+    ) -> WorkspaceModel: ...
+    def delete_on_prem_workspace(self, workspace_id: UUID) -> None: ...
     def get_workspace(self, workspace_id: UUID) -> WorkspaceModel: ...
     def get_workspaces(
         self, name: str | None = None, organization_id: UUID | None = None
@@ -728,6 +729,16 @@ class ApiClient:
     ) -> WorkspaceApiToken: ...
     def delete_service_account(self, workspace_id: UUID, user_id: UUID) -> None: ...
 
+class QueryPlansPy:
+    format: PlanFormatPy
+    ir_plan: str | None
+    phys_plan: str | None
+
+class ComputeVersionsPy:
+    compute_plane_version: str
+    polars_python_version: str
+    polars_rust_revision: str
+
 class SchedulerClient:
     def __init__(
         self,
@@ -753,9 +764,6 @@ class SchedulerClient:
         execution_id: str | None = None,
         lineage_context: PyLineageContext | None = None,
     ) -> UUID: ...
-    def get_direct_query_profile(
-        self, query_id: UUID, tag: bytes | None, token: str | None
-    ) -> QueryProfilePy | None: ...
     def get_direct_query_plan(
         self, query_id: UUID, token: str | None, phys: bool = False, ir: bool = False
     ) -> QueryPlansPy: ...
@@ -765,16 +773,6 @@ class SchedulerClient:
 class PlanFormatPy(Enum):
     Dot = 0
     Explain = 1
-
-class QueryPlansPy:
-    format: PlanFormatPy
-    ir_plan: str | None
-    phys_plan: str | None
-
-class ComputeVersionsPy:
-    compute_plane_version: str
-    polars_python_version: str
-    polars_rust_revision: str
 
 class ComputeContextSpecs:
     def __init__(

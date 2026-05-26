@@ -22,7 +22,7 @@ pub fn get_control_plane_client() -> ControlPlaneGRPCClient {
                 .map(|(_, versions)| versions),
         ))
         .unwrap()
-        .tls_config(ClientTlsConfig::new().with_enabled_roots())
+        .tls_config(ClientTlsConfig::new().with_native_roots())
         .unwrap()
         .connect_lazy();
 

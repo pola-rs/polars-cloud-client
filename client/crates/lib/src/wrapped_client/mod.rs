@@ -10,6 +10,7 @@ use crate::entry::EnterRustExt;
 
 pub mod aws;
 pub mod compute;
+pub mod on_prem;
 pub mod organization;
 pub mod query;
 pub mod query_control_grpc;

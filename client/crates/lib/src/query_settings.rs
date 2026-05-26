@@ -1,3 +1,5 @@
+use std::num::NonZeroU32;
+
 use protos_client_compute::client::{
     DistributedOpts, Engine, GraphFormat, LineageContext, QuerySettings, QueryType,
     ShuffleCompression, ShuffleFormat, ShuffleOpts, SingleWorkerOps,
@@ -123,6 +125,8 @@ pub struct PyQuerySettings {
     pub prefer_dot: bool,
     /// Number of retries on failed tasks
     pub n_retries: u32,
+    /// Number of workers to request for the query,
+    pub n_workers: Option<NonZeroU32>,
     pub optimization_flags: Option<u32>,
 }
 
@@ -137,6 +141,7 @@ impl From<PyQuerySettings> for QuerySettings {
             },
             n_retries: value.n_retries,
             query_type: value.query_type.into(),
+            n_workers: value.n_workers,
             optimization_flags: value.optimization_flags,
         }
     }

@@ -1,6 +1,7 @@
 pub mod macros;
 
-pub use {prost, tonic};
+pub use prost;
+pub use tonic;
 
 pub mod proto {
     include!(concat!(env!("OUT_DIR"), "/includes.rs"));

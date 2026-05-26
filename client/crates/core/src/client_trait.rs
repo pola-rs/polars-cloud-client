@@ -77,6 +77,13 @@ pub trait ControlPlaneClient: Send + Sync {
         workspace_id: Uuid,
     ) -> Result<Option<DeleteWorkspaceModel>, ApiError>;
 
+    // --- Workspace (On-Prem) ---
+    async fn create_on_prem_workspace(
+        &self,
+        params: WorkSpaceArgs,
+    ) -> Result<WorkspaceModel, ApiError>;
+    async fn delete_on_prem_workspace(&self, workspace_id: Uuid) -> Result<(), ApiError>;
+
     // --- Compute ---
     async fn find_compute_cluster_manifest(
         &self,

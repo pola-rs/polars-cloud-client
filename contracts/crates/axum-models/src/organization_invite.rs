@@ -77,3 +77,9 @@ pub struct RedeemInviteArgs {
     pub id: Uuid,
     pub key: String,
 }
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct GetOrganizationInvitesArgs {
+    pub workspace_id: Option<Uuid>,
+}

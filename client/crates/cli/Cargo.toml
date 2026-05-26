@@ -9,7 +9,6 @@ repository.workspace = true
 
 [lib]
 name = "client_cli"
-test = false
 doctest = false
 
 [dependencies]

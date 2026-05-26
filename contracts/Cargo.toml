@@ -1,13 +1,9 @@
 [workspace]
 resolver = "2"
-members = [
-  "crates/*",
-]
-default-members = [
-  "crates/*",
-]
+members = ["crates/*"]
+default-members = ["crates/*"]
 [workspace.metadata.cargo-shear]
-ignored = ["prost-types", "strum", "tonic-prost"]
+ignored = ["prost-types", "strum", "tonic-prost", "prost"]
 
 [workspace.dependencies]
 aide = { version = "0.15.1", features = ["axum-json", "macros", "axum-query"] }
@@ -34,6 +30,7 @@ prost-types = "0.14.3"
 protos-client-compute = { path = "crates/protos-client-compute" }
 protos-common = { path = "crates/protos-common" }
 protos-compute-internal = { path = "crates/protos-compute-internal" }
+protos-compute-license = { path = "crates/protos-compute-license" }
 pyo3 = { version = "0.28.0", features = ["abi3-py310", "chrono", "uuid"] }
 quote = "1.0"
 rcgen = { version = "0.13", features = ["pem", "x509-parser"] }
@@ -41,7 +38,7 @@ regex = { version = "1.11" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "http2"] }
 reqwest-middleware = "0.4.1"
 schemars = { version = "0.9.0", features = ["uuid1", "chrono04"] }
-semver = "1.0.27"
+semver = { version = "1.0.27", features = ["serde"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = { version = "1.0" }
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "json", "chrono", "uuid"] }

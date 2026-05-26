@@ -123,8 +123,6 @@ class ClusterContext(ClientContext):
         insecure: bool = False,
         tls_cert_domain: str | None = None,
         public_server_crt: bytes | None = None,
-        tls_certificate: bytes | None = None,
-        tls_private_key: bytes | None = None,
         allow_filesystem_scans: bool | None = None,
     ) -> None:
         self._connection_mode = pcr.DBClusterModeModel.Direct
@@ -134,8 +132,6 @@ class ClusterContext(ClientContext):
 
         client_options.tls_cert_domain = tls_cert_domain
         client_options.public_server_crt = public_server_crt
-        client_options.tls_certificate = tls_certificate
-        client_options.tls_private_key = tls_private_key
         client_options.insecure = insecure
         self._direct_client = pcr.SchedulerClient(
             address=compute_address,

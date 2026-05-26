@@ -90,6 +90,7 @@ impl FromStr for VersionNumber {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (version, beta_version) = s.split_once("b").unzip();
         let version = version.unwrap_or(s);
+
         let mut parts = version.splitn(3, '.');
         let major = parts
             .next()

@@ -26,7 +26,10 @@ pub struct WorkSpaceTokenBodyArgs {
 
 #[derive(Serialize, Debug, Deserialize)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
-#[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
+#[cfg_attr(
+    feature = "pyo3",
+    pyclass(name = "WorkspaceApiToken", skip_from_py_object, get_all)
+)]
 pub struct WorkspaceAPITokenModel {
     pub id: Uuid,
     pub username: Uuid,

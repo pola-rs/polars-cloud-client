@@ -82,4 +82,5 @@ message QuerySettings {
   GraphFormat preferred_graph_format = 5;
   uint32 n_retries = 6;
   optional uint32 optimization_flags = 7;
+  optional uint32 n_workers = 8;
 }

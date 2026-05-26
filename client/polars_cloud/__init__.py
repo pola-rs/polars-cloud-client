@@ -30,7 +30,6 @@ from polars_cloud.query import (
     QueryDetail,
     QueryInfo,
     QueryPlanTiming,
-    QueryProfile,
     QueryResult,
     QueryStatus,
     StageStatistics,
@@ -46,7 +45,6 @@ from polars_cloud.workspace import (
 )
 
 __all__ = [
-    "Broadcast",
     "ClientContext",
     "ClusterContext",
     "ComputeContext",
@@ -64,7 +62,6 @@ __all__ = [
     "QueryDetail",
     "QueryInfo",
     "QueryPlanTiming",
-    "QueryProfile",
     "QueryResult",
     "QueryStatus",
     "StageStatistics",

@@ -70,12 +70,11 @@ class LazyFrameRemote:
         shuffle_compression: ShuffleCompression = "auto",
         shuffle_format: ShuffleFormat = "auto",
         shuffle_compression_level: int | None = None,
-        sort_partitioned: bool = True,
-        pre_aggregation: bool = True,
-        expression_lowering: bool = False,
         equi_join_broadcast_limit: int = 256 * 1024**2,
         partitions_per_worker: int | None = None,
         single_worker_ops: SingleWorkerOps = "auto",
+        n_workers: int | None = None,
+        **kwargs: Any,
     ) -> ExecuteRemote:
         """Whether the query should run in a distributed fashion.
 
@@ -92,17 +91,6 @@ class LazyFrameRemote:
         shuffle_compression_level
             Compression level of shuffle.
             If set to `None` it is decided by the optimizer.
-        sort_partitioned
-            Whether sort operations can be executed on multiple workers.
-        pre_aggregation
-            Whether group-by and selected aggregations are pre-aggregated on
-            worker nodes if possible.
-        expression_lowering
-            Whether individual expressions can be lowered into distributed operations.
-
-            .. warning::
-                This functionality is experimental. It may be
-                changed at any point without it being considered a breaking change.
         equi_join_broadcast_limit
             Whether equi joins are allowed to be converted from partitioned to
             broadcasted. The passed value is the maximum size in bytes to broadcasted.
@@ -134,6 +122,12 @@ class LazyFrameRemote:
             .. warning::
                 This functionality is experimental. It may be
                 changed at any point without it being considered a breaking change.
+        n_workers
+            Number of workers requested for the query.
+            Defaults to all workers in the cluster.
+
+        kwargs
+            Extra unstable args not useful for general usage.
 
         Examples
         --------
@@ -145,18 +139,17 @@ class LazyFrameRemote:
             raise ValueError(msg)
 
         distributed_settings = DistributionSettings(
-            sort_partitioned=sort_partitioned,
-            pre_aggregation=pre_aggregation,
-            expression_lowering=expression_lowering,
             equi_join_broadcast_limit=equi_join_broadcast_limit,
             partitions_per_worker=partitions_per_worker,
             single_worker_ops=single_worker_ops,
+            **kwargs,
         )
         exec = ExecuteRemote(
             lf=self.lf,
             context=self.context,
             plan_type=self.plan_type,
             n_retries=self._n_retries,
+            n_workers=n_workers,
             labels=self._labels,
             engine=self._engine,
             distributed_settings=distributed_settings,
@@ -175,6 +168,7 @@ class LazyFrameRemote:
             context=self.context,
             plan_type=self.plan_type,
             n_retries=self._n_retries,
+            n_workers=None,
             labels=self._labels,
             engine=self._engine,
             lineage=self._lineage,
@@ -778,6 +772,7 @@ class ExecuteRemote:
         context: ClientContext | None,
         plan_type: PlanTypePreference,
         n_retries: int,
+        n_workers: int | None,
         engine: Engine,
         labels: list[str] | None,
         shuffle_compression: ShuffleCompression = "auto",
@@ -791,6 +786,7 @@ class ExecuteRemote:
         self._engine: Engine = engine
         self._labels: None | list[str] = labels
         self._n_retries = n_retries
+        self._n_workers = n_workers
         self.plan_type: PlanTypePreference = plan_type
         # Optimizations settings for distributed
         self._shuffle_compression: ShuffleCompression = shuffle_compression
@@ -875,6 +871,7 @@ class ExecuteRemote:
             shuffle_format=self._shuffle_format,
             shuffle_compression_level=self._shuffle_compression_level,
             n_retries=self._n_retries,
+            n_workers=self._n_workers,
             distributed=self._distributed_settings,
             optimizations=optimizations,
             lineage=self._lineage,
@@ -1093,6 +1090,7 @@ class ExecuteRemote:
             shuffle_format=self._shuffle_format,
             shuffle_compression_level=self._shuffle_compression_level,
             n_retries=self._n_retries,
+            n_workers=self._n_workers,
             distributed=self._distributed_settings,
             optimizations=optimizations,
             lineage=self._lineage,
@@ -1270,6 +1268,7 @@ class ExecuteRemote:
             shuffle_format=self._shuffle_format,
             shuffle_compression_level=self._shuffle_compression_level,
             n_retries=self._n_retries,
+            n_workers=self._n_workers,
             distributed=self._distributed_settings,
             sink_to_single_file=sink_to_single_file,
             optimizations=optimizations,
@@ -1376,6 +1375,7 @@ class ExecuteRemote:
             shuffle_format=self._shuffle_format,
             shuffle_compression_level=self._shuffle_compression_level,
             n_retries=self._n_retries,
+            n_workers=self._n_workers,
             distributed=self._distributed_settings,
             sink_to_single_file=sink_to_single_file,
             optimizations=optimizations,
