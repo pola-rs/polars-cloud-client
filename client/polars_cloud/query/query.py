@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 try:
     from IPython.core.getipython import get_ipython as _get_ipython
@@ -61,14 +60,44 @@ if TYPE_CHECKING:
     from polars_cloud.query.query_result import QueryResult
 
 
-@dataclass
 class DistributionSettings:
-    sort_partitioned: bool = True
-    pre_aggregation: bool = True
-    expression_lowering: bool = True
-    equi_join_broadcast_limit: int = 256 * 1024**2
-    partitions_per_worker: int | None = None
-    single_worker_ops: SingleWorkerOps = "auto"
+    def __init__(
+        self,
+        equi_join_broadcast_limit: int = 256 * 1024**2,
+        partitions_per_worker: int | None = None,
+        single_worker_ops: SingleWorkerOps = "auto",
+        **kwargs: Any,
+    ) -> None:
+        """Settings that control the distributed planner or execution.
+
+        Parameters
+        ----------
+        equi_join_broadcast_limit
+            Whether equi joins are allowed to be converted from partitioned to
+            broadcasted. The passed value is the maximum size in bytes to broadcasted.
+            Set to 0 to disable broadcasting.
+        partitions_per_worker
+            Into how many parts to split the data when distributing work over workers.
+            A higher number means less peak memory usage, but might mean slightly
+            less performant execution.
+        single_worker_ops
+            Whether to allow memory-intensive operations to execute on a single worker.
+            This can lead to a faster execution, but it also increases a risk of running
+            out of RAM.
+        kwargs
+            Extra unstable args not useful for general usage.
+
+        """
+        self.equi_join_broadcast_limit = equi_join_broadcast_limit
+        self.partitions_per_worker = partitions_per_worker
+        self.single_worker_ops = single_worker_ops
+        # Whether sort operations can be executed on multiple workers.
+        self.sort_partitioned = kwargs.get("sort_partitioned", True)
+        # Whether group-by and selected aggregations are pre-aggregated on
+        # worker nodes if possible.
+        self.pre_aggregation = kwargs.get("pre_aggregation", True)
+        # Whether individual expressions can be lowered into distributed operations.
+        self.expression_lowering = kwargs.get("expression_lowering", False)
 
 
 def spawn_many(
@@ -83,6 +112,7 @@ def spawn_many(
     shuffle_format: ShuffleFormat = "auto",
     distributed: DistributionSettings | None | bool = None,
     n_retries: int = 0,
+    n_workers: int | None = None,
     lineage: LineageContext | None = None,
     **optimizations: bool,
 ) -> list[ProxyQuery] | list[DirectQuery]:
@@ -126,6 +156,9 @@ def spawn_many(
         and available machines.
     n_retries
         How often failed tasks should be retried.
+    n_workers
+        Number of workers requested for the query.
+        Defaults to all workers in the cluster.
     lineage
         OpenLineage metadata for this query, typically provided by an orchestrator.
 
@@ -157,6 +190,7 @@ def spawn_many(
             shuffle_compression=shuffle_compression,
             shuffle_format=shuffle_format,
             n_retries=n_retries,
+            n_workers=n_workers,
             distributed=distributed,
             lineage=lineage,
             **optimizations,  # type: ignore[arg-type]
@@ -177,6 +211,7 @@ def spawn_many_blocking(
     shuffle_format: ShuffleFormat = "auto",
     distributed: DistributionSettings | None | bool = None,
     n_retries: int = 0,
+    n_workers: int | None = None,
     lineage: LineageContext | None = None,
     **optimizations: bool,
 ) -> list[QueryResult]:
@@ -220,6 +255,9 @@ def spawn_many_blocking(
         and available machines.
     n_retries
         How often failed tasks should be retried.
+    n_workers
+        Number of workers requested for the query.
+        Defaults to all workers in the cluster.
     lineage
         OpenLineage metadata for this query, typically provided by an orchestrator.
 
@@ -251,6 +289,7 @@ def spawn_many_blocking(
             shuffle_compression=shuffle_compression,
             shuffle_format=shuffle_format,
             n_retries=n_retries,
+            n_workers=n_workers,
             distributed=distributed,
             lineage=lineage,
             **optimizations,
@@ -274,6 +313,7 @@ def spawn(
     shuffle_compression_level: int | None = None,
     distributed: DistributionSettings | None | bool = None,
     n_retries: int = 0,
+    n_workers: int | None = None,
     sink_to_single_file: bool | None = None,
     optimizations: pl.QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
     lineage: LineageContext | None = None,
@@ -320,6 +360,9 @@ def spawn(
         and available machines.
     n_retries
         How often failed tasks should be retried.
+    n_workers
+        The amount of workers requested for the query. Defaults to all
+        the workers.
     sink_to_single_file
         Perform the sink into a single file.
 
@@ -387,11 +430,6 @@ def spawn(
         if context._compute_id is None:
             context.start()
 
-    allow_local_scans = constants.ALLOW_LOCAL_SCANS
-    if isinstance(context, ClusterContext):
-        if context.allow_filesystem_scans is not None:
-            allow_local_scans = context.allow_filesystem_scans
-
     plan, settings = prepare_query(
         lf=lf,
         dst=dst,
@@ -401,10 +439,10 @@ def spawn(
         shuffle_format=shuffle_format,
         shuffle_compression_level=shuffle_compression_level,
         n_retries=n_retries,
+        n_workers=n_workers,
         distributed_settings=distributed,
         sink_to_single_file=sink_to_single_file,
         optimizations=optimizations,
-        allow_local_scans=allow_local_scans,
     )
 
     lineage_context = (

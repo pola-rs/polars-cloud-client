@@ -19,6 +19,3 @@ ACCESS_TOKEN_FILENAME = "cloud_access_token"
 REFRESH_TOKEN_FILENAME = "cloud_refresh_token"
 
 API_CLIENT = pcr.ApiClient()
-
-# disables client-side check only
-ALLOW_LOCAL_SCANS = os.getenv("POLARS_CLOUD_ALLOW_LOCAL_SCANS", "").lower() == "true"

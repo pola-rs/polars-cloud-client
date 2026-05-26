@@ -7,7 +7,7 @@ use client_core::{
 use comfy_table::Table;
 use comfy_table::presets::NOTHING;
 use polars_axum_models::{
-    ClusterModeModel, ComputeModel, ComputeStatusModel, GetClusterFilterArgs, InstanceSpecsModel,
+    ComputeModel, ComputeStatusModel, DBClusterModeModel, GetClusterFilterArgs, InstanceSpecsModel,
     StartComputeClusterArgs, WorkspaceModel,
 };
 use reqwest::StatusCode;
@@ -173,13 +173,14 @@ pub async fn start_compute_cluster(
                 storage,
                 big_instance_storage: None,
                 cluster_size,
-                mode: ClusterModeModel::Proxy,
+                mode: DBClusterModeModel::Proxy,
                 python_version,
                 polars_version,
                 labels: None,
                 log_level: None,
                 idle_timeout_mins: None,
                 requirements_txt: None,
+                settings: None,
                 env_vars,
             },
         )

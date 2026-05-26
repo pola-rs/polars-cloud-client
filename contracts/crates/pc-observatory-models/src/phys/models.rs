@@ -340,6 +340,12 @@ pub enum PhysNodeProperties {
     Interpolate {
         method: String,
     },
+    Gather {
+        null_on_oob: bool,
+    },
+    ColumnarFunction {
+        name: Option<String>,
+    },
 }
 
 impl PhysNodeProperties {

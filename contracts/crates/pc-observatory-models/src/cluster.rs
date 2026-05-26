@@ -15,6 +15,7 @@ pub enum ClusterModeModel {
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 pub struct ScratchpadConfigModel {
     pub local_scheduler_port: Option<u16>,
+    pub local_observatory_port: Option<u16>,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]

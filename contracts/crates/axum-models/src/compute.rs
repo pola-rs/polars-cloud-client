@@ -16,21 +16,6 @@ use version_number::VersionNumber;
 use crate::termination::TerminationModel;
 use crate::{DefaultSortDirection, EntityOrdering, InstanceSpecsModel};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[cfg_attr(feature = "server", derive(JsonSchema))]
-#[serde(
-    deny_unknown_fields,
-    rename_all = "snake_case",
-    tag = "mode",
-    content = "settings"
-)]
-pub enum ClusterModeModel {
-    // client_public_key is optional, it can be an empty string.
-    // It will remain a String type for backwards compatibility.
-    Direct { client_public_key: String },
-    Proxy,
-}
-
 #[derive(Default, Clone, Deserialize, Serialize, Debug, PartialEq)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 #[cfg_attr(feature = "pyo3", pyclass(from_py_object, eq, eq_int))]
@@ -97,9 +82,8 @@ pub struct RegisterComputeClusterManifestArgs {
     pub big_instance_storage: Option<u32>,
     #[cfg_attr(feature = "server", garde(range(min = 1)))]
     pub cluster_size: u32,
-    #[serde(default, flatten)]
     #[cfg_attr(feature = "server", garde(skip))]
-    pub mode: ClusterModeModel,
+    pub mode: DBClusterModeModel,
     #[cfg_attr(feature = "server", garde(dive))]
     pub python_version: PythonVersion,
     #[cfg_attr(feature = "server", garde(skip), schemars(with = "String"))]
@@ -115,6 +99,13 @@ pub struct RegisterComputeClusterManifestArgs {
     #[serde(default)]
     #[cfg_attr(feature = "server", garde(skip))]
     pub env_vars: HashMap<String, String>,
+
+    // Backwards compat: old clients send `settings: { client_public_key: "" }`
+    // alongside `mode: "direct"`. Accept and discard.
+    #[serde(default, skip_serializing)]
+    #[cfg_attr(feature = "server", schemars(skip))]
+    #[cfg_attr(feature = "server", garde(skip))]
+    pub settings: Option<serde::de::IgnoredAny>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -142,9 +133,8 @@ pub struct StartComputeClusterArgs {
     pub big_instance_storage: Option<u32>,
     #[cfg_attr(feature = "server", garde(range(min = 1)))]
     pub cluster_size: u32,
-    #[serde(default, flatten)]
     #[cfg_attr(feature = "server", garde(skip))]
-    pub mode: ClusterModeModel,
+    pub mode: DBClusterModeModel,
     #[cfg_attr(feature = "server", garde(dive))]
     pub python_version: PythonVersion,
     #[cfg_attr(feature = "server", garde(skip), schemars(with = "String"))]
@@ -160,6 +150,13 @@ pub struct StartComputeClusterArgs {
     #[serde(default)]
     #[cfg_attr(feature = "server", garde(skip))]
     pub env_vars: HashMap<String, String>,
+
+    // Backwards compat: old clients send `settings: { client_public_key: "" }`
+    // alongside `mode: "direct"`. Accept and discard.
+    #[serde(default, skip_serializing)]
+    #[cfg_attr(feature = "server", schemars(skip))]
+    #[cfg_attr(feature = "server", garde(skip))]
+    pub settings: Option<serde::de::IgnoredAny>,
 }
 
 #[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
@@ -252,8 +249,11 @@ impl DBCPUArchitectureModel {
 #[cfg_attr(feature = "pyo3", pyclass(from_py_object, eq, eq_int))]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
+// Alias is for clients <0.6.0
 pub enum DBClusterModeModel {
+    #[serde(alias = "proxy")]
     Proxy,
+    #[serde(alias = "direct")]
     Direct,
 }
 
@@ -340,9 +340,14 @@ pub struct ComputeModel {
     pub mode: DBClusterModeModel,
     #[cfg_attr(feature = "server", schemars(with = "String"))]
     pub polars_version: VersionNumber,
+    #[cfg_attr(feature = "server", schemars(with = "Option<String>"))]
+    pub compute_plane_version: Option<semver::Version>,
     pub status: ComputeStatusModel,
+    pub connection_status: ConnectionStatusModel,
+    pub last_heartbeat_time: Option<DateTime<Utc>>,
     pub log_level: LogLevelModel,
     pub tunnel_addr: Option<String>,
+    pub cluster_id: Option<String>,
 }
 
 impl EntityOrdering for ComputeModel {
@@ -466,6 +471,11 @@ impl ComputeModel {
     }
 
     #[getter]
+    pub fn compute_plane_version(&self) -> pyo3::PyResult<Option<String>> {
+        Ok(self.compute_plane_version.as_ref().map(ToString::to_string))
+    }
+
+    #[getter]
     pub fn status(&self) -> pyo3::PyResult<ComputeStatusModel> {
         Ok(self.status)
     }
@@ -502,6 +512,24 @@ impl Display for ComputeStatusModel {
             ComputeStatusModel::Stopping => write!(f, "Stopping"),
             ComputeStatusModel::Stopped => write!(f, "Stopped"),
             ComputeStatusModel::Failed => write!(f, "Failed"),
+        }
+    }
+}
+
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[derive(Debug, Deserialize, Clone, Copy, Serialize, PartialEq)]
+pub enum ConnectionStatusModel {
+    Connected = 0,
+    Degraded = 1,
+    Unconnected = 2,
+}
+
+impl Display for ConnectionStatusModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConnectionStatusModel::Connected => write!(f, "Connected"),
+            ConnectionStatusModel::Degraded => write!(f, "Degraded"),
+            ConnectionStatusModel::Unconnected => write!(f, "Unconnected"),
         }
     }
 }

@@ -24,24 +24,18 @@ pub struct QueryModel {
     pub user_id: Option<Uuid>,
     /// The time the query was requested
     pub request_time: DateTime<Utc>,
+    /// The output location for the query
+    pub output_location: Option<String>,
+    /// The query type (single or distributed)
+    pub query_type: Option<QueryTypeModel>,
+    /// The engine used for the query
+    pub engine: Option<QueryEngineModel>,
     /// Timestamp when the query was created
     pub created_at: DateTime<Utc>,
     /// Last update timestamp
     pub updated_at: DateTime<Utc>,
     /// Timestamp of the last update
     pub deleted_at: Option<DateTime<Utc>>,
-}
-
-#[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all))]
-#[cfg_attr(feature = "server", derive(JsonSchema))]
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
-pub struct QueryPlansModel {
-    /// Query ID
-    pub id: Uuid,
-    /// The immediate representation in dotfile format
-    pub ir_plan: Option<String>,
-    /// The physical plan in dotfile format
-    pub phys_plan: Option<String>,
 }
 
 #[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all))]
@@ -93,6 +87,22 @@ pub enum FileTypeModel {
     Csv,
     NDJSON,
     JSON,
+}
+
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object, eq, eq_int))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[derive(Clone, Copy, PartialEq, Deserialize, Serialize, Debug)]
+pub enum QueryTypeModel {
+    Single,
+    Distributed,
+}
+
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object, eq, eq_int))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[derive(Clone, Copy, PartialEq, Deserialize, Serialize, Debug)]
+pub enum QueryEngineModel {
+    InMemory,
+    Streaming,
 }
 
 #[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]

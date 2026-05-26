@@ -34,7 +34,6 @@ from polars_cloud.polars_cloud import PlanFormatPy
 from polars_cloud.query._utils import get_token
 from polars_cloud.query.query_detail import QueryDetail
 from polars_cloud.query.query_info import QueryInfo
-from polars_cloud.query.query_profile import QueryProfile
 from polars_cloud.query.query_result import QueryResult
 from polars_cloud.query.query_status import QueryStatus
 
@@ -259,24 +258,6 @@ class DirectQuery(InProgressQueryRemote):
         )
         return QueryStatus._from_api_model(status_code)
 
-    def get_profile(self) -> QueryProfile | None:
-        """Get the current profile of the query if available."""
-        self._tag = None
-        return self._get_profile()
-
-    def _get_profile(self) -> QueryProfile | None:
-        profile_py = self._client.get_direct_query_profile(
-            self._query_id, self._tag, token=self._cluster._get_token()
-        )
-
-        if profile_py is None:
-            return None
-
-        self._tag = profile_py.tag
-
-        profile = QueryProfile(self._query_id, profile_py)
-        return profile
-
     def _get_result(
         self, status: QueryStatus, *, raise_on_failure: bool = True
     ) -> QueryResult:
@@ -306,56 +287,10 @@ class DirectQuery(InProgressQueryRemote):
             status = self._poll_status_until_done()
         return self._get_result(status, raise_on_failure=raise_on_failure)
 
-    async def await_profile_async(
-        self, *, raise_on_failure: bool = True
-    ) -> QueryProfile:
-        """Wait for an update to the query profile asynchronously."""
-        return await self._poll_profile_until_update_async(
-            raise_on_failure=raise_on_failure
-        )
-
-    def await_profile(self, *, raise_on_failure: bool = True) -> QueryProfile:
-        """Block the thread and wait until the query profile is updated."""
-        return self._poll_profile_until_update(raise_on_failure=raise_on_failure)
-
     def cancel(self) -> None:
         self._client.cancel_direct_query(
             self._query_id, token=self._cluster._get_token()
         )
-
-    async def _poll_profile_until_update_async(
-        self, *, raise_on_failure: bool = True
-    ) -> QueryProfile:
-        """Poll the profile of the query until there is an update."""
-        i = 0
-        ms = get_timeout()
-        t0 = time.time()
-        while (profile := self._get_profile()) is None:
-            i += 1
-            await asyncio.sleep(min(1, 0.05 * 1.5 ** min(30, i)))
-            check_timeout(t0, ms)
-
-        if raise_on_failure and profile.errors:
-            profile.raise_err()
-
-        return profile
-
-    def _poll_profile_until_update(
-        self, *, raise_on_failure: bool = True
-    ) -> QueryProfile:
-        """Poll the profile of the query until there is an update."""
-        i = 0
-        ms = get_timeout()
-        t0 = time.time()
-        while (profile := self._get_profile()) is None:
-            i += 1
-            time.sleep(min(1, 0.05 * 1.5 ** min(30, i)))
-            check_timeout(t0, ms)
-
-        if raise_on_failure and profile.errors:
-            profile.raise_err()
-
-        return profile
 
     def graph(
         self,

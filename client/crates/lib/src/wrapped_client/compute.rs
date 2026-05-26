@@ -4,9 +4,9 @@ use std::collections::HashMap;
 
 use client_core::{ApiError, RUNTIME, VERSIONS};
 use polars_axum_models::{
-    ClusterModeModel, ComputeClusterNodeInfoModel, ComputeClusterPublicInfoModel, ComputeModel,
-    ComputeStatusModel, ComputeTokenModel, DBCPUArchitectureModel, DBClusterModeModel,
-    GetClusterFilterArgs, InstanceSpecsModel, LogLevelModel, ManifestModel, ManifestQueryArgs,
+    ComputeClusterNodeInfoModel, ComputeClusterPublicInfoModel, ComputeModel, ComputeStatusModel,
+    ComputeTokenModel, DBCPUArchitectureModel, DBClusterModeModel, GetClusterFilterArgs,
+    InstanceSpecsModel, LogLevelModel, ManifestModel, ManifestQueryArgs,
     RegisterComputeClusterManifestArgs, StartComputeClusterArgs, StartComputeClusterManifestArgs,
 };
 use pyo3::exceptions::PyValueError;
@@ -118,14 +118,6 @@ impl WrappedAPIClient {
         idle_timeout_mins: Option<u32>,
     ) -> Result<ManifestModel, ApiError> {
         py.enter_rust(|| {
-            let mode = if mode == DBClusterModeModel::Direct {
-                ClusterModeModel::Direct {
-                    client_public_key: "".to_string(),
-                }
-            } else {
-                ClusterModeModel::Proxy
-            };
-
             if (big_instance_type.is_some() || big_instance_multiplier.is_some())
                 && cluster_size <= 1
             {
@@ -166,6 +158,7 @@ impl WrappedAPIClient {
                 python_version,
                 polars_version,
                 idle_timeout_mins,
+                settings: None
             };
 
             RUNTIME.block_on(
@@ -236,14 +229,6 @@ impl WrappedAPIClient {
         idle_timeout_mins: Option<u32>,
     ) -> Result<ComputeModel, ApiError> {
         py.enter_rust(|| {
-            let mode = if mode == DBClusterModeModel::Direct {
-                ClusterModeModel::Direct {
-                    client_public_key: "".to_string(),
-                }
-            } else {
-                ClusterModeModel::Proxy
-            };
-
             if (big_instance_type.is_some() || big_instance_multiplier.is_some())
                 && cluster_size <= 1
             {
@@ -285,6 +270,7 @@ impl WrappedAPIClient {
                 python_version,
                 polars_version,
                 idle_timeout_mins,
+                settings: None,
             };
 
             RUNTIME.block_on(self.client.start_compute_cluster(workspace_id, params))?

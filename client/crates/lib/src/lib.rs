@@ -15,9 +15,10 @@ use client_core::{
 use polars_axum_models::{
     ComputeClusterPublicInfoModel, ComputeModel, ComputeStatusModel, ComputeTokenModel,
     DBCPUArchitectureModel, DBClusterModeModel, DeleteWorkspaceModel, FileTypeModel, LogLevelModel,
-    OrganizationModel, QueryModel, QueryPlansModel, QueryStateTimingModel, QueryStatusCodeModel,
+    OrganizationModel, QueryModel, QueryStateTimingModel, QueryStatusCodeModel,
     QueryWithStateTimingAndResultModel, QueryWithStateTimingModel, QueryWithStatusModel,
-    ResultModel, StatusModel, TerminationModel, TerminationReasonModel, WorkspaceModel,
+    ResultModel, StatusModel, TerminationModel, TerminationReasonModel, WorkspaceAPITokenModel,
+    WorkspaceApiTokenWithNameModel, WorkspaceDeploymentModel, WorkspaceModel,
     WorkspaceSetupUrlModel, WorkspaceStateModel, WorkspaceWithUrlModel,
 };
 use pyo3::exceptions::PySystemExit;
@@ -56,10 +57,10 @@ fn polars_cloud(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
 
     m.add_class::<WorkspaceModel>().unwrap();
     m.add_class::<WorkspaceStateModel>().unwrap();
+    m.add_class::<WorkspaceDeploymentModel>().unwrap();
     m.add_class::<DefaultComputeSpecs>().unwrap();
 
     m.add_class::<QueryModel>().unwrap();
-    m.add_class::<QueryPlansModel>().unwrap();
     m.add_class::<QueryStatusCodeModel>().unwrap();
     m.add_class::<StatusModel>().unwrap();
     m.add_class::<QueryWithStatusModel>().unwrap();
@@ -77,6 +78,9 @@ fn polars_cloud(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<ComputeClusterPublicInfoModel>().unwrap();
     m.add_class::<ComputeStatusModel>().unwrap();
     m.add_class::<ComputeTokenModel>().unwrap();
+
+    m.add_class::<WorkspaceAPITokenModel>().unwrap();
+    m.add_class::<WorkspaceApiTokenWithNameModel>().unwrap();
 
     m.add_class::<WorkspaceWithUrlModel>().unwrap();
     m.add_class::<WorkspaceSetupUrlModel>().unwrap();

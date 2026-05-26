@@ -10,7 +10,6 @@ from polars_cloud.query.query import (
 from polars_cloud.query.query_detail import QueryDetail, QueryPlanTiming
 from polars_cloud.query.query_in_progress import DirectQuery, ProxyQuery
 from polars_cloud.query.query_info import QueryInfo
-from polars_cloud.query.query_profile import QueryProfile
 from polars_cloud.query.query_result import QueryResult, StageStatistics
 from polars_cloud.query.query_status import QueryStatus
 
@@ -26,7 +25,6 @@ __all__ = [
     "QueryDetail",
     "QueryInfo",
     "QueryPlanTiming",
-    "QueryProfile",
     "QueryResult",
     "QueryStatus",
     "StageStatistics",

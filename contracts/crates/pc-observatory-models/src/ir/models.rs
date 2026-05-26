@@ -47,6 +47,9 @@ pub enum IRNodeProperties {
     Filter {
         predicate: String,
     },
+    Gather {
+        null_on_oob: bool,
+    },
     GroupBy {
         keys: Vec<String>,
         aggs: Vec<String>,
@@ -203,6 +206,9 @@ pub enum IRNodeProperties {
         file_format: String,
         location: String,
         partition_strategy: Option<String>,
+    },
+    UnoptimizedDispatch {
+        operation: String,
     },
 }
 

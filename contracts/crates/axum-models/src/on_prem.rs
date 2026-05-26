@@ -20,4 +20,8 @@ pub struct RegisterComputeClusterArgs {
     pub polars_version: VersionNumber,
     #[cfg_attr(feature = "server", garde(skip))]
     pub labels: Option<Vec<String>>,
+    #[cfg_attr(feature = "server", garde(skip), schemars(with = "String"))]
+    pub compute_plane_version: semver::Version,
+    #[cfg_attr(feature = "server", garde(skip))]
+    pub cluster_id: String,
 }

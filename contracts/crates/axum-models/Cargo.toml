@@ -17,6 +17,7 @@ garde = { workspace = true, optional = true }
 pyo3 = { workspace = true, optional = true }
 regex = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
+semver = { workspace = true }
 serde = { workspace = true }
 uuid = { workspace = true }
 version-number = { workspace = true }

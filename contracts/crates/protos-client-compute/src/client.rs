@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::num::NonZeroU32;
 
 use bytes::Bytes;
 use prost::Message;
@@ -134,6 +135,7 @@ impl From<QuerySettings> for proto::QuerySettings {
             n_retries: value.n_retries,
             query_type: Some(value.query_type.into()),
             optimization_flags: value.optimization_flags,
+            n_workers: value.n_workers.map(|v| v.get()),
         }
     }
 }
@@ -146,6 +148,7 @@ impl From<proto::QuerySettings> for QuerySettings {
             n_retries: value.n_retries,
             query_type: value.query_type.unwrap().into(),
             optimization_flags: value.optimization_flags,
+            n_workers: value.n_workers.and_then(|v| NonZeroU32::try_from(v).ok()),
         }
     }
 }
@@ -413,6 +416,7 @@ pub struct QuerySettings {
     pub engine: Engine,
     pub preferred_graph_format: GraphFormat,
     pub n_retries: u32,
+    pub n_workers: Option<NonZeroU32>,
     pub query_type: QueryType,
     pub optimization_flags: Option<u32>,
 }

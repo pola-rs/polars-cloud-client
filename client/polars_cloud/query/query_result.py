@@ -46,7 +46,6 @@ if TYPE_CHECKING:
     from polars_cloud._typing import FileType
     from polars_cloud.query import DirectQuery
     from polars_cloud.query.query_info import QueryInfo
-    from polars_cloud.query.query_profile import QueryProfile
 
 
 def format_result(
@@ -145,26 +144,6 @@ class QueryResult:
     def file_type(self) -> FileType:
         """The file type where the result is written to."""
         return self.finished_task_info.sink_type
-
-    def await_profile(self, *, raise_on_failure: bool = True) -> QueryProfile:
-        """Await the query profile if direct mode is enabled."""
-        if self._query:
-            return self._query.await_profile(raise_on_failure=raise_on_failure)
-        else:
-            msg = "profile can only be obtained from Direct mode queries"
-            raise InvalidOperationError(msg)
-
-    async def await_profile_async(
-        self, *, raise_on_failure: bool = True
-    ) -> QueryProfile:
-        """Await the query profile asynchronously if direct mode is enabled."""
-        if self._query:
-            return await self._query.await_profile_async(
-                raise_on_failure=raise_on_failure
-            )
-        else:
-            msg = "profile can only be obtained from Direct mode queries"
-            raise InvalidOperationError(msg)
 
     @overload
     def stage_statistics(self, stage_number: None = None) -> list[StageStatistics]: ...

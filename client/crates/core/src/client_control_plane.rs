@@ -320,6 +320,21 @@ impl ControlPlaneClient for AutoRefreshApiControlPlaneClient {
             .await
     }
 
+    // --- Workspace (On-Prem) ---
+
+    async fn create_on_prem_workspace(
+        &self,
+        params: WorkSpaceArgs,
+    ) -> Result<WorkspaceModel, ApiError> {
+        self.call(|client| client.create_on_prem_workspace(params))
+            .await
+    }
+
+    async fn delete_on_prem_workspace(&self, workspace_id: Uuid) -> Result<(), ApiError> {
+        self.call(|client| client.delete_on_prem_workspace(workspace_id))
+            .await
+    }
+
     // --- Compute ---
 
     async fn find_compute_cluster_manifest(

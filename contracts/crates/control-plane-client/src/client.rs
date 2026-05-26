@@ -674,8 +674,10 @@ impl ApiClient {
         &self,
         pagination: &Pagination,
         organization_id: Uuid,
+        workspace_id: Option<Uuid>,
     ) -> Result<Paginated<OrganizationInviteModel>> {
         self.get(&format!("/api/v1/organization/{organization_id}/invite"))
+            .parameter_opt("workspace_id", workspace_id)
             .pagination(pagination)
             .await?
             .json()
@@ -788,19 +790,6 @@ impl ApiClient {
     ) -> Result<QueryWithStateTimingAndResultModel> {
         self.get(&format!(
             "/api/v1/workspace/{workspace_id}/query/{query_id}"
-        ))
-        .await?
-        .json()
-        .await
-    }
-
-    pub async fn get_query_plans(
-        &self,
-        workspace_id: Uuid,
-        query_id: Uuid,
-    ) -> Result<QueryPlansModel> {
-        self.get(&format!(
-            "/api/v1/workspace/{workspace_id}/query/{query_id}/plans"
         ))
         .await?
         .json()

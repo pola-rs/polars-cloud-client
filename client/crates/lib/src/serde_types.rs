@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
+use std::num::NonZeroU32;
 
 use pc_observatory_models::QueryDetailModel;
 use protos_client_compute::client::{ComputeQueryInfo, StageStatistics};
-use protos_client_compute::observatory::QueryProfile;
 use protos_common::query_info::FileType;
 use protos_common::{QueryOutput, QueryResult};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
@@ -56,12 +56,13 @@ impl<'a, 'py> FromPyObject<'a, 'py> for DistributedSettings {
 #[allow(clippy::needless_lifetimes)]
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature=(*, engine, prefer_dot, shuffle_opts, n_retries, distributed_settings, optimization_flags))]
+#[pyo3(signature=(*, engine, prefer_dot, shuffle_opts, n_retries, n_workers, distributed_settings, optimization_flags))]
 pub fn serialize_query_settings(
     engine: &str,
     prefer_dot: bool,
     shuffle_opts: PyShuffleOpts,
     n_retries: u32,
+    n_workers: Option<NonZeroU32>,
     distributed_settings: Option<DistributedSettings>,
     optimization_flags: Option<u32>,
 ) -> PyResult<PyQuerySettings> {
@@ -96,6 +97,7 @@ pub fn serialize_query_settings(
         n_retries,
         query_type,
         optimization_flags,
+        n_workers,
     };
 
     Ok(settings)
@@ -198,22 +200,6 @@ pub(crate) fn query_result_to_py(
     }
 }
 
-#[pyclass(skip_from_py_object)]
-pub struct QueryProfilePy {
-    #[pyo3(get)]
-    pub tag: Py<PyBytes>,
-    #[pyo3(get)]
-    pub total_stages: Option<u32>,
-    #[pyo3(get)]
-    pub phys_plan_dot: Option<String>,
-    #[pyo3(get)]
-    pub phys_plan_explain: Option<String>,
-    #[pyo3(get)]
-    pub data: Py<PyBytes>,
-    #[pyo3(get)]
-    pub errors: Vec<String>,
-}
-
 #[pyclass(from_py_object, get_all)]
 #[derive(Clone)]
 pub struct QueryPlanTimingPy {
@@ -302,16 +288,5 @@ impl From<QueryDetailModel> for QueryDetailPy {
             output_files: value.output_files,
             output_rows: value.output_rows,
         }
-    }
-}
-
-pub(crate) fn query_profile_to_py(py: Python, profile: QueryProfile) -> QueryProfilePy {
-    QueryProfilePy {
-        tag: PyBytes::new(py, profile.tag.as_ref()).unbind(),
-        total_stages: profile.total_stages,
-        phys_plan_explain: profile.phys_plan_explain,
-        phys_plan_dot: profile.phys_plan_dot,
-        data: PyBytes::new(py, &profile.data).unbind(),
-        errors: profile.errors,
     }
 }

@@ -4,7 +4,7 @@ use anyhow::anyhow;
 use client_core::{ApiResult, Client};
 use comfy_table::Table;
 use comfy_table::presets::NOTHING;
-use polars_axum_models::{WorkspaceModel, WorkspaceStateModel};
+use polars_axum_models::{WorkspaceDeploymentModel, WorkspaceModel, WorkspaceStateModel};
 use uuid::Uuid;
 
 use crate::organization::get_organization_by_name;
@@ -169,7 +169,14 @@ pub async fn delete_workspace(
 ) -> ApiResult<()> {
     let workspace = get_workspace_by_name(client, organization_name, workspace_name).await?;
 
-    client.delete_aws_workspace(workspace.id).await?;
+    match workspace.deployment {
+        WorkspaceDeploymentModel::Aws => {
+            client.delete_aws_workspace(workspace.id).await?;
+        },
+        WorkspaceDeploymentModel::OnPrem => {
+            client.delete_on_prem_workspace(workspace.id).await?;
+        },
+    }
 
     Ok(())
 }

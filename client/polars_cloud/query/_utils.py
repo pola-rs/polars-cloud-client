@@ -15,7 +15,6 @@ with contextlib.suppress(ImportError):  # Module not available when building doc
 
     import polars_cloud.polars_cloud as pc_core
 
-
 if TYPE_CHECKING:
     from polars import LazyFrame, QueryOptFlags
 
@@ -45,9 +44,9 @@ def prepare_query(
     shuffle_compression_level: int | None = None,
     distributed_settings: DistributionSettings | None,
     n_retries: int,
+    n_workers: int | None = None,
     sink_to_single_file: bool | None = None,
     optimizations: QueryOptFlags,
-    allow_local_scans: bool,
 ) -> tuple[bytes, PyQuerySettings]:
     """Parse query inputs as a serialized plan and settings object."""
     if pl.get_index_type() == pl.UInt32:
@@ -166,8 +165,10 @@ If you want to:
         )
 
     try:
+        # `allow_local_scans` is now enforced in the scheduler, this argument will be
+        # removed from the client-side code in the next Polars OSS release
         plan = prepare_cloud_plan(
-            lf, optimizations=optimizations, allow_local_scans=allow_local_scans
+            lf, optimizations=optimizations, allow_local_scans=True
         )
 
         if isinstance(plan, tuple):
@@ -211,6 +212,7 @@ If you want to:
         prefer_dot=prefer_dot,
         shuffle_opts=shuffle_opts,
         n_retries=n_retries,
+        n_workers=n_workers,
         distributed_settings=distributed_settings,
         optimization_flags=optimization_flags,
     )
