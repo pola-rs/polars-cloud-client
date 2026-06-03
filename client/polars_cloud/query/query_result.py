@@ -303,7 +303,6 @@ class QueryResult:
         """
 
     def raise_err(self) -> None:
-        assert self.finished_task_info.errors is not None
         raise_query_errors(self.finished_task_info.errors)
 
     def graph(
@@ -407,8 +406,12 @@ def raise_query_errors(errors: list[str]) -> None:
     """Raise a Python exception from query error strings.
 
     The errors are JSON-encoded strings from the compute plane, each containing
-    a mapping from worker/scheduler to error message.
+    a mapping from worker/scheduler to error message. A successful query has no
+    errors, so this is a no-op in that case.
     """
+    if not errors:
+        return
+
     parsed_errors = {}  # type: ignore[var-annotated]
 
     # Deduplicate the errors, by converting to set.

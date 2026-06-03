@@ -37,6 +37,8 @@ use crate::serde_types::{QueryDetailPy, QueryInfoPy, query_result_to_py};
 type SchedulerGRPCClient =
     ClientServiceClient<InterceptedService<Channel, fn(Request<()>) -> tonic::Result<Request<()>>>>;
 
+const DEFAULT_TLS_CERT_DOMAIN: &str = "pola.rs";
+
 #[pyclass(from_py_object)]
 #[derive(Clone)]
 pub struct SchedulerClient {
@@ -87,7 +89,10 @@ impl ObservatoryRestClient {
                 .danger_accept_invalid_hostnames(true);
             base_url
         } else {
-            let domain = options.tls_cert_domain.as_deref().unwrap_or("pola.rs");
+            let domain = options
+                .tls_cert_domain
+                .as_deref()
+                .unwrap_or(DEFAULT_TLS_CERT_DOMAIN);
             builder = builder.https_only(true);
             let mut effective = base_url.clone();
             if let Ok(mut url) = reqwest::Url::parse(&base_url) {
@@ -424,32 +429,33 @@ impl ClientOptions {
 }
 
 #[allow(clippy::result_large_err)]
-async fn get_channel(address: &str, client_options: ClientOptions) -> ApiResult<Channel> {
+async fn get_channel(address: &str, options: ClientOptions) -> ApiResult<Channel> {
     let uri_builder = Uri::builder().authority(address).path_and_query("/");
 
-    let endpoint = if client_options.insecure {
+    let endpoint = if options.insecure {
         let uri = uri_builder.scheme(Scheme::HTTP).build().unwrap();
         Channel::builder(uri)
     } else {
-        let public_server_cert = client_options
-            .public_server_crt
-            .expect("expected public_server_cert");
+        let cert_domain = options
+            .tls_cert_domain
+            .unwrap_or(DEFAULT_TLS_CERT_DOMAIN.to_string());
+
+        let mut tls = ClientTlsConfig::new()
+            .domain_name(cert_domain)
+            .with_enabled_roots();
+
+        if let Some(cert_bytes) = &options.public_server_crt {
+            let cert = Certificate::from_pem(cert_bytes);
+            tls = tls.ca_certificate(cert);
+        }
 
         let uri = uri_builder.scheme(Scheme::HTTPS).build().unwrap();
-        let ca = Certificate::from_pem(public_server_cert);
-        let cert_domain = client_options
-            .tls_cert_domain
-            .unwrap_or("pola.rs".to_string());
-
-        let tls = ClientTlsConfig::new()
-            .ca_certificate(ca)
-            .domain_name(cert_domain);
 
         Channel::builder(uri).tls_config(tls)?
     };
 
     utils::retry! {
-        utils::retry::Exponential::new(Duration::from_secs(1)).maximum(Duration::from_secs(5)).deadline(Duration::from_secs(60)),
+        Exponential::new(Duration::from_secs(1)).maximum(Duration::from_secs(5)).deadline(Duration::from_secs(60)),
         async {
             let res = endpoint
                 .clone()

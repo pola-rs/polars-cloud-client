@@ -102,7 +102,7 @@ class ClusterContext(ClientContext):
     tls_cert_domain
         Override the domain name used for TLS certificate verification.
     public_server_crt
-        Public certificate of the server, used to verify the server's TLS certificate.
+        Custom CA certificate for verifying the server's TLS certificate.
     tls_certificate
         Client certificate for mutual TLS authentication.
     tls_private_key

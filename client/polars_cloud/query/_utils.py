@@ -165,11 +165,7 @@ If you want to:
         )
 
     try:
-        # `allow_local_scans` is now enforced in the scheduler, this argument will be
-        # removed from the client-side code in the next Polars OSS release
-        plan = prepare_cloud_plan(
-            lf, optimizations=optimizations, allow_local_scans=True
-        )
+        plan = prepare_cloud_plan(lf, optimizations=optimizations)
 
         if isinstance(plan, tuple):
             plan = plan[0]
