@@ -44,7 +44,7 @@ class QueryInfo:
         return self.inner.n_rows_result
 
     @property
-    def errors(self) -> list[str] | None:
+    def errors(self) -> list[str]:
         """Get errors that optionally occurred.
 
         These still need to be post-processed.
