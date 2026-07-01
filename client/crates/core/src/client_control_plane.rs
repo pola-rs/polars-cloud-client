@@ -472,7 +472,7 @@ impl ControlPlaneClient for AutoRefreshApiControlPlaneClient {
         &self,
         workspace_id: Uuid,
         filters: GetQueryArgs,
-    ) -> Result<Vec<QueryWithStateTimingModel>, ApiError> {
+    ) -> Result<Vec<QueryModel>, ApiError> {
         self.call_paginated(|client, page| {
             let pagination = Pagination {
                 page,

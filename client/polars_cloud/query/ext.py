@@ -5,16 +5,18 @@ from typing import TYPE_CHECKING, Any, overload
 from uuid import UUID
 
 import polars as pl
+import polars.io.iceberg
 from polars.lazyframe.opt_flags import DEFAULT_QUERY_OPT_FLAGS
 
 from polars_cloud import config as pc_cfg
-from polars_cloud.query.dst import CsvDst, IpcDst, ParquetDst, TmpDst
+from polars_cloud.query.dst import CsvDst, IcebergDst, IpcDst, ParquetDst, TmpDst
 from polars_cloud.query.lineage import LineageContext
 from polars_cloud.query.query import DistributionSettings, spawn
 
 if TYPE_CHECKING:
     from typing import Literal
 
+    import pyiceberg.catalog
     from polars import DataFrame, QueryOptFlags
     from polars._typing import (
         ArrowSchemaExportable,
@@ -73,7 +75,9 @@ class LazyFrameRemote:
         equi_join_broadcast_limit: int = 256 * 1024**2,
         partitions_per_worker: int | None = None,
         single_worker_ops: SingleWorkerOps = "auto",
-        n_workers: int | None = None,
+        expression_lowering: bool | None = None,
+        min_workers: int | None = None,
+        max_workers: int | None = None,
         **kwargs: Any,
     ) -> ExecuteRemote:
         """Whether the query should run in a distributed fashion.
@@ -122,10 +126,22 @@ class LazyFrameRemote:
             .. warning::
                 This functionality is experimental. It may be
                 changed at any point without it being considered a breaking change.
-        n_workers
-            Number of workers requested for the query.
-            Defaults to all workers in the cluster.
-
+        min_workers : int | None
+            The minimum number of workers that have to be available to start
+            query execution. The cluster will wait until this many workers are
+            available.
+            When `min_workers=None`, it defaults to the number of workers the
+            cluster is configured to have, or the current number of workers for
+            dynamically sized clusters.
+        max_workers : int | None
+            The maximum number of workers to use for query execution.
+            When `max_workers=None`, the query will use all available workers
+            and any workers that join afterwards.
+            It is recommended to set this to the expected number of workers for
+            dynamically sized clusters, so the query planner can determine the
+            correct number of data partitions.
+        expression_lowering
+            Whether individual expressions can be lowered into distributed operations.
         kwargs
             Extra unstable args not useful for general usage.
 
@@ -142,14 +158,17 @@ class LazyFrameRemote:
             equi_join_broadcast_limit=equi_join_broadcast_limit,
             partitions_per_worker=partitions_per_worker,
             single_worker_ops=single_worker_ops,
+            expression_lowering=expression_lowering,
             **kwargs,
         )
+
         exec = ExecuteRemote(
             lf=self.lf,
             context=self.context,
             plan_type=self.plan_type,
             n_retries=self._n_retries,
-            n_workers=n_workers,
+            min_workers=min_workers,
+            max_workers=max_workers,
             labels=self._labels,
             engine=self._engine,
             distributed_settings=distributed_settings,
@@ -168,7 +187,6 @@ class LazyFrameRemote:
             context=self.context,
             plan_type=self.plan_type,
             n_retries=self._n_retries,
-            n_workers=None,
             labels=self._labels,
             engine=self._engine,
             lineage=self._lineage,
@@ -762,6 +780,52 @@ class LazyFrameRemote:
             optimizations=optimizations,
         )
 
+    def sink_iceberg(
+        self,
+        target: str | pyiceberg.table.Table,
+        *,
+        mode: Literal["append", "overwrite"],
+        catalog: pyiceberg.catalog.Catalog
+        | polars.io.iceberg.IcebergCatalogConfig
+        | None = None,
+        storage_options: dict[str, Any] | None = None,
+        optimizations: QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
+    ) -> DirectQuery | ProxyQuery:
+        """Start executing the query and and write the result to an iceberg table.
+
+        Parameters
+        ----------
+        target
+            A PyIceberg Table object, or a 'namespace.table_name' identifier string.
+        mode : {'append', 'overwrite'}
+            How to handle existing data.
+
+            - If 'append', will add new data.
+            - If 'overwrite', will replace table with new data.
+        catalog
+            PyIceberg catalog to load the table from if the provided `target`
+            was a table identifier.
+        storage_options
+            Extra options for the storage backends supported by `pyiceberg`.
+            For cloud storages, this may include configurations for authentication etc.
+
+            More info is available `here <https://py.iceberg.apache.org/configuration/>`__.
+        optimizations
+            The optimization passes done during query optimization.
+
+            .. warning::
+                This functionality is considered **unstable**. It may be changed
+                at any point without it being considered a breaking change.
+
+        """
+        return self._scaling_mode().sink_iceberg(
+            target=target,
+            mode=mode,
+            catalog=catalog,
+            storage_options=storage_options,
+            optimizations=optimizations,
+        )
+
 
 class ExecuteRemote:
     """The namespace accessed by choosing a remote execution method in a `LazyFrameRemote`."""  # noqa: W505
@@ -772,9 +836,10 @@ class ExecuteRemote:
         context: ClientContext | None,
         plan_type: PlanTypePreference,
         n_retries: int,
-        n_workers: int | None,
         engine: Engine,
         labels: list[str] | None,
+        min_workers: int | None = None,
+        max_workers: int | None = None,
         shuffle_compression: ShuffleCompression = "auto",
         shuffle_format: ShuffleFormat = "auto",
         shuffle_compression_level: int | None = None,
@@ -786,7 +851,8 @@ class ExecuteRemote:
         self._engine: Engine = engine
         self._labels: None | list[str] = labels
         self._n_retries = n_retries
-        self._n_workers = n_workers
+        self._min_workers = min_workers
+        self._max_workers = max_workers
         self.plan_type: PlanTypePreference = plan_type
         # Optimizations settings for distributed
         self._shuffle_compression: ShuffleCompression = shuffle_compression
@@ -871,7 +937,8 @@ class ExecuteRemote:
             shuffle_format=self._shuffle_format,
             shuffle_compression_level=self._shuffle_compression_level,
             n_retries=self._n_retries,
-            n_workers=self._n_workers,
+            min_workers=self._min_workers,
+            max_workers=self._max_workers,
             distributed=self._distributed_settings,
             optimizations=optimizations,
             lineage=self._lineage,
@@ -1090,7 +1157,8 @@ class ExecuteRemote:
             shuffle_format=self._shuffle_format,
             shuffle_compression_level=self._shuffle_compression_level,
             n_retries=self._n_retries,
-            n_workers=self._n_workers,
+            min_workers=self._min_workers,
+            max_workers=self._max_workers,
             distributed=self._distributed_settings,
             optimizations=optimizations,
             lineage=self._lineage,
@@ -1268,7 +1336,8 @@ class ExecuteRemote:
             shuffle_format=self._shuffle_format,
             shuffle_compression_level=self._shuffle_compression_level,
             n_retries=self._n_retries,
-            n_workers=self._n_workers,
+            min_workers=self._min_workers,
+            max_workers=self._max_workers,
             distributed=self._distributed_settings,
             sink_to_single_file=sink_to_single_file,
             optimizations=optimizations,
@@ -1375,9 +1444,70 @@ class ExecuteRemote:
             shuffle_format=self._shuffle_format,
             shuffle_compression_level=self._shuffle_compression_level,
             n_retries=self._n_retries,
-            n_workers=self._n_workers,
+            min_workers=self._min_workers,
+            max_workers=self._max_workers,
             distributed=self._distributed_settings,
             sink_to_single_file=sink_to_single_file,
+            optimizations=optimizations,
+            lineage=self._lineage,
+        )
+
+    def sink_iceberg(
+        self,
+        target: str | pyiceberg.table.Table,
+        *,
+        mode: Literal["append", "overwrite"],
+        catalog: pyiceberg.catalog.Catalog
+        | polars.io.iceberg.IcebergCatalogConfig
+        | None = None,
+        storage_options: dict[str, Any] | None = None,
+        optimizations: QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
+    ) -> DirectQuery | ProxyQuery:
+        """Start executing the query and and write the result to an iceberg table.
+
+        Parameters
+        ----------
+        target
+            A PyIceberg Table object, or a 'namespace.table_name' identifier string.
+        mode : {'append', 'overwrite'}
+            How to handle existing data.
+
+            - If 'append', will add new data.
+            - If 'overwrite', will replace table with new data.
+        catalog
+            PyIceberg catalog to load the table from if the provided `target`
+            was a table identifier.
+        storage_options
+            Extra options for the storage backends supported by `pyiceberg`.
+            For cloud storages, this may include configurations for authentication etc.
+
+            More info is available `here <https://py.iceberg.apache.org/configuration/>`__.
+        optimizations
+            The optimization passes done during query optimization.
+
+            .. warning::
+                This functionality is considered **unstable**. It may be changed
+                at any point without it being considered a breaking change.
+
+        """
+        dst = IcebergDst(
+            target, mode=mode, catalog=catalog, storage_options=storage_options
+        )
+        return spawn(
+            lf=self.lf,
+            dst=dst,
+            context=self.context,
+            engine=self._engine,
+            plan_type=self.plan_type,
+            labels=self._labels,
+            shuffle_compression=self._shuffle_compression,
+            shuffle_format=self._shuffle_format,
+            shuffle_compression_level=self._shuffle_compression_level,
+            n_retries=self._n_retries,
+            min_workers=self._min_workers,
+            max_workers=self._max_workers,
+            distributed=self._distributed_settings,
+            sink_to_single_file=False,
             optimizations=optimizations,
             lineage=self._lineage,
         )

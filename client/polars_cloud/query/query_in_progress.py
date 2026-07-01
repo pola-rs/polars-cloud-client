@@ -145,7 +145,7 @@ class ProxyQuery(InProgressQueryRemote):
 
     def get_status(self) -> QueryStatus:
         query = constants.API_CLIENT.get_query(self._workspace_id, self._query_id)
-        query_status = QueryStatus._from_api_model(query.state_timing.latest_status)
+        query_status = QueryStatus._from_api_model(query.query.status_code)
         return query_status
 
     def _get_result(

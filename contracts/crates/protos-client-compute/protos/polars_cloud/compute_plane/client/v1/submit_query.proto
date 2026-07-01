@@ -62,7 +62,7 @@ message DistributedOpts {
   reserved 6; // Deprecated `bool cost_based_planner`
   reserved 7; // Deprecated `bool allow_expression_extraction`
   optional SingleWorkerOps single_worker_ops = 8;
-  bool allow_expression_lowering = 9;
+  optional bool allow_expression_lowering = 9;
 }
 
 enum GraphFormat {
@@ -82,5 +82,12 @@ message QuerySettings {
   GraphFormat preferred_graph_format = 5;
   uint32 n_retries = 6;
   optional uint32 optimization_flags = 7;
-  optional uint32 n_workers = 8;
+  message NWorkers {
+    optional uint32 min = 1;
+    optional uint32 max = 2;
+  }
+  oneof n_workers {
+    uint32 single_number = 8;
+    NWorkers min_max = 9;
+  }
 }

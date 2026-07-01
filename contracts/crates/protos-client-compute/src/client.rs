@@ -135,7 +135,12 @@ impl From<QuerySettings> for proto::QuerySettings {
             n_retries: value.n_retries,
             query_type: Some(value.query_type.into()),
             optimization_flags: value.optimization_flags,
-            n_workers: value.n_workers.map(|v| v.get()),
+            n_workers: value.n_workers.map(|NumWorkers { min, max }| {
+                proto::NWorkersOneOf::MinMax(proto::NWorkers {
+                    min: min.map(Into::into),
+                    max: max.map(Into::into),
+                })
+            }),
         }
     }
 }
@@ -148,7 +153,16 @@ impl From<proto::QuerySettings> for QuerySettings {
             n_retries: value.n_retries,
             query_type: value.query_type.unwrap().into(),
             optimization_flags: value.optimization_flags,
-            n_workers: value.n_workers.and_then(|v| NonZeroU32::try_from(v).ok()),
+            n_workers: value.n_workers.map(|v| match v {
+                proto::NWorkersOneOf::SingleNumber(n) => NumWorkers {
+                    min: NonZeroU32::new(n),
+                    max: NonZeroU32::new(n),
+                },
+                proto::NWorkersOneOf::MinMax(proto::NWorkers { min, max }) => NumWorkers {
+                    min: min.and_then(NonZeroU32::new),
+                    max: max.and_then(NonZeroU32::new),
+                },
+            }),
         }
     }
 }
@@ -252,7 +266,7 @@ pub enum QueryType {
 pub struct DistributedOpts {
     pub shuffle_opts: ShuffleOpts,
     pub pre_aggregation: bool,
-    pub expression_lowering: bool,
+    pub expression_lowering: Option<bool>,
     pub sort_partitioned: bool,
     pub equi_join_broadcast_limit: u64,
     pub partitions_per_worker: Option<u32>,
@@ -411,12 +425,18 @@ impl From<proto::GraphFormat> for GraphFormat {
     }
 }
 
+#[derive(Default, Debug, Clone, Copy)]
+pub struct NumWorkers {
+    pub min: Option<NonZeroU32>,
+    pub max: Option<NonZeroU32>,
+}
+
 #[derive(Default, Debug, Clone)]
 pub struct QuerySettings {
     pub engine: Engine,
     pub preferred_graph_format: GraphFormat,
     pub n_retries: u32,
-    pub n_workers: Option<NonZeroU32>,
+    pub n_workers: Option<NumWorkers>,
     pub query_type: QueryType,
     pub optimization_flags: Option<u32>,
 }

@@ -8,11 +8,11 @@ use mockall::automock;
 use polars_axum_models::{
     ComputeClusterNodeInfoModel, ComputeClusterPublicInfoModel, ComputeModel, ComputeTokenModel,
     DeleteWorkspaceModel, GetClusterFilterArgs, GetQueryArgs, ManifestModel, ManifestQueryArgs,
-    OrganizationCreateArgs, OrganizationModel, QueryWithStateTimingAndResultModel,
-    QueryWithStateTimingModel, RegisterComputeClusterManifestArgs, StartComputeClusterArgs,
-    StartComputeClusterManifestArgs, UserModel, WorkSpaceArgs, WorkSpaceTokenBodyArgs,
-    WorkspaceAPITokenModel, WorkspaceApiTokenWithNameModel, WorkspaceClusterDefaultsModel,
-    WorkspaceModel, WorkspaceSetupUrlModel, WorkspaceWithUrlModel,
+    OrganizationCreateArgs, OrganizationModel, QueryModel, QueryWithStateTimingAndResultModel,
+    RegisterComputeClusterManifestArgs, StartComputeClusterArgs, StartComputeClusterManifestArgs,
+    UserModel, WorkSpaceArgs, WorkSpaceTokenBodyArgs, WorkspaceAPITokenModel,
+    WorkspaceApiTokenWithNameModel, WorkspaceClusterDefaultsModel, WorkspaceModel,
+    WorkspaceSetupUrlModel, WorkspaceWithUrlModel,
 };
 use uuid::Uuid;
 
@@ -152,7 +152,7 @@ pub trait ControlPlaneClient: Send + Sync {
         &self,
         workspace_id: Uuid,
         filters: GetQueryArgs,
-    ) -> Result<Vec<QueryWithStateTimingModel>, ApiError>;
+    ) -> Result<Vec<QueryModel>, ApiError>;
 
     // --- User ---
     async fn get_logged_in_user(&self) -> Result<UserModel, ApiError>;

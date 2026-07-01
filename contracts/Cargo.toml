@@ -17,6 +17,8 @@ deprecation-macro = { path = "crates/deprecation_macro" }
 futures-util = { version = "0.3.31" }
 garde = { version = "0.22.0", features = ["derive", "email", "regex"] }
 http = "1.1"
+opentelemetry = { version = "0.31.0" }
+opentelemetry-http = { version = "0.31.0" }
 opentelemetry-semantic-conventions = { version = "0.31.0" }
 pc-observatory-database = { path = "crates/pc-observatory-database" }
 pc-observatory-models = { path = "crates/pc-observatory-models" }
@@ -31,7 +33,7 @@ protos-client-compute = { path = "crates/protos-client-compute" }
 protos-common = { path = "crates/protos-common" }
 protos-compute-internal = { path = "crates/protos-compute-internal" }
 protos-compute-license = { path = "crates/protos-compute-license" }
-pyo3 = { version = "0.28.0", features = ["abi3-py310", "chrono", "uuid"] }
+pyo3 = { version = "0.29.0", features = ["abi3-py310", "chrono", "uuid"] }
 quote = "1.0"
 rcgen = { version = "0.13", features = ["pem", "x509-parser"] }
 regex = { version = "1.11" }
@@ -41,7 +43,7 @@ schemars = { version = "0.9.0", features = ["uuid1", "chrono04"] }
 semver = { version = "1.0.27", features = ["serde"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = { version = "1.0" }
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "json", "chrono", "uuid"] }
+sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite", "json", "chrono", "uuid"] }
 strum = "0.27"
 strum_macros = "0.27"
 syn = "2.0"
@@ -52,8 +54,9 @@ tonic-prost = "0.14.3"
 tower = { version = "0.5", default-features = false }
 tower-http = { version = "0.6", default-features = false, features = ["cors", "trace", "request-id"] }
 tracing = "0.1.41"
+tracing-opentelemetry = "0.32"
 trait-variant = "0.1.2"
-uuid = { version = "1.8.0", features = ["v4", "v7", "serde"] }
+uuid = { version = "1.23", features = ["v4", "v7", "serde"] }
 version-number = { path = "crates/version-number" }
 
 [workspace.package]

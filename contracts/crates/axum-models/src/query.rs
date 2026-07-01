@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use chrono::{DateTime, Utc};
 use deprecation_macro::deprecated_since_client;
 #[cfg(feature = "pyo3")]
@@ -7,12 +9,23 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::query_status::QueryStatusCodeModel;
 use crate::{DefaultSortDirection, EntityOrdering};
+
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all, eq, eq_int))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum QueryStatusCodeModel {
+    Queued,
+    Scheduled,
+    InProgress,
+    Success,
+    Failed,
+    Canceled,
+}
 
 #[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all))]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct QueryModel {
     /// Query ID
     pub id: Uuid,
@@ -20,7 +33,7 @@ pub struct QueryModel {
     pub workspace_id: Uuid,
     /// The virtual machine it is sent to
     pub cluster_id: Uuid,
-    /// The user account that started the instance
+    /// The user account that started the query
     pub user_id: Option<Uuid>,
     /// The time the query was requested
     pub request_time: DateTime<Utc>,
@@ -30,11 +43,19 @@ pub struct QueryModel {
     pub query_type: Option<QueryTypeModel>,
     /// The engine used for the query
     pub engine: Option<QueryEngineModel>,
-    /// Timestamp when the query was created
+    /// The status of the query
+    pub status_code: QueryStatusCodeModel,
+    /// The time the status code was updated
+    pub status_updated_at: DateTime<Utc>,
+    /// The time the query was started at
+    pub started_at: Option<DateTime<Utc>>,
+    /// The time the query reached a done state
+    pub ended_at: Option<DateTime<Utc>>,
+    /// The time the query was created
     pub created_at: DateTime<Utc>,
-    /// Last update timestamp
+    /// The time the query was last updated
     pub updated_at: DateTime<Utc>,
-    /// Timestamp of the last update
+    /// The time the query was deleted
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
@@ -111,17 +132,7 @@ pub enum QueryEngineModel {
 pub struct QueryWithStatusAndResultModel {
     #[serde(flatten)]
     pub query: QueryModel,
-    pub status: StatusModel,
     pub result: Option<ResultModel>,
-}
-
-#[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
-#[cfg_attr(feature = "server", derive(JsonSchema))]
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
-pub struct QueryWithStatusModel {
-    #[serde(flatten)]
-    pub query: QueryModel,
-    pub status: StatusModel,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -159,7 +170,7 @@ fn default_status_code() -> QueryStatusCodeModel {
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 #[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[deprecated_since_client]
+#[deprecated_since_client("0.9.0")]
 pub struct QueryStateTimingModel {
     /// Last known state for this query
     #[deprecated_since_client("0.7.0")]
@@ -183,17 +194,37 @@ pub struct QueryStateTimingModel {
     pub last_progress_time: Option<DateTime<Utc>>,
 
     /// Latest state for this query
+    #[deprecated_since_client("0.9.0")]
     pub latest_status: QueryStatusCodeModel,
     /// Latest state transition time for this query
+    #[deprecated_since_client("0.9.0")]
     pub latest_status_time: DateTime<Utc>,
-    /// When this query last changed to in_progress
-    pub started_at: Option<DateTime<Utc>>,
-    /// When this query reached a done state (failed, canceled, success)
-    pub ended_at: Option<DateTime<Utc>>,
+}
+
+impl QueryStateTimingModel {
+    pub fn new_from(
+        latest_status: QueryStatusCodeModel,
+        latest_status_time: DateTime<Utc>,
+    ) -> Self {
+        QueryStateTimingModel {
+            // Bogus values as these are unused by newer client/frontend versions
+            final_known_state: None,
+            final_status_time: None,
+
+            // Only value used by older client versions
+            last_known_state: latest_status.clone(),
+
+            // Bogus values as these are unused by newer client/frontend versions
+            last_known_status_time: Utc::now(),
+            last_progress_time: None,
+
+            latest_status,
+            latest_status_time,
+        }
+    }
 }
 
 #[cfg_attr(feature = "server", derive(JsonSchema))]
-#[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct QueryWithStateTimingModel {
     #[serde(flatten)]
@@ -221,4 +252,11 @@ pub struct QueryWithStateTimingAndResultModel {
     #[serde(flatten)]
     pub state_timing: QueryStateTimingModel,
     pub result: Option<ResultModel>,
+}
+
+impl Deref for QueryWithStateTimingAndResultModel {
+    type Target = QueryModel;
+    fn deref(&self) -> &Self::Target {
+        &self.query
+    }
 }
