@@ -2,6 +2,7 @@
 
 use std::net::SocketAddr;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
 
 use client_core::error::ApiResult;
@@ -14,9 +15,9 @@ use protos_client_compute::client::{
     ClientServiceClient, GetComputeVersionsRequest, GetQueryPlansRequest, GetQueryResultResponse,
     PlanSelection, QueryStatus,
 };
-use protos_common::tonic::codegen::http::uri::Scheme;
+use protos_client_compute::tonic::body::Body;
+use protos_client_compute::tonic::codegen::http;
 use protos_common::tonic::metadata::{MetadataKey, MetadataValue};
-use protos_common::tonic::service::interceptor::InterceptedService;
 use protos_common::tonic::transport::{Certificate, Channel, ClientTlsConfig, Uri};
 use protos_common::tonic::{self, Code, Request};
 use protos_common::{
@@ -24,25 +25,70 @@ use protos_common::{
     QueryPlans,
 };
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
-use pyo3::{Python, pyclass, pymethods};
-use reqwest::header::AUTHORIZATION;
+use pyo3::prelude::*;
+use reqwest::header::{AUTHORIZATION, HeaderName};
+use tokio_rustls::rustls;
+use tokio_rustls::rustls::client::danger::{
+    HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier,
+};
+use tokio_rustls::rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use tokio_rustls::rustls::{DigitallySignedStruct, SignatureScheme};
+use tower::ServiceBuilder;
+use tower::util::BoxCloneSyncService;
+use tower_http::set_header::HeaderMetadata;
+use tower_http::set_header::request::SetMultipleRequestHeadersLayer;
 use utils::{Backoff, Exponential, retry};
 use uuid::Uuid;
 
 use crate::VERSIONS;
 use crate::entry::EnterRustExt;
 use crate::query_settings::{PyLineageContext, PyQuerySettings};
-use crate::serde_types::{QueryDetailPy, QueryInfoPy, query_result_to_py};
+use crate::serde_types::{
+    DomainName, ParsedHeaders, ParsedUri, QueryDetailPy, QueryInfoPy, query_result_to_py,
+};
 
-type SchedulerGRPCClient =
-    ClientServiceClient<InterceptedService<Channel, fn(Request<()>) -> tonic::Result<Request<()>>>>;
+type SchedulerGRPCClient = ClientServiceClient<
+    BoxCloneSyncService<http::Request<Body>, http::Response<Body>, tonic::transport::Error>,
+>;
 
-const DEFAULT_TLS_CERT_DOMAIN: &str = "pola.rs";
+const POLAR_CLOUD_VERSION_HEADER_NAME: HeaderName = HeaderName::from_static("x-client-version");
+const POLAR_VERSION_HEADER_NAME: HeaderName = HeaderName::from_static("x-polars-version");
+const GRPC_RETRY_CONNECTION_DEADLINE: Duration = Duration::from_secs(60);
+
+#[derive(Clone)]
+struct SchedulerGrpcClient {
+    inner: SchedulerGRPCClient,
+}
+
+impl SchedulerGrpcClient {
+    fn build(options: &ClientOptions) -> Result<Self, ApiError> {
+        let channel = RUNTIME.block_on(async { create_channel(options).await })??;
+
+        let version_layers = version_header_layers();
+
+        let channel = ServiceBuilder::new()
+            .layer(SetMultipleRequestHeadersLayer::overriding(version_layers))
+            .layer(SetMultipleRequestHeadersLayer::if_not_present(
+                options
+                    .extra_headers
+                    .clone()
+                    .unwrap_or_default()
+                    .to_header_metadata(),
+            ))
+            .service(channel);
+
+        Ok(Self {
+            inner: ClientServiceClient::new(BoxCloneSyncService::new(channel))
+                .max_encoding_message_size(MAX_MESSAGE_LENGTH_UNLIMITED)
+                .max_decoding_message_size(MAX_MESSAGE_LENGTH_UNLIMITED),
+        })
+    }
+}
 
 #[pyclass(from_py_object)]
 #[derive(Clone)]
 pub struct SchedulerClient {
-    scheduler_client: SchedulerGRPCClient,
+    scheduler_client: SchedulerGrpcClient,
     observatory_client_rest: ObservatoryRestClient,
 }
 
@@ -67,50 +113,56 @@ pub struct ComputeVersionsPy {
     pub polars_rust_revision: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct ObservatoryRestClient {
     inner: reqwest::Client,
     base_url: String,
 }
 
 impl ObservatoryRestClient {
-    fn build(options: &ClientOptions, base_url: String) -> Result<Self, reqwest::Error> {
+    fn build(options: &ClientOptions) -> Result<Self, ApiError> {
         let mut builder = reqwest::ClientBuilder::new();
 
-        if let Some(cert_bytes) = &options.public_server_crt {
-            let cert = reqwest::Certificate::from_pem(cert_bytes)?;
-            builder = builder.add_root_certificate(cert);
+        if let Some(tls_options) = &options.tls_options {
+            if let Some(ca_cert) = &tls_options.ca_cert {
+                let cert = reqwest::Certificate::from_pem(ca_cert)?;
+                builder = builder.add_root_certificate(cert);
+            }
+
+            if tls_options.insecure {
+                builder = builder
+                    .danger_accept_invalid_certs(true)
+                    .danger_accept_invalid_hostnames(true);
+            }
         }
 
-        // Need to resolve the base URL to the TLS cert domain, to avoid invalid cert errors
-        let effective_base_url = if options.insecure {
-            builder = builder
-                .danger_accept_invalid_certs(true)
-                .danger_accept_invalid_hostnames(true);
-            base_url
-        } else {
-            let domain = options
-                .tls_cert_domain
-                .as_deref()
-                .unwrap_or(DEFAULT_TLS_CERT_DOMAIN);
-            builder = builder.https_only(true);
-            let mut effective = base_url.clone();
-            if let Ok(mut url) = reqwest::Url::parse(&base_url) {
-                let port = url.port_or_known_default().unwrap_or(443);
-                let host = url.host_str().unwrap_or("").to_string();
-                if let Ok(addr) = format!("{host}:{port}").parse::<SocketAddr>() {
-                    builder = builder.resolve(domain, addr);
-                }
-                if url.set_host(Some(domain)).is_ok() {
-                    effective = url.to_string().trim_end_matches('/').to_string();
-                }
-            }
-            effective
-        };
+        let uri: Uri = options.uri.clone().into();
+
+        let mut url = reqwest::Url::parse(&uri.to_string())
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+        if let Some(domain_name) = &options.domain_name {
+            let addr_str = uri
+                .authority()
+                .map(|a| a.as_str())
+                .ok_or_else(|| PyValueError::new_err("URI has no authority"))?;
+            let addr = addr_str.parse::<SocketAddr>().map_err(|_| {
+                PyValueError::new_err(format!(
+                    "URI host must be an IP address when `domain_name` is set, got: {addr_str}"
+                ))
+            })?;
+            builder = builder.resolve(domain_name, addr);
+
+            url.set_host(Some(domain_name)).unwrap();
+        }
+
+        if let Some(request_headers) = &options.extra_headers {
+            builder = builder.default_headers(request_headers.clone().into());
+        }
 
         Ok(Self {
             inner: builder.build()?,
-            base_url: effective_base_url,
+            base_url: url.to_string().trim_end_matches('/').to_string(),
         })
     }
 
@@ -131,38 +183,9 @@ impl ObservatoryRestClient {
 #[pymethods]
 impl SchedulerClient {
     #[new]
-    pub fn new(
-        address: &str,
-        grpc_port: u16,
-        observatory_port: u16,
-        mut client_options: ClientOptions,
-    ) -> ApiResult<SchedulerClient> {
-        // Overwrite insecure for localhost or 127.0.0.1
-        if address == "localhost" || address == "127.0.0.1" {
-            client_options.insecure = true;
-        }
-
-        let grpc_address = format!("{address}:{grpc_port}");
-
-        let observatory_address = if address.starts_with("http") {
-            format!("{address}:{observatory_port}")
-        } else {
-            if client_options.insecure {
-                format!("http://{address}:{observatory_port}")
-            } else {
-                format!("https://{address}:{observatory_port}")
-            }
-        };
-
-        let observatory_client_rest =
-            ObservatoryRestClient::build(&client_options, observatory_address)?;
-
-        let channel =
-            RUNTIME.block_on(async move { get_channel(&grpc_address, client_options).await })??;
-        let scheduler_client =
-            ClientServiceClient::with_interceptor(channel.clone(), version_interceptor as _)
-                .max_encoding_message_size(MAX_MESSAGE_LENGTH_UNLIMITED)
-                .max_decoding_message_size(MAX_MESSAGE_LENGTH_UNLIMITED);
+    pub fn new(scheduler: ClientOptions, observatory: ClientOptions) -> ApiResult<SchedulerClient> {
+        let observatory_client_rest = ObservatoryRestClient::build(&observatory)?;
+        let scheduler_client = SchedulerGrpcClient::build(&scheduler)?;
 
         Ok(SchedulerClient {
             scheduler_client,
@@ -181,7 +204,7 @@ impl SchedulerClient {
                 let query_id = QueryIdentifier::from(query_id);
                 let mut req = Request::new(query_id.into());
                 req = insert_auth_token(req, token);
-                self.scheduler_client.clone().cancel_query(req).await
+                self.scheduler_client.inner.clone().cancel_query(req).await
             })
         })?;
         Ok(())
@@ -199,7 +222,12 @@ impl SchedulerClient {
             RUNTIME.block_on(async move {
                 let mut req = Request::new(query_id.into());
                 req = insert_auth_token(req, token);
-                let result = self.scheduler_client.clone().get_query_status(req).await?;
+                let result = self
+                    .scheduler_client
+                    .inner
+                    .clone()
+                    .get_query_status(req)
+                    .await?;
                 Ok::<_, ApiError>(QueryStatus::from(result.into_inner()))
             })
         })??;
@@ -227,7 +255,12 @@ impl SchedulerClient {
             RUNTIME.block_on(async move {
                 let mut req = Request::new(query_id.into());
                 req = insert_auth_token(req, token);
-                let result = self.scheduler_client.clone().get_query_result(req).await?;
+                let result = self
+                    .scheduler_client
+                    .inner
+                    .clone()
+                    .get_query_result(req)
+                    .await?;
                 Ok(result.into_inner().into())
             })
         })?
@@ -273,7 +306,12 @@ impl SchedulerClient {
                     let _ = req.metadata_mut().insert(metadatakey, metadata);
                 }
                 req = insert_auth_token(req, token);
-                let result = self.scheduler_client.clone().submit_query(req).await?;
+                let result = self
+                    .scheduler_client
+                    .inner
+                    .clone()
+                    .submit_query(req)
+                    .await?;
                 Ok(result.into_inner())
             })
         })?
@@ -328,7 +366,7 @@ impl SchedulerClient {
             .enter_rust(|| {
                 let plans = PlanSelection { ir, phys };
                 RUNTIME.block_on(async move {
-                    let mut client = self.scheduler_client.clone();
+                    let mut client = self.scheduler_client.inner.clone();
                     retry!(
                         Exponential::new(Duration::from_millis(50))
                             .maximum(Duration::from_millis(250)),
@@ -383,6 +421,7 @@ impl SchedulerClient {
                     let mut req = Request::new(GetComputeVersionsRequest {}.into());
                     req = insert_auth_token(req, token);
                     self.scheduler_client
+                        .inner
                         .clone()
                         .get_compute_versions(req)
                         .await
@@ -410,52 +449,144 @@ pub(super) fn insert_auth_token<T>(mut req: Request<T>, token: Option<String>) -
 }
 
 #[pyclass(from_py_object)]
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ClientOptions {
     #[pyo3(get, set)]
-    pub tls_cert_domain: Option<String>,
+    pub uri: ParsedUri,
     #[pyo3(get, set)]
-    pub public_server_crt: Option<Vec<u8>>,
+    pub domain_name: Option<DomainName>,
+    #[pyo3(get, set)]
+    pub extra_headers: Option<ParsedHeaders>,
+    #[pyo3(get, set)]
+    pub tls_options: Option<TLSOptions>,
+}
+
+#[pyclass(from_py_object)]
+#[derive(Debug, Clone, Default)]
+pub struct TLSOptions {
+    #[pyo3(get, set)]
+    pub ca_cert: Option<Vec<u8>>,
     #[pyo3(get, set)]
     pub insecure: bool,
 }
 
 #[pymethods]
+impl TLSOptions {
+    #[new]
+    #[pyo3(signature = (*, ca_cert=None, insecure=false))]
+    fn new(ca_cert: Option<Vec<u8>>, insecure: bool) -> Self {
+        Self { ca_cert, insecure }
+    }
+}
+
+#[pymethods]
 impl ClientOptions {
     #[new]
-    fn new() -> Self {
-        Self::default()
+    #[pyo3(signature = (uri, *, domain_name=None, extra_headers=None, tls_options=None))]
+    fn new(
+        uri: ParsedUri,
+        domain_name: Option<DomainName>,
+        extra_headers: Option<ParsedHeaders>,
+        tls_options: Option<TLSOptions>,
+    ) -> Self {
+        Self {
+            uri,
+            domain_name,
+            extra_headers,
+            tls_options,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct NoVerifier;
+
+impl ServerCertVerifier for NoVerifier {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &CertificateDer,
+        _intermediates: &[CertificateDer],
+        _server_name: &ServerName,
+        _ocsp_response: &[u8],
+        _now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        Ok(ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        _message: &[u8],
+        _cert: &CertificateDer,
+        _dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        Ok(HandshakeSignatureValid::assertion())
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        _message: &[u8],
+        _cert: &CertificateDer,
+        _dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        Ok(HandshakeSignatureValid::assertion())
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        vec![
+            SignatureScheme::RSA_PKCS1_SHA1,
+            SignatureScheme::ECDSA_SHA1_Legacy,
+            SignatureScheme::RSA_PKCS1_SHA256,
+            SignatureScheme::ECDSA_NISTP256_SHA256,
+            SignatureScheme::RSA_PKCS1_SHA384,
+            SignatureScheme::ECDSA_NISTP384_SHA384,
+            SignatureScheme::RSA_PKCS1_SHA512,
+            SignatureScheme::ECDSA_NISTP521_SHA512,
+            SignatureScheme::RSA_PSS_SHA256,
+            SignatureScheme::RSA_PSS_SHA384,
+            SignatureScheme::RSA_PSS_SHA512,
+            SignatureScheme::ED25519,
+            SignatureScheme::ED448,
+        ]
     }
 }
 
 #[allow(clippy::result_large_err)]
-async fn get_channel(address: &str, options: ClientOptions) -> ApiResult<Channel> {
-    let uri_builder = Uri::builder().authority(address).path_and_query("/");
+async fn create_channel(options: &ClientOptions) -> ApiResult<Channel> {
+    let uri: Uri = options.uri.clone().into();
+    let mut endpoint = Channel::builder(uri.clone());
 
-    let endpoint = if options.insecure {
-        let uri = uri_builder.scheme(Scheme::HTTP).build().unwrap();
-        Channel::builder(uri)
-    } else {
-        let cert_domain = options
-            .tls_cert_domain
-            .unwrap_or(DEFAULT_TLS_CERT_DOMAIN.to_string());
+    if let Some(domain_name) = &options.domain_name {
+        let scheme = uri
+            .scheme()
+            .ok_or_else(|| PyValueError::new_err("missing uri scheme"))?;
+        let port = uri
+            .port_u16()
+            .ok_or_else(|| PyValueError::new_err("missing uri port"))?;
+        let new_origin = format!("{scheme}://{domain_name}:{port}")
+            .parse::<Uri>()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        endpoint = endpoint.origin(new_origin);
+    }
 
-        let mut tls = ClientTlsConfig::new()
-            .domain_name(cert_domain)
-            .with_enabled_roots();
+    if let Some(tls_options) = &options.tls_options {
+        let mut tls = ClientTlsConfig::new();
 
-        if let Some(cert_bytes) = &options.public_server_crt {
-            let cert = Certificate::from_pem(cert_bytes);
-            tls = tls.ca_certificate(cert);
+        if let Some(domain_name) = &options.domain_name {
+            tls = tls.domain_name(domain_name.clone());
         }
 
-        let uri = uri_builder.scheme(Scheme::HTTPS).build().unwrap();
-
-        Channel::builder(uri).tls_config(tls)?
+        if tls_options.insecure {
+            endpoint = endpoint.tls_config_with_verifier(tls, Arc::new(NoVerifier))?
+        } else {
+            if let Some(ca_cert) = &tls_options.ca_cert {
+                tls = tls.ca_certificate(Certificate::from_pem(ca_cert));
+            }
+            endpoint = endpoint.tls_config(tls.with_enabled_roots())?
+        }
     };
 
     utils::retry! {
-        Exponential::new(Duration::from_secs(1)).maximum(Duration::from_secs(5)).deadline(Duration::from_secs(60)),
+        Exponential::new(Duration::from_secs(1)).maximum(Duration::from_secs(5)).deadline(GRPC_RETRY_CONNECTION_DEADLINE),
         async {
             let res = endpoint
                 .clone()
@@ -468,20 +599,112 @@ async fn get_channel(address: &str, options: ClientOptions) -> ApiResult<Channel
         },
         tokio::time::sleep
     }
-    .await
+        .await
 }
 
-#[allow(clippy::result_large_err)]
-fn version_interceptor(mut request: Request<()>) -> Result<Request<()>, tonic::Status> {
+fn version_header_layers() -> Vec<HeaderMetadata<http::Request<tonic::body::Body>>> {
     let (_, versions) = VERSIONS.get().unwrap().clone().unwrap();
-    let metadata = request.metadata_mut();
-    metadata.insert(
-        "x-client-version",
-        versions.polars_cloud.as_bytes().try_into().unwrap(),
-    );
-    metadata.insert(
-        "x-polars-version",
-        versions.polars.as_bytes().try_into().unwrap(),
-    );
-    Ok(request)
+
+    vec![
+        (POLAR_CLOUD_VERSION_HEADER_NAME, Some(versions.polars_cloud)).into(),
+        (POLAR_VERSION_HEADER_NAME, Some(versions.polars)).into(),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use protos_common::tonic::transport::Uri;
+    use reqwest::Method;
+
+    use super::*;
+
+    fn options(uri: &str, domain_name: Option<String>) -> Result<ClientOptions, PyErr> {
+        let parsed_uri = uri.parse::<Uri>().unwrap().try_into()?;
+
+        Ok(ClientOptions {
+            uri: parsed_uri,
+            domain_name: domain_name.map(DomainName::try_from).transpose()?,
+            extra_headers: None,
+            tls_options: None,
+        })
+    }
+
+    #[test]
+    fn base_url_unchanged_without_authority() {
+        let client =
+            ObservatoryRestClient::build(&options("https://1.2.3.4:8080", None).unwrap()).unwrap();
+        assert_eq!(client.base_url, "https://1.2.3.4:8080");
+    }
+
+    #[test]
+    fn base_url_host_replaced_with_authority() {
+        let client = ObservatoryRestClient::build(
+            &options("https://1.2.3.4:8080", Some("pola.rs".to_string())).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(client.base_url, "https://pola.rs:8080");
+    }
+
+    #[test]
+    fn error_when_uri_host_is_hostname_not_ip() {
+        let err = ObservatoryRestClient::build(
+            &options(
+                "https://somehost.example.com:8080",
+                Some("myservice.pola.rs".to_string()),
+            )
+            .unwrap(),
+        )
+        .unwrap_err();
+        assert!(matches!(err, ApiError::PyErr(_)));
+    }
+
+    #[test]
+    fn error_when_uri_has_no_scheme() {
+        assert!(options("somehost.example.com:8080", None).is_err());
+    }
+
+    #[test]
+    fn resolve_redirects_connection_to_original_ip() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let host = "myservice.pola.rs".to_string();
+
+        let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
+
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = vec![0u8; 4096];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                buf.truncate(n);
+                let _ = tx.send(buf);
+                let _ = stream.write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                );
+            }
+        });
+
+        let client = ObservatoryRestClient::build(
+            &options(&format!("http://127.0.0.1:{port}"), Some(host.clone())).unwrap(),
+        )
+        .unwrap();
+
+        let response = RUNTIME
+            .block_on(client.request(Method::GET, "/test").send())
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(response.status(), 200);
+
+        let request_bytes = rx.recv().unwrap();
+        let request_str = String::from_utf8_lossy(&request_bytes);
+
+        assert!(
+            request_str.contains(&format!("host: {host}:{port}")),
+            "Host header not set to authority, got:\n{request_str}"
+        );
+    }
 }

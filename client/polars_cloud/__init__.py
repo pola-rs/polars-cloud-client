@@ -18,7 +18,7 @@ from polars_cloud.context import (
 from polars_cloud.organization import (
     Organization,
 )
-from polars_cloud.polars_cloud import LogLevelModel, cli_main
+from polars_cloud.polars_cloud import ClientOptions, LogLevelModel, TLSOptions, cli_main
 from polars_cloud.query import (
     CsvDst,
     DirectQuery,
@@ -46,6 +46,7 @@ from polars_cloud.workspace import (
 
 __all__ = [
     "ClientContext",
+    "ClientOptions",
     "ClusterContext",
     "ComputeContext",
     "ComputeContextStatus",
@@ -65,6 +66,7 @@ __all__ = [
     "QueryResult",
     "QueryStatus",
     "StageStatistics",
+    "TLSOptions",
     "Workspace",
     "WorkspaceDefaultComputeSpecs",
     "WorkspaceStatus",

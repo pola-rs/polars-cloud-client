@@ -70,7 +70,7 @@ pub enum QueryType2Model {
     Distributed,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 pub struct QueryDetailModel {
     pub id: QueryId,
@@ -112,8 +112,19 @@ pub struct StageGraphModel {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct PhysPlanVariationModel {
+    /// The `PhysPlanVariation` hash as a decimal string. Serialized as a string
+    /// because the underlying `u64` can exceed JS `Number.MAX_SAFE_INTEGER`.
+    pub variation_hash: String,
+    pub worker_count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
 pub struct StageModel {
     pub ir_visualization_data: Option<IRVisualizationData>,
+    /// Physical plan variations for this stage, ranked from most to least common.
+    pub phys_plan_variations: Vec<PhysPlanVariationModel>,
 }
 
 #[derive(Clone, Debug, Serialize)]

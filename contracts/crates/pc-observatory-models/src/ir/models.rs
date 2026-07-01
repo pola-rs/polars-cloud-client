@@ -190,6 +190,10 @@ pub enum IRNodeProperties {
     },
 
     // New TaskPlan specific variants
+    PythonMultiScan {
+        n_scans: u64,
+        maintain_order: bool,
+    },
     ShuffleRead {
         shuffle_number: u32,
         partitioning: PartitioningModel,

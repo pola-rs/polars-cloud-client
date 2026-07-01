@@ -8,7 +8,8 @@ from polars._utils.cloud import prepare_cloud_plan
 from polars.exceptions import ComputeError, InvalidOperationError
 
 from polars_cloud.context import ComputeContext
-from polars_cloud.query.dst import CsvDst, IpcDst, ParquetDst, TmpDst
+from polars_cloud.polars_cloud import PyNumWorkers
+from polars_cloud.query.dst import CsvDst, IcebergDst, IpcDst, ParquetDst, TmpDst
 
 with contextlib.suppress(ImportError):  # Module not available when building docs
     from pathlib import Path
@@ -44,7 +45,8 @@ def prepare_query(
     shuffle_compression_level: int | None = None,
     distributed_settings: DistributionSettings | None,
     n_retries: int,
-    n_workers: int | None = None,
+    min_workers: int | None = None,
+    max_workers: int | None = None,
     sink_to_single_file: bool | None = None,
     optimizations: QueryOptFlags,
 ) -> tuple[bytes, PyQuerySettings]:
@@ -144,6 +146,16 @@ If you want to:
             lazy=True,
             engine=engine,
         )
+    elif isinstance(dst, IcebergDst):
+        from polars.io.iceberg._sink import IcebergSinkState
+
+        sink_state = IcebergSinkState.new(
+            dst.target,
+            mode=dst.mode,
+            catalog=dst.catalog,
+            storage_options=dst.storage_options,
+        )
+        lf = sink_state.attach_sink(lf)
     elif isinstance(dst, TmpDst):
         if hasattr(lf._ldf, "_node_name") and lf._ldf._node_name() == "SinkMultiple":
             # This is the `pl.collect_all(..., lazy=True)` branch.
@@ -203,12 +215,21 @@ If you want to:
         compression_level=shuffle_compression_level,
     )
 
+    if (
+        min_workers is not None
+        and max_workers is not None
+        and min_workers > max_workers
+    ):
+        msg = "min_workers > max_workers"
+        raise ValueError(msg)
+
+    py_num_workers = PyNumWorkers(min=min_workers, max=max_workers)
     settings = pc_core.serialize_query_settings(
         engine=engine,
         prefer_dot=prefer_dot,
         shuffle_opts=shuffle_opts,
         n_retries=n_retries,
-        n_workers=n_workers,
+        n_workers=py_num_workers,
         distributed_settings=distributed_settings,
         optimization_flags=optimization_flags,
     )

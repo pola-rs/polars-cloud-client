@@ -772,7 +772,7 @@ impl ApiClient {
         workspace_id: Uuid,
         filters: GetQueryArgs,
         pagination: Pagination,
-    ) -> Result<Paginated<QueryWithStateTimingModel>> {
+    ) -> Result<Paginated<QueryModel>> {
         self.get(&format!("/api/v1/workspace/{workspace_id}/query"))
             .pagination(&pagination)
             .parameter("order", "id,asc")

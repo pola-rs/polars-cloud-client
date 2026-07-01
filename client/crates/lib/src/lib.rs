@@ -13,21 +13,22 @@ use client_core::{
     ComputeContextSpecs, EncodedPolarsError, NotFoundError, RUNTIME, VERSIONS, get_versions,
 };
 use polars_axum_models::{
-    ComputeClusterPublicInfoModel, ComputeModel, ComputeStatusModel, ComputeTokenModel,
-    DBCPUArchitectureModel, DBClusterModeModel, DeleteWorkspaceModel, FileTypeModel, LogLevelModel,
-    OrganizationModel, QueryModel, QueryStateTimingModel, QueryStatusCodeModel,
-    QueryWithStateTimingAndResultModel, QueryWithStateTimingModel, QueryWithStatusModel,
-    ResultModel, StatusModel, TerminationModel, TerminationReasonModel, WorkspaceAPITokenModel,
-    WorkspaceApiTokenWithNameModel, WorkspaceDeploymentModel, WorkspaceModel,
-    WorkspaceSetupUrlModel, WorkspaceStateModel, WorkspaceWithUrlModel,
+    ComputeClusterNodeInfoModel, ComputeClusterPublicInfoModel, ComputeModel, ComputeStatusModel,
+    ComputeTokenModel, DBCPUArchitectureModel, DBClusterModeModel, DeleteWorkspaceModel,
+    FileTypeModel, LogLevelModel, ManifestModel, OrganizationModel,
+    OrganizationSubscriptionStateModel, QueryEngineModel, QueryModel, QueryStateTimingModel,
+    QueryStatusCodeModel, QueryTypeModel, QueryWithStateTimingAndResultModel, ResultModel,
+    StatusModel, TerminationModel, TerminationReasonModel, UserModel, WorkspaceAPITokenModel,
+    WorkspaceApiTokenWithNameModel, WorkspaceClusterDefaultsModel, WorkspaceDeploymentModel,
+    WorkspaceModel, WorkspaceSetupUrlModel, WorkspaceStateModel, WorkspaceWithUrlModel,
 };
 use pyo3::exceptions::PySystemExit;
 use pyo3::prelude::*;
 
 use self::query_settings::PyShuffleOpts;
 use crate::query_scheduler::*;
-use crate::query_settings::{PyLineageContext, PyQuerySettings};
-use crate::serde_types::{QueryDetailPy, QueryPlanTimingPy};
+use crate::query_settings::{PyLineageContext, PyNumWorkers, PyQuerySettings};
+use crate::serde_types::{QueryDetailPy, QueryInfoPy, QueryPlanTimingPy, StageStatsPy};
 use crate::wrapped_client::WrappedAPIClient;
 use crate::wrapped_client::workspace::DefaultComputeSpecs;
 
@@ -40,6 +41,8 @@ pub static CTRL_PLN_CLIENT_GLOBAL: std::sync::LazyLock<Arc<AutoRefreshApiControl
 
 #[pymodule]
 fn polars_cloud(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
+    let _ = tokio_rustls::rustls::crypto::aws_lc_rs::default_provider().install_default();
+
     let mut err = Ok(());
     VERSIONS.get_or_init(|| match get_versions(py) {
         Err(e) => {
@@ -50,85 +53,75 @@ fn polars_cloud(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     });
     err?;
 
-    m.add_class::<PyShuffleOpts>().unwrap();
-    m.add_class::<PyQuerySettings>().unwrap();
-    m.add_class::<WrappedAPIClient>().unwrap();
-    m.add_class::<SchedulerClient>().unwrap();
+    m.add_class::<ClientOptions>()?;
+    m.add_class::<ComputeClusterNodeInfoModel>()?;
+    m.add_class::<ComputeClusterPublicInfoModel>()?;
+    m.add_class::<ComputeContextSpecs>()?;
+    m.add_class::<ComputeModel>()?;
+    m.add_class::<ComputeStatusModel>()?;
+    m.add_class::<ComputeTokenModel>()?;
+    m.add_class::<ComputeVersionsPy>()?;
+    m.add_class::<DBCPUArchitectureModel>()?;
+    m.add_class::<DBClusterModeModel>()?;
+    m.add_class::<DefaultComputeSpecs>()?;
+    m.add_class::<DeleteWorkspaceModel>()?;
+    m.add_class::<FileTypeModel>()?;
+    m.add_class::<LogLevelModel>()?;
+    m.add_class::<ManifestModel>()?;
+    m.add_class::<OrganizationModel>()?;
+    m.add_class::<OrganizationSubscriptionStateModel>()?;
+    m.add_class::<PlanFormatPy>()?;
+    m.add_class::<PyLineageContext>()?;
+    m.add_class::<PyNumWorkers>()?;
+    m.add_class::<PyQuerySettings>()?;
+    m.add_class::<PyShuffleOpts>()?;
+    m.add_class::<QueryDetailPy>()?;
+    m.add_class::<QueryEngineModel>()?;
+    m.add_class::<QueryInfoPy>()?;
+    m.add_class::<QueryModel>()?;
+    m.add_class::<QueryPlanTimingPy>()?;
+    m.add_class::<QueryPlansPy>()?;
+    m.add_class::<QueryStateTimingModel>()?;
+    m.add_class::<QueryStatusCodeModel>()?;
+    m.add_class::<QueryTypeModel>()?;
+    m.add_class::<QueryWithStateTimingAndResultModel>()?;
+    m.add_class::<ResultModel>()?;
+    m.add_class::<SchedulerClient>()?;
+    m.add_class::<StageStatsPy>()?;
+    m.add_class::<StatusModel>()?;
+    m.add_class::<TLSOptions>()?;
+    m.add_class::<TerminationModel>()?;
+    m.add_class::<TerminationReasonModel>()?;
+    m.add_class::<UserModel>()?;
+    m.add_class::<WorkspaceAPITokenModel>()?;
+    m.add_class::<WorkspaceApiTokenWithNameModel>()?;
+    m.add_class::<WorkspaceClusterDefaultsModel>()?;
+    m.add_class::<WorkspaceDeploymentModel>()?;
+    m.add_class::<WorkspaceModel>()?;
+    m.add_class::<WorkspaceSetupUrlModel>()?;
+    m.add_class::<WorkspaceStateModel>()?;
+    m.add_class::<WorkspaceWithUrlModel>()?;
+    m.add_class::<WrappedAPIClient>()?;
 
-    m.add_class::<WorkspaceModel>().unwrap();
-    m.add_class::<WorkspaceStateModel>().unwrap();
-    m.add_class::<WorkspaceDeploymentModel>().unwrap();
-    m.add_class::<DefaultComputeSpecs>().unwrap();
+    m.add("NotFoundError", m.py().get_type::<NotFoundError>())?;
 
-    m.add_class::<QueryModel>().unwrap();
-    m.add_class::<QueryStatusCodeModel>().unwrap();
-    m.add_class::<StatusModel>().unwrap();
-    m.add_class::<QueryWithStatusModel>().unwrap();
-    m.add_class::<QueryStateTimingModel>().unwrap();
-    m.add_class::<QueryWithStateTimingModel>().unwrap();
-    m.add_class::<FileTypeModel>().unwrap();
-    m.add_class::<ResultModel>().unwrap();
-    m.add_class::<QueryWithStateTimingAndResultModel>().unwrap();
-
-    m.add_class::<TerminationReasonModel>().unwrap();
-    m.add_class::<TerminationModel>().unwrap();
-    m.add_class::<DBClusterModeModel>().unwrap();
-    m.add_class::<DBCPUArchitectureModel>().unwrap();
-    m.add_class::<ComputeModel>().unwrap();
-    m.add_class::<ComputeClusterPublicInfoModel>().unwrap();
-    m.add_class::<ComputeStatusModel>().unwrap();
-    m.add_class::<ComputeTokenModel>().unwrap();
-
-    m.add_class::<WorkspaceAPITokenModel>().unwrap();
-    m.add_class::<WorkspaceApiTokenWithNameModel>().unwrap();
-
-    m.add_class::<WorkspaceWithUrlModel>().unwrap();
-    m.add_class::<WorkspaceSetupUrlModel>().unwrap();
-    m.add_class::<DeleteWorkspaceModel>().unwrap();
-    m.add_class::<LogLevelModel>().unwrap();
-
-    m.add_class::<OrganizationModel>().unwrap();
-
-    m.add_class::<ClientOptions>().unwrap();
-
-    m.add_class::<ComputeContextSpecs>().unwrap();
-
-    m.add_class::<QueryPlanTimingPy>().unwrap();
-    m.add_class::<QueryDetailPy>().unwrap();
-
-    m.add_class::<QueryPlansPy>().unwrap();
-    m.add_class::<PlanFormatPy>().unwrap();
-    m.add_class::<ComputeVersionsPy>().unwrap();
-
-    m.add_class::<PyLineageContext>().unwrap();
-
-    m.add("NotFoundError", m.py().get_type::<NotFoundError>())
-        .unwrap();
-
-    m.add("AuthLoadError", m.py().get_type::<AuthLoadError>())
-        .unwrap();
+    m.add("AuthLoadError", m.py().get_type::<AuthLoadError>())?;
 
     m.add(
         "EncodedPolarsError",
         m.py().get_type::<EncodedPolarsError>(),
-    )
-    .unwrap();
+    )?;
 
     m.add(
         "ComputeClusterMisspecified",
         m.py().get_type::<ComputeClusterMisspecified>(),
-    )
-    .unwrap();
+    )?;
 
-    m.add_wrapped(wrap_pyfunction!(serde_types::serialize_query_settings))
-        .unwrap();
-    m.add_wrapped(wrap_pyfunction!(py_is_token_expired))
-        .unwrap();
-
-    m.add_wrapped(wrap_pyfunction!(polars_version)).unwrap();
-    m.add_wrapped(wrap_pyfunction!(python_version)).unwrap();
-    m.add_wrapped(wrap_pyfunction!(utils::resolve_compute_context_specs))
-        .unwrap();
+    m.add_function(wrap_pyfunction!(serde_types::serialize_query_settings, m)?)?;
+    m.add_function(wrap_pyfunction!(py_is_token_expired, m)?)?;
+    m.add_function(wrap_pyfunction!(polars_version, m)?)?;
+    m.add_function(wrap_pyfunction!(python_version, m)?)?;
+    m.add_function(wrap_pyfunction!(utils::resolve_compute_context_specs, m)?)?;
 
     m.add_function(wrap_pyfunction!(cli_main, m)?)?;
 

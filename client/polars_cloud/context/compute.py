@@ -7,6 +7,7 @@ import warnings
 from contextlib import ContextDecorator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 import polars_cloud
@@ -14,7 +15,11 @@ import polars_cloud.polars_cloud as pcr
 from polars_cloud import constants
 from polars_cloud.context.compute_connect_select import select_compute_cluster
 from polars_cloud.context.compute_status import ComputeContextStatus
-from polars_cloud.polars_cloud import ClientOptions, ComputeClusterMisspecified
+from polars_cloud.polars_cloud import (
+    ClientOptions,
+    ComputeClusterMisspecified,
+    TLSOptions,
+)
 from polars_cloud.workspace import Workspace, WorkspaceStatus
 
 logger = logging.getLogger(__name__)
@@ -22,7 +27,9 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     import io
     import sys
+    from collections.abc import Mapping
     from types import TracebackType
+    from urllib.parse import ParseResult, SplitResult
 
     from polars_cloud._typing import ConnectionMode, CPUArchitecture, LogLevel
     from polars_cloud.organization import Organization
@@ -33,6 +40,8 @@ if TYPE_CHECKING:
         from typing_extensions import Self
 
 _deprecation_sentinel = object()
+
+DEFAULT_COMPUTE_CLUSTER_DOMAIN_NAME = "pola.rs"
 DEFAULT_SCHEDULER_PORT = 5051
 DEFAULT_OBSERVATORY_PORT = 3001
 
@@ -65,7 +74,7 @@ class ClientContext:
 
         Examples
         --------
-        >>> ctx = pc.ClusterContext(compute_address="localhost")
+        >>> ctx = pc.ClusterContext(uri="http://localhost")
         >>> ctx.show_versions()
         Compute Plane Version: 0.1.0
         Polars Python Version: 1.38.1
@@ -88,57 +97,106 @@ class ClusterContext(ClientContext):
     The cluster context is an abstraction of some remote cluster that is routable
     from the client. This will bypass any calls to the Polars Cloud control plane
     and talk to the cluster's scheduler directly.
+    Will attempt to establish an gRPC connection on __init__.
 
     Parameters
     ----------
-    compute_address
-        The address of the scheduler that is reachable from the client.
-    scheduler_port
-        The port on which the scheduler is listening. Defaults to `5051`.
-    observatory_port
-        The port on which the observatory is listening. Defaults to `3001`.
-    insecure
-        Disable TLS for the connection. Defaults to `False`.
-    tls_cert_domain
-        Override the domain name used for TLS certificate verification.
-    public_server_crt
-        Custom CA certificate for verifying the server's TLS certificate.
-    tls_certificate
-        Client certificate for mutual TLS authentication.
-    tls_private_key
-        Private key corresponding to `tls_certificate`.
+    uri
+        URI of the scheduler reachable from the client, e.g. ``https://[HOSTNAME|IP]:5051``.
+        If no port is specified, defaults to `5051`.
+    domain_name
+        Used as authority, host header (inc port) and for TLS verification.
+        Make sure to use an [IP] in the uri when using this option.
+        https://developer.mozilla.org/en-US/docs/Glossary/Domain_name
+    extra_headers
+        Additional HTTP headers to include with each request to the cluster.
+        The following headers are forbidden and will raise an error if provided:
+        ``host``, ``content-length``, ``transfer-encoding``.
+    tls_options
+        TLS options for the connection, including custom CA certificates
+        and insecure mode. If not set, uses system defaults.
+    observatory
+        Custom client options for the observatory. If not set, observatory is
+        automatically configured from `uri` using the default port `3001`.
+        When specified, none of the other options will be copied by default.
 
     Examples
     --------
-    >>> ctx = pc.ClusterContext(compute_address="your-cluster-compute-address")
+    >>> import polars as pl
+    >>> import polars_cloud as pc
+
+    >>> lf = pl.LazyFrame({"x": list(range(100))})
+
+    >>> # Simple config, observatory will be automatically configured.
+    >>> ctx = pc.ClusterContext(uri="https://[HOSTNAME|IP]")
+    >>> lf.remote(ctx).execute()
+
+    >>> # Config with custom CA, will be used for both scheduler and observatory.
+    >>> with open("certificate.pem", "rb") as cert:
+    ...     custom_ca = cert.read()
+    >>> ctx = pc.ClusterContext(
+    ...     uri="https://[HOSTNAME|IP]",
+    ...     tls_options=TLSOptions(
+    ...         ca_cert=custom_ca,  # Will also be used for the observatory.
+    ...     ),
+    ... )
+    >>> lf.remote(ctx).execute()
+
+    >>> # Custom config for observatory. Observatory will use default tls_options.
+    >>> ctx = pc.ClusterContext(
+    ...     uri="https://[IP]:5051",
+    ...     domain_name="pola.rs",
+    ...     tls_options=TLSOptions(
+    ...         insecure=True,  # Will NOT be used for the observatory.
+    ...     ),
+    ...     observatory=ClientOptions(uri="https://[IP]:3001", authority="obs.pola.rs"),
+    ... )
     >>> lf.remote(ctx).execute()
     """
 
     def __init__(
         self,
-        compute_address: str,
+        uri: str,
         *,
-        scheduler_port: int = DEFAULT_SCHEDULER_PORT,
-        observatory_port: int = DEFAULT_OBSERVATORY_PORT,
-        insecure: bool = False,
-        tls_cert_domain: str | None = None,
-        public_server_crt: bytes | None = None,
-        allow_filesystem_scans: bool | None = None,
+        domain_name: str | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+        tls_options: TLSOptions | None = None,
+        observatory: ClientOptions | None = None,
     ) -> None:
         self._connection_mode = pcr.DBClusterModeModel.Direct
         self._compute_id = uuid4()
-        self.allow_filesystem_scans = allow_filesystem_scans
-        client_options = ClientOptions()
 
-        client_options.tls_cert_domain = tls_cert_domain
-        client_options.public_server_crt = public_server_crt
-        client_options.insecure = insecure
-        self._direct_client = pcr.SchedulerClient(
-            address=compute_address,
-            grpc_port=scheduler_port,
-            observatory_port=observatory_port,
-            client_options=client_options,
+        scheduler_uri = urlparse(uri)
+        if not scheduler_uri.port:
+            scheduler_uri = scheduler_uri._replace(
+                netloc=self._format_host(scheduler_uri, DEFAULT_SCHEDULER_PORT)
+            )
+
+        scheduler_options = ClientOptions(
+            uri=scheduler_uri.geturl(),
+            domain_name=domain_name,
+            extra_headers=extra_headers,
+            tls_options=tls_options,
         )
+
+        observatory_options = observatory or ClientOptions(
+            uri=scheduler_uri._replace(
+                netloc=self._format_host(scheduler_uri, DEFAULT_OBSERVATORY_PORT)
+            ).geturl(),
+            domain_name=domain_name,
+            extra_headers=extra_headers,
+            tls_options=tls_options,
+        )
+
+        self._direct_client = pcr.SchedulerClient(
+            scheduler=scheduler_options,
+            observatory=observatory_options,
+        )
+
+    @staticmethod
+    def _format_host(parsed: SplitResult | ParseResult, port: int) -> str:
+        host = parsed.hostname or ""
+        return f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
 
 
 class ComputeContext(ClientContext, ContextDecorator):
@@ -197,8 +255,12 @@ class ComputeContext(ClientContext, ContextDecorator):
     Examples
     --------
     >>> ctx = pc.ComputeContext(
-        workspace="workspace-name", cpus=24, memory=24, cluster_size=2, labels="docs"
-    )
+    ...     workspace="workspace-name",
+    ...     cpus=24,
+    ...     memory=24,
+    ...     cluster_size=2,
+    ...     labels="docs",
+    ... )
     >>> ctx
     ComputeContext(
         id=None,
@@ -557,7 +619,7 @@ class ComputeContext(ClientContext, ContextDecorator):
 
         wait = True if self._connection_mode == pcr.DBClusterModeModel.Direct else wait
         if wait:
-            _poll_compute_status_until(self, ComputeContextStatus.IDLE)
+            _poll_compute_status_until_started(self)
 
     def stop(self, *, wait: Any = _deprecation_sentinel) -> None:
         """Stop the compute context.
@@ -776,16 +838,25 @@ class ComputeContext(ClientContext, ContextDecorator):
         )
         logger.debug("Successfully obtained compute server info")
 
-        client_options = ClientOptions()
-        client_options.public_server_crt = str.encode(server_info.public_server_key)
-        client_options.insecure = self._insecure
-        client = pcr.SchedulerClient(
-            server_info.public_address,
-            DEFAULT_SCHEDULER_PORT,
-            DEFAULT_OBSERVATORY_PORT,
-            client_options,
+        scheme = "https" if not self._insecure else "http"
+        tls_options = TLSOptions(ca_cert=str.encode(server_info.public_server_key))
+
+        scheduler_options = ClientOptions(
+            uri=f"{scheme}://{server_info.public_address}:{DEFAULT_SCHEDULER_PORT}",
+            domain_name=DEFAULT_COMPUTE_CLUSTER_DOMAIN_NAME,
+            tls_options=tls_options if not self._insecure else None,
         )
-        self._direct_client = client
+        observatory_options = ClientOptions(
+            uri=f"{scheme}://{server_info.public_address}:{DEFAULT_OBSERVATORY_PORT}",
+            domain_name=DEFAULT_COMPUTE_CLUSTER_DOMAIN_NAME,
+            tls_options=tls_options if not self._insecure else None,
+        )
+
+        self._direct_client = pcr.SchedulerClient(
+            scheduler=scheduler_options,
+            observatory=observatory_options,
+        )
+
         return self._direct_client
 
     def _get_token(self) -> str | None:
@@ -865,34 +936,37 @@ def show_versions(
     context.show_versions()
 
 
-def _poll_compute_status_until(
+def _poll_compute_status_until_started(
     compute: ComputeContext,
-    desired_state: ComputeContextStatus,
     start_delay: int = 30,
     interval: int = 3,
-    timeout: int = 300,
 ) -> ComputeContextStatus:
     """Poll the compute status until the compute context is in desired_state."""
     # Poll at least once for a fast response
-    status = compute.get_status()
-    if status == desired_state:
-        return status
+    start = time.time()
+    next_deadline = time.time() + start_delay
+    assert compute._compute_id is not None
+    while True:
+        logger.debug("Polling compute status (%d seconds elapsed)", time.time() - start)
+        compute_model = constants.API_CLIENT.get_compute_cluster(
+            compute.workspace.id, compute._compute_id
+        )
+        status = ComputeContextStatus._from_api_model(compute_model.status)
 
-    max_polls = int((timeout - start_delay) / interval)
-    time.sleep(start_delay)
-    for i in range(max_polls):
-        logger.debug("Polling compute status (try %s)", str(i))
-        status = compute.get_status()
         logger.debug("Got compute status %s", status)
-        if status == desired_state:
+        if status.is_started():
             return status
-        elif status == ComputeContextStatus.FAILED:
-            msg = "Compute cluster in failed state"
+        elif status.is_terminal():
+            msg = "Compute cluster in terminal state"
+            if (
+                compute_model.termination
+                and compute_model.termination.termination_message
+            ):
+                msg += f" ({compute_model.termination.termination_message})"
             logger.info(msg)
             raise RuntimeError(msg)
         else:
-            time.sleep(interval)
-    else:
-        msg = f"Compute context failed to reach desired state {desired_state} after polling for {timeout} seconds"
-        logger.info(msg)
-        raise RuntimeError(msg)
+            # Behavior is like tokio::time::Interval with MissedTickBehavior::Delay
+            sleep_time = max(next_deadline - time.time(), 0.0)
+            time.sleep(sleep_time)
+            next_deadline = time.time() + interval

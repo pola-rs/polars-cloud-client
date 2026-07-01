@@ -76,7 +76,7 @@ impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for StageNumber {
 impl sqlx::Encode<'_, sqlx::Sqlite> for StageNumber {
     fn encode_by_ref(
         &self,
-        buf: &mut <sqlx::Sqlite as sqlx::Database>::ArgumentBuffer<'_>,
+        buf: &mut <sqlx::Sqlite as sqlx::Database>::ArgumentBuffer,
     ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
         <u32 as sqlx::Encode<'_, sqlx::Sqlite>>::encode_by_ref(&self.0, buf)
     }
@@ -138,7 +138,7 @@ impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for StageAttemptNumber {
 impl sqlx::Encode<'_, sqlx::Sqlite> for StageAttemptNumber {
     fn encode_by_ref(
         &self,
-        buf: &mut <sqlx::Sqlite as sqlx::Database>::ArgumentBuffer<'_>,
+        buf: &mut <sqlx::Sqlite as sqlx::Database>::ArgumentBuffer,
     ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
         <u32 as sqlx::Encode<'_, sqlx::Sqlite>>::encode_by_ref(&self.0, buf)
     }
@@ -176,7 +176,7 @@ impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for ProducerId {
 impl sqlx::Encode<'_, sqlx::Sqlite> for ProducerId {
     fn encode_by_ref(
         &self,
-        buf: &mut <sqlx::Sqlite as sqlx::Database>::ArgumentBuffer<'_>,
+        buf: &mut <sqlx::Sqlite as sqlx::Database>::ArgumentBuffer,
     ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
         <u32 as sqlx::Encode<'_, sqlx::Sqlite>>::encode_by_ref(&self.0, buf)
     }

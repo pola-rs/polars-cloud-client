@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
 use protos_client_compute::client::{
-    DistributedOpts, Engine, GraphFormat, LineageContext, QuerySettings, QueryType,
+    DistributedOpts, Engine, GraphFormat, LineageContext, NumWorkers, QuerySettings, QueryType,
     ShuffleCompression, ShuffleFormat, ShuffleOpts, SingleWorkerOps,
 };
 use pyo3::exceptions::PyValueError;
@@ -91,7 +91,7 @@ pub enum PyQueryType {
     Distributed {
         shuffle_opts: PyShuffleOpts,
         pre_aggregation: bool,
-        expression_lowering: bool,
+        expression_lowering: Option<bool>,
         sort_partitioned: bool,
         equi_join_broadcast_limit: u64,
         partitions_per_worker: Option<u32>,
@@ -118,6 +118,21 @@ pub enum PyShuffleFormat {
 
 #[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
+pub struct PyNumWorkers {
+    pub min: Option<NonZeroU32>,
+    pub max: Option<NonZeroU32>,
+}
+
+#[pymethods]
+impl PyNumWorkers {
+    #[new]
+    fn new(min: Option<NonZeroU32>, max: Option<NonZeroU32>) -> Self {
+        Self { min, max }
+    }
+}
+
+#[pyclass(from_py_object)]
+#[derive(Debug, Clone)]
 pub struct PyQuerySettings {
     pub engine: PyEngine,
     pub query_type: PyQueryType,
@@ -125,8 +140,7 @@ pub struct PyQuerySettings {
     pub prefer_dot: bool,
     /// Number of retries on failed tasks
     pub n_retries: u32,
-    /// Number of workers to request for the query,
-    pub n_workers: Option<NonZeroU32>,
+    pub n_workers: Option<PyNumWorkers>,
     pub optimization_flags: Option<u32>,
 }
 
@@ -141,7 +155,9 @@ impl From<PyQuerySettings> for QuerySettings {
             },
             n_retries: value.n_retries,
             query_type: value.query_type.into(),
-            n_workers: value.n_workers,
+            n_workers: value
+                .n_workers
+                .map(|PyNumWorkers { min, max }| NumWorkers { min, max }),
             optimization_flags: value.optimization_flags,
         }
     }

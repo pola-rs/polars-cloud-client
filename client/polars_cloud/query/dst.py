@@ -6,6 +6,8 @@ if TYPE_CHECKING:
     from pathlib import Path
     from typing import Literal
 
+    import polars.io.iceberg
+    import pyiceberg.table
     from polars._typing import (
         ArrowSchemaExportable,
         CsvQuoteStyle,
@@ -364,6 +366,43 @@ class IpcDst(Dst):
         self.maintain_order = maintain_order
         self.storage_options = storage_options
         self.credential_provider = credential_provider
+
+
+class IcebergDst(Dst):
+    def __init__(
+        self,
+        target: str | pyiceberg.table.Table,
+        *,
+        mode: Literal["append", "overwrite"],
+        catalog: pyiceberg.catalog.Catalog
+        | polars.io.iceberg.IcebergCatalogConfig
+        | None = None,
+        storage_options: dict[str, Any] | None = None,
+    ) -> None:
+        """Iceberg destination arguments.
+
+        Parameters
+        ----------
+        target
+            A PyIceberg Table object, or a 'namespace.table_name' identifier string.
+        mode : {'append', 'overwrite'}
+            How to handle existing data.
+
+            - If 'append', will add new data.
+            - If 'overwrite', will replace table with new data.
+        catalog
+            PyIceberg catalog to load the table from if the provided `target`
+            was a table identifier.
+        storage_options
+            Extra options for the storage backends supported by `pyiceberg`.
+            For cloud storages, this may include configurations for authentication etc.
+
+            More info is available `here <https://py.iceberg.apache.org/configuration/>`__.
+        """
+        self.target = target
+        self.mode = mode
+        self.catalog = catalog
+        self.storage_options = storage_options
 
 
 class TmpDst(Dst): ...

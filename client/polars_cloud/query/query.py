@@ -63,9 +63,11 @@ if TYPE_CHECKING:
 class DistributionSettings:
     def __init__(
         self,
+        *,
         equi_join_broadcast_limit: int = 256 * 1024**2,
         partitions_per_worker: int | None = None,
         single_worker_ops: SingleWorkerOps = "auto",
+        expression_lowering: bool | None = None,
         **kwargs: Any,
     ) -> None:
         """Settings that control the distributed planner or execution.
@@ -84,6 +86,8 @@ class DistributionSettings:
             Whether to allow memory-intensive operations to execute on a single worker.
             This can lead to a faster execution, but it also increases a risk of running
             out of RAM.
+        expression_lowering
+            Whether individual expressions can be lowered into distributed operations.
         kwargs
             Extra unstable args not useful for general usage.
 
@@ -97,7 +101,7 @@ class DistributionSettings:
         # worker nodes if possible.
         self.pre_aggregation = kwargs.get("pre_aggregation", True)
         # Whether individual expressions can be lowered into distributed operations.
-        self.expression_lowering = kwargs.get("expression_lowering", False)
+        self.expression_lowering = expression_lowering
 
 
 def spawn_many(
@@ -112,7 +116,8 @@ def spawn_many(
     shuffle_format: ShuffleFormat = "auto",
     distributed: DistributionSettings | None | bool = None,
     n_retries: int = 0,
-    n_workers: int | None = None,
+    min_workers: int | None = None,
+    max_workers: int | None = None,
     lineage: LineageContext | None = None,
     **optimizations: bool,
 ) -> list[ProxyQuery] | list[DirectQuery]:
@@ -156,9 +161,20 @@ def spawn_many(
         and available machines.
     n_retries
         How often failed tasks should be retried.
-    n_workers
-        Number of workers requested for the query.
-        Defaults to all workers in the cluster.
+    min_workers : int | None
+        The minimum number of workers that have to be available to start
+        query execution. The cluster will wait until this many workers are
+        available.
+        When `min_workers=None`, it defaults to the number of workers the
+        cluster is configured to have, or the current number of workers for
+        dynamically sized clusters.
+    max_workers : int | None
+        The maximum number of workers to use for query execution.
+        When `max_workers=None`, the query will use all available workers
+        and any workers that join afterwards.
+        It is recommended to set this to the expected number of workers for
+        dynamically sized clusters, so the query planner can determine the
+        correct number of data partitions.
     lineage
         OpenLineage metadata for this query, typically provided by an orchestrator.
 
@@ -190,7 +206,8 @@ def spawn_many(
             shuffle_compression=shuffle_compression,
             shuffle_format=shuffle_format,
             n_retries=n_retries,
-            n_workers=n_workers,
+            min_workers=min_workers,
+            max_workers=max_workers,
             distributed=distributed,
             lineage=lineage,
             **optimizations,  # type: ignore[arg-type]
@@ -211,7 +228,8 @@ def spawn_many_blocking(
     shuffle_format: ShuffleFormat = "auto",
     distributed: DistributionSettings | None | bool = None,
     n_retries: int = 0,
-    n_workers: int | None = None,
+    min_workers: int | None = None,
+    max_workers: int | None = None,
     lineage: LineageContext | None = None,
     **optimizations: bool,
 ) -> list[QueryResult]:
@@ -255,9 +273,20 @@ def spawn_many_blocking(
         and available machines.
     n_retries
         How often failed tasks should be retried.
-    n_workers
-        Number of workers requested for the query.
-        Defaults to all workers in the cluster.
+    min_workers : int | None
+        The minimum number of workers that have to be available to start
+        query execution. The cluster will wait until this many workers are
+        available.
+        When `min_workers=None`, it defaults to the number of workers the
+        cluster is configured to have, or the current number of workers for
+        dynamically sized clusters.
+    max_workers : int | None
+        The maximum number of workers to use for query execution.
+        When `max_workers=None`, the query will use all available workers
+        and any workers that join afterwards.
+        It is recommended to set this to the expected number of workers for
+        dynamically sized clusters, so the query planner can determine the
+        correct number of data partitions.
     lineage
         OpenLineage metadata for this query, typically provided by an orchestrator.
 
@@ -289,7 +318,8 @@ def spawn_many_blocking(
             shuffle_compression=shuffle_compression,
             shuffle_format=shuffle_format,
             n_retries=n_retries,
-            n_workers=n_workers,
+            min_workers=min_workers,
+            max_workers=max_workers,
             distributed=distributed,
             lineage=lineage,
             **optimizations,
@@ -313,7 +343,8 @@ def spawn(
     shuffle_compression_level: int | None = None,
     distributed: DistributionSettings | None | bool = None,
     n_retries: int = 0,
-    n_workers: int | None = None,
+    min_workers: int | None = None,
+    max_workers: int | None = None,
     sink_to_single_file: bool | None = None,
     optimizations: pl.QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
     lineage: LineageContext | None = None,
@@ -360,9 +391,20 @@ def spawn(
         and available machines.
     n_retries
         How often failed tasks should be retried.
-    n_workers
-        The amount of workers requested for the query. Defaults to all
-        the workers.
+    min_workers : int | None
+        The minimum number of workers that have to be available to start
+        query execution. The cluster will wait until this many workers are
+        available.
+        When `min_workers=None`, it defaults to the number of workers the
+        cluster is configured to have, or the current number of workers for
+        dynamically sized clusters.
+    max_workers : int | None
+        The maximum number of workers to use for query execution.
+        When `max_workers=None`, the query will use all available workers
+        and any workers that join afterwards.
+        It is recommended to set this to the expected number of workers for
+        dynamically sized clusters, so the query planner can determine the
+        correct number of data partitions.
     sink_to_single_file
         Perform the sink into a single file.
 
@@ -439,7 +481,8 @@ def spawn(
         shuffle_format=shuffle_format,
         shuffle_compression_level=shuffle_compression_level,
         n_retries=n_retries,
-        n_workers=n_workers,
+        min_workers=min_workers,
+        max_workers=max_workers,
         distributed_settings=distributed,
         sink_to_single_file=sink_to_single_file,
         optimizations=optimizations,

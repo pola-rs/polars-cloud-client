@@ -346,6 +346,11 @@ pub enum PhysNodeProperties {
     ColumnarFunction {
         name: Option<String>,
     },
+    IsSorted {
+        descending: Option<bool>,
+        nulls_last: Option<bool>,
+        output_name: String,
+    },
 }
 
 impl PhysNodeProperties {

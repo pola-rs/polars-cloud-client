@@ -1,9 +1,7 @@
 #![allow(clippy::result_large_err)]
 
 use client_core::{ApiError, RUNTIME};
-use polars_axum_models::{
-    GetQueryArgs, QueryWithStateTimingAndResultModel, QueryWithStateTimingModel,
-};
+use polars_axum_models::{GetQueryArgs, QueryModel, QueryWithStateTimingAndResultModel};
 use pyo3::prelude::*;
 use uuid::Uuid;
 
@@ -33,11 +31,7 @@ impl WrappedAPIClient {
     }
 
     #[pyo3(signature=(workspace_id))]
-    pub fn get_queries(
-        &self,
-        py: Python,
-        workspace_id: Uuid,
-    ) -> Result<Vec<QueryWithStateTimingModel>, ApiError> {
+    pub fn get_queries(&self, py: Python, workspace_id: Uuid) -> Result<Vec<QueryModel>, ApiError> {
         py.enter_rust(|| {
             RUNTIME.block_on(
                 self.client

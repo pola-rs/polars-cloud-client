@@ -49,6 +49,12 @@ class ComputeContextStatus(Enum):
             ComputeContextStatus.RUNNING,
         ]
 
+    def is_started(self) -> bool:
+        return self in [
+            ComputeContextStatus.IDLE,
+            ComputeContextStatus.RUNNING,
+        ]
+
     def is_stopped(self) -> bool:
         return self in [ComputeContextStatus.STOPPED, ComputeContextStatus.STOPPING]
 

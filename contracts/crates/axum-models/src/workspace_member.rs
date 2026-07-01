@@ -23,7 +23,7 @@ pub struct WorkspaceMemberRole {
 
 #[derive(Deserialize, Serialize, Debug)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
-pub struct ListMembersQueryArgs {
+pub struct ListWorkspaceMembersQueryArgs {
     pub implicit_users: Option<bool>,
     pub service_accounts: Option<bool>,
 }

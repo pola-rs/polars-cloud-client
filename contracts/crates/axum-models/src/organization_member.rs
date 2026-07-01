@@ -32,6 +32,12 @@ pub struct OrganizationUserModel {
     pub role: OrganizationRoleModel,
 }
 
+#[derive(Deserialize, Serialize, Debug)]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct ListOrganizationMembersQueryArgs {
+    pub include_service_accounts: Option<bool>,
+}
+
 impl EntityOrdering for OrganizationUserModel {
     fn order_fields() -> &'static [&'static str] {
         &["id", "first_name", "last_name"]

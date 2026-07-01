@@ -1,29 +1,104 @@
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any, final
 from uuid import UUID
 
-from polars_cloud._typing import ConnectionMode, CPUArchitecture, FileType, LogLevel
+from polars_cloud._typing import (
+    ConnectionMode,
+    CPUArchitecture,
+    FileType,
+    LogLevel,
+)
 from polars_cloud.query.query import DistributionSettings
 
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+__all__ = [
+    "ApiClient",
+    "AuthLoadError",
+    "ClientOptions",
+    "ComputeClusterMisspecified",
+    "ComputeClusterNodeInfoModel",
+    "ComputeClusterPublicInfoModel",
+    "ComputeContextSpecs",
+    "ComputeModel",
+    "ComputeStatusModel",
+    "ComputeTokenModel",
+    "ComputeVersionsPy",
+    "DBCPUArchitectureModel",
+    "DBClusterModeModel",
+    "DefaultComputeSpecs",
+    "DeleteWorkspaceModel",
+    "EncodedPolarsError",
+    "FileTypeModel",
+    "LogLevelModel",
+    "ManifestModel",
+    "NotFoundError",
+    "OrganizationModel",
+    "OrganizationSubscriptionStateModel",
+    "PlanFormatPy",
+    "PyLineageContext",
+    "PyNumWorkers",
+    "PyQuerySettings",
+    "PyShuffleOpts",
+    "QueryDetailPy",
+    "QueryEngineModel",
+    "QueryInfoPy",
+    "QueryModel",
+    "QueryPlanTimingPy",
+    "QueryPlansPy",
+    "QueryStateTimingModel",
+    "QueryStatusCodeModel",
+    "QueryTypeModel",
+    "QueryWithStateTimingAndResultModel",
+    "ResultModel",
+    "SchedulerClient",
+    "StageStatsPy",
+    "StatusModel",
+    "TLSOptions",
+    "TerminationModel",
+    "TerminationReasonModel",
+    "UserModel",
+    "WorkspaceApiToken",
+    "WorkspaceApiTokenWithNameModel",
+    "WorkspaceClusterDefaultsModel",
+    "WorkspaceDeploymentModel",
+    "WorkspaceModel",
+    "WorkspaceSetupUrlModel",
+    "WorkspaceStateModel",
+    "WorkspaceWithUrlModel",
+    "cli_main",
+    "polars_version",
+    "py_is_token_expired",
+    "python_version",
+    "resolve_compute_context_specs",
+    "serialize_query_settings",
+]
+
+@final
 class PyShuffleOpts:
     @staticmethod
     def new(
-        format: str, compression: str, compression_level: int | None
+        compression: str, format: str, compression_level: int | None
     ) -> PyShuffleOpts: ...
 
+@final
 class PyQuerySettings:
     pass
+
+@final
+class PyNumWorkers:
+    def __new__(cls, min: int | None, max: int | None) -> PyNumWorkers: ...
 
 def serialize_query_settings(
     *,
     engine: str,
-    distributed: bool | None = ...,
-    prefer_dot: bool = ...,
-    shuffle_opts: PyShuffleOpts = ...,
-    n_retries: int = ...,
-    n_workers: int | None = ...,
-    distributed_settings: DistributionSettings | None = ...,
+    prefer_dot: bool,
+    shuffle_opts: PyShuffleOpts,
+    n_retries: int,
+    n_workers: PyNumWorkers | None,
+    distributed_settings: DistributionSettings | None,
     optimization_flags: int | None,
 ) -> PyQuerySettings: ...
 def py_is_token_expired(
@@ -33,6 +108,7 @@ def polars_version() -> str: ...
 def python_version() -> str: ...
 def cli_main() -> None: ...
 
+@final
 class ComputeTokenModel:
     id: UUID
     """Compute id"""
@@ -40,6 +116,7 @@ class ComputeTokenModel:
     token: str
     """Compute Token"""
 
+@final
 class WorkspaceStateModel(Enum):
     """Represents the state of a workspace."""
 
@@ -49,12 +126,14 @@ class WorkspaceStateModel(Enum):
     Failed = 3
     Deleted = 4
 
+@final
 class WorkspaceDeploymentModel(Enum):
     """Represents the deployment location of a workspace."""
 
     Aws = 0
     OnPrem = 1
 
+@final
 class WorkspaceModel:
     """Represents a workspace model."""
 
@@ -95,8 +174,7 @@ class WorkspaceModel:
     deleted_at: datetime | None
     """Timestamp of the last deletion."""
 
-    def __init__(self, id: UUID, name: str, status: WorkspaceStateModel) -> None: ...
-
+@final
 class ComputeClusterNodeInfoModel:
     """Represents a single node within a compute cluster."""
 
@@ -106,6 +184,7 @@ class ComputeClusterNodeInfoModel:
     memory_mb: int | None
     storage_mb: int | None
 
+@final
 class DefaultComputeSpecs:
     """Represents the default compute specifications."""
 
@@ -124,6 +203,20 @@ class DefaultComputeSpecs:
     cluster_size: int
     """Number of compute nodes."""
 
+@final
+class WorkspaceClusterDefaultsModel:
+    """Represents the default cluster specifications for a workspace."""
+
+    instance_specs: Any
+    """Instance specifications."""
+
+    storage: int | None
+    """Amount of disk storage in GiB."""
+
+    cluster_size: int
+    """Number of compute nodes."""
+
+@final
 class QueryModel:
     """Represents the model for a query."""
 
@@ -136,11 +229,32 @@ class QueryModel:
     cluster_id: UUID
     """The virtual machine it is sent to."""
 
-    user_id: UUID
+    user_id: UUID | None
     """The user account that started the query."""
 
     request_time: datetime
     """The time the query was requested."""
+
+    output_location: str | None
+    """The output location for the query."""
+
+    query_type: QueryTypeModel | None
+    """The query type (single or distributed)."""
+
+    engine: QueryEngineModel | None
+    """The engine used for the query."""
+
+    status_code: QueryStatusCodeModel
+    """The status code of the query."""
+
+    status_updated_at: datetime
+    """The time the query was last updated."""
+
+    started_at: datetime | None
+    """The time the query was started at."""
+
+    ended_at: datetime | None
+    """The time the query reached a done state."""
 
     created_at: datetime
     """Creation timestamp."""
@@ -151,6 +265,7 @@ class QueryModel:
     deleted_at: datetime | None
     """Timestamp of the last deletion."""
 
+@final
 class QueryStatusCodeModel(Enum):
     """Represents the status codes for a query."""
 
@@ -161,38 +276,17 @@ class QueryStatusCodeModel(Enum):
     Failed = 4
     Canceled = 5
 
-class StatusModel:
-    """Represents the status information for a query."""
+@final
+class QueryTypeModel(Enum):
+    Single = 0
+    Distributed = 1
 
-    status_time: datetime
-    """Start time for the status."""
+@final
+class QueryEngineModel(Enum):
+    InMemory = 0
+    Streaming = 1
 
-    code: QueryStatusCodeModel
-    """Status code."""
-
-class QueryWithStatusModel:
-    """Represents a query with its associated status."""
-
-    query: QueryModel
-    """Details of the query."""
-
-    status: StatusModel
-    """Current status of the query"""
-
-class QueryStateTimingModel:
-    latest_status: QueryStatusCodeModel
-    """Last known status for query"""
-    started_at: datetime | None
-    """When this query last changed to in_progress"""
-    ended_at: datetime | None
-    """When this query reached a done state (failed, canceled, success)"""
-
-class QueryWithStateTimingModel:
-    query: QueryModel
-    """Details of the query."""
-    state_timing: QueryStateTimingModel
-    """Details about the state of the query"""
-
+@final
 class FileTypeModel(Enum):
     Parquet = 0
     IPC = 1
@@ -200,6 +294,7 @@ class FileTypeModel(Enum):
     NDJSON = 3
     JSON = 4
 
+@final
 class ResultModel:
     total_stages: int
     finished_stages: int
@@ -208,13 +303,33 @@ class ResultModel:
     file_type_sink: FileTypeModel | None
     errors: list[str]
 
+@final
+class StatusModel:
+    status_time: datetime
+    """Start time for the status."""
+    code: QueryStatusCodeModel
+    """Status code."""
+
+@final
+class QueryStateTimingModel:
+    final_known_state: QueryStatusCodeModel | None
+    final_status_time: datetime | None
+    last_known_state: QueryStatusCodeModel
+    last_known_status_time: datetime
+    last_progress_time: datetime | None
+    latest_status: QueryStatusCodeModel
+    """Latest state for this query."""
+    latest_status_time: datetime
+    """Latest state transition time for this query."""
+
+@final
 class QueryWithStateTimingAndResultModel:
     query: QueryModel
-    """Details of the query."""
-    state_timing: QueryStateTimingModel
     """Details about the state of the query"""
+    state_timing: QueryStateTimingModel
     result: ResultModel | None
 
+@final
 class TerminationReasonModel(Enum):
     """Enum representing the reasons for termination."""
 
@@ -227,6 +342,7 @@ class TerminationReasonModel(Enum):
     Failed = 2
     """The instance failed."""
 
+@final
 class TerminationModel:
     """Represents the termination details of a compute instance."""
 
@@ -239,6 +355,7 @@ class TerminationModel:
     termination_message: str | None
     """Optional message providing details about the termination."""
 
+@final
 class DBClusterModeModel(Enum):
     """Mode of the database cluster."""
 
@@ -249,6 +366,7 @@ class DBClusterModeModel(Enum):
     Proxy = 0
     Direct = 1
 
+@final
 class DBCPUArchitectureModel(Enum):
     """CPU Architecture."""
 
@@ -259,11 +377,15 @@ class DBCPUArchitectureModel(Enum):
     X86_64 = 0
     Arm64 = 1
 
+@final
 class ManifestModel:
     """Represents the model for a compute cluster manifest."""
 
     id: UUID
     """Unique identifier for the manifest."""
+
+    workspace_id: UUID
+    """ID of the workspace the manifest belongs to."""
 
     name: str
     """Name of the manifest, unique within a workspace."""
@@ -273,9 +395,6 @@ class ManifestModel:
 
     req_ram_gb: int | None
     """Requested RAM in GiB."""
-
-    ram_mib: int | None
-    """Actual RAM in MiB."""
 
     req_cpu_cores: int | None
     """Requested number of CPU cores."""
@@ -322,6 +441,7 @@ class ManifestModel:
     live_cluster_id: UUID | None
     """"ID of the cluster for this manifest if one is active"""
 
+@final
 class ComputeModel:
     """Represents the model for a compute cluster."""
 
@@ -406,6 +526,7 @@ class ComputeModel:
     status: ComputeStatusModel
     """Status of the compute cluster."""
 
+@final
 class LogLevelModel(Enum):
     """Log level for a compute cluster."""
 
@@ -417,11 +538,13 @@ class LogLevelModel(Enum):
     Debug = 1
     Trace = 2
 
+@final
 class ComputeClusterPublicInfoModel:
     cluster_id: UUID
     public_address: str
     public_server_key: str
 
+@final
 class ComputeStatusModel(Enum):
     Starting = 0
     Idle = 1
@@ -430,17 +553,20 @@ class ComputeStatusModel(Enum):
     Stopped = 4
     Failed = 5
 
+@final
 class WorkspaceWithUrlModel:
     workspace: WorkspaceModel
     full_url: str
     barebones_url: str
 
+@final
 class WorkspaceSetupUrlModel:
     full_setup_url: str
     barebones_setup_url: str
     full_template_url: str
     barebones_template_url: str
 
+@final
 class WorkspaceApiTokenWithNameModel:
     id: UUID
     name: str
@@ -448,6 +574,7 @@ class WorkspaceApiTokenWithNameModel:
     description: str | None
     created_at: datetime
 
+@final
 class WorkspaceApiToken:
     id: UUID
     username: str
@@ -456,10 +583,12 @@ class WorkspaceApiToken:
     description: str | None
     created_at: datetime
 
+@final
 class DeleteWorkspaceModel:
     stack_name: str
     url: str
 
+@final
 class UserModel:
     id: UUID
     """User id."""
@@ -490,9 +619,11 @@ class EncodedPolarsError(Exception):
 class ComputeClusterMisspecified(Exception):
     """Exception raised when the cluster settings were misspecified."""
 
+@final
 class StageStatsPy:
     num_workers_used: int
 
+@final
 class QueryInfoPy:
     total_stages: int
     finished_stages: int
@@ -508,11 +639,30 @@ class QueryInfoPy:
     phys_plan_dot: str | None
     stages_stats: Any | None
 
-class ClientOptions:
-    tls_cert_domain: str | None
-    public_server_crt: bytes | None
+@final
+class TLSOptions:
+    ca_cert: bytes | None
     insecure: bool
+    def __new__(
+        cls, *, ca_cert: bytes | None = None, insecure: bool = False
+    ) -> TLSOptions: ...
 
+@final
+class ClientOptions:
+    uri: str
+    domain_name: str | None
+    extra_headers: Mapping[str, str] | None
+    tls_options: TLSOptions | None
+    def __new__(
+        cls,
+        uri: str,
+        *,
+        domain_name: str | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+        tls_options: TLSOptions | None = None,
+    ) -> ClientOptions: ...
+
+@final
 class QueryPlanTimingPy:
     plan_start_time: str | None
     parse_start_time: str | None
@@ -521,6 +671,7 @@ class QueryPlanTimingPy:
     distribute_end_time: str | None
     plan_end_time: str | None
 
+@final
 class QueryDetailPy:
     id: str
     user_name: str
@@ -546,6 +697,7 @@ class QueryDetailPy:
     output_files: int | None
     output_rows: int | None
 
+@final
 class OrganizationModel:
     """Represents an organization model."""
 
@@ -564,8 +716,14 @@ class OrganizationModel:
     creator_id: UUID
     """User who owns the Organization."""
 
-    status: WorkspaceStateModel
-    """Status of the Workspace."""
+    subscription_state: OrganizationSubscriptionStateModel
+    """Subscription state of the Organization."""
+
+    trial_started_at: datetime | None
+    """Timestamp the trial started, if applicable."""
+
+    trial_expires_at: datetime | None
+    """Timestamp the trial expires, if applicable."""
 
     created_at: datetime
     """Creation timestamp."""
@@ -576,16 +734,29 @@ class OrganizationModel:
     deleted_at: datetime | None
     """Timestamp of the last deletion."""
 
+@final
+class OrganizationSubscriptionStateModel(Enum):
+    """Subscription state of an organization."""
+
+    PreTrial = 0
+    Trial = 1
+    TrialExpired = 2
+    Subscribing = 3
+    Subscribed = 4
+    Unsubscribed = 5
+
+@final
 class PyLineageContext:
-    def __init__(
-        self,
+    def __new__(
+        cls,
         job_namespace: str,
         job_name: str,
         parent_run_id: UUID | None = None,
         parent_job_namespace: str | None = None,
         parent_job_name: str | None = None,
-    ) -> None: ...
+    ) -> PyLineageContext: ...
 
+@final
 class ApiClient:
     def authenticate(
         self,
@@ -626,6 +797,9 @@ class ApiClient:
     def get_workspace_default_compute_specs(
         self, workspace_id: UUID
     ) -> DefaultComputeSpecs | None: ...
+    def get_workspace_cluster_defaults(
+        self, workspace_id: UUID
+    ) -> WorkspaceClusterDefaultsModel | None: ...
 
     # Compute methods
     def get_compute_cluster(
@@ -648,14 +822,14 @@ class ApiClient:
         ram_gb: int | None,
         cpu_architectures: list[DBCPUArchitectureModel] | None,
         instance_type: str | None,
+        storage: int | None,
         big_instance_type: str | None,
         big_instance_multiplier: int | None,
-        storage: int | None,
         big_instance_storage: int | None,
         requirements_txt: str | None,
         env_vars: dict[str, str],
         labels: list[str] | None,
-        log_level: LogLevelModel | None,
+        log_level: LogLevelModel,
         idle_timeout_mins: int | None,
     ) -> ManifestModel: ...
     def unregister_compute_cluster_manifest(
@@ -675,9 +849,9 @@ class ApiClient:
         ram_gb: int | None,
         cpu_architectures: list[DBCPUArchitectureModel] | None,
         instance_type: str | None,
+        storage: int | None,
         big_instance_type: str | None,
         big_instance_multiplier: int | None,
-        storage: int | None,
         big_instance_storage: int | None,
         requirements_txt: str | None,
         env_vars: dict[str, str],
@@ -706,7 +880,7 @@ class ApiClient:
         self, workspace_id: UUID, query_id: UUID
     ) -> QueryWithStateTimingAndResultModel: ...
     def cancel_proxy_query(self, workspace_id: UUID, query_id: UUID) -> None: ...
-    def get_queries(self, workspace_id: UUID) -> list[QueryWithStateTimingModel]: ...
+    def get_queries(self, workspace_id: UUID) -> list[QueryModel]: ...
 
     # User methods
     def get_user(self) -> UserModel: ...
@@ -717,10 +891,8 @@ class ApiClient:
         plan: bytes,
         settings: PyQuerySettings,
         labels: list[str] | None,
-        lineage_context: PyLineageContext | None = None,
-    ) -> UUID:
-        pass
-
+        lineage_context: PyLineageContext | None,
+    ) -> UUID: ...
     def get_service_accounts(
         self, workspace_id: UUID
     ) -> list[WorkspaceApiTokenWithNameModel]: ...
@@ -729,24 +901,25 @@ class ApiClient:
     ) -> WorkspaceApiToken: ...
     def delete_service_account(self, workspace_id: UUID, user_id: UUID) -> None: ...
 
+@final
 class QueryPlansPy:
     format: PlanFormatPy
     ir_plan: str | None
     phys_plan: str | None
 
+@final
 class ComputeVersionsPy:
     compute_plane_version: str
     polars_python_version: str
     polars_rust_revision: str
 
+@final
 class SchedulerClient:
-    def __init__(
-        self,
-        address: str,
-        grpc_port: int,
-        observatory_port: int,
-        client_options: ClientOptions,
-    ): ...
+    def __new__(
+        cls,
+        scheduler: ClientOptions,
+        observatory: ClientOptions,
+    ) -> SchedulerClient: ...
     def cancel_direct_query(self, query_id: UUID, token: str | None) -> None: ...
     def get_direct_query_status(
         self, query_id: UUID, token: str | None
@@ -770,13 +943,15 @@ class SchedulerClient:
     def get_compute_versions(self, token: str | None) -> ComputeVersionsPy: ...
     def get_query_details(self, query_id: UUID, token: str | None) -> QueryDetailPy: ...
 
+@final
 class PlanFormatPy(Enum):
     Dot = 0
     Explain = 1
 
+@final
 class ComputeContextSpecs:
-    def __init__(
-        self,
+    def __new__(
+        cls,
         *,
         cpus: int | None = None,
         memory: int | None = None,
@@ -786,8 +961,8 @@ class ComputeContextSpecs:
         big_instance_multiplier: int | None = None,
         storage: int | None = None,
         big_instance_storage: int | None = None,
-        cluster_size: int = ...,
-    ) -> None: ...
+        cluster_size: int,
+    ) -> ComputeContextSpecs: ...
     cpus: int | None
     memory: int | None
     cpu_architectures: list[DBCPUArchitectureModel] | None
