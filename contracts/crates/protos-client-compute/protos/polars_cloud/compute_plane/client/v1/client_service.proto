@@ -3,6 +3,7 @@ syntax = "proto3";
 package polars_cloud.compute_plane.client.v1;
 
 import "polars_cloud/compute_plane/client/v1/cancel_query.proto";
+import "polars_cloud/compute_plane/client/v1/delete_query_result.proto";
 import "polars_cloud/compute_plane/client/v1/get_compute_versions.proto";
 import "polars_cloud/compute_plane/client/v1/get_query_plans.proto";
 import "polars_cloud/compute_plane/client/v1/get_query_result.proto";
@@ -18,6 +19,7 @@ service ClientService {
   rpc GetQueryPlans(GetQueryPlansRequest) returns (GetQueryPlansResponse) {}
 
   rpc CancelQuery(CancelQueryRequest) returns (CancelQueryResponse) {}
+  rpc DeleteQueryResult(DeleteQueryResultRequest) returns (DeleteQueryResultResponse) {}
 
   rpc GetComputeVersions(GetComputeVersionsRequest) returns (GetComputeVersionsResponse) {}
 }

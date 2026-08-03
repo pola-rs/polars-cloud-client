@@ -28,7 +28,7 @@ pub struct OrganizationUserModel {
     pub email: Option<String>,
     pub first_name: Option<String>,
     pub last_name: Option<String>,
-    pub avatar_url: String,
+    pub avatar_url: Option<String>,
     pub role: OrganizationRoleModel,
 }
 
@@ -36,6 +36,7 @@ pub struct OrganizationUserModel {
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 pub struct ListOrganizationMembersQueryArgs {
     pub include_service_accounts: Option<bool>,
+    pub email: Option<String>,
 }
 
 impl EntityOrdering for OrganizationUserModel {

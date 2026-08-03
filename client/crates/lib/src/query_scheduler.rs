@@ -210,6 +210,27 @@ impl SchedulerClient {
         Ok(())
     }
 
+    pub fn delete_direct_query_result(
+        &self,
+        py: Python,
+        query_id: Uuid,
+        token: Option<String>,
+    ) -> ApiResult<()> {
+        let _ = py.enter_rust(|| {
+            RUNTIME.block_on(async move {
+                let query_id = QueryIdentifier::from(query_id);
+                let mut req = Request::new(query_id.into());
+                req = insert_auth_token(req, token);
+                self.scheduler_client
+                    .inner
+                    .clone()
+                    .delete_query_result(req)
+                    .await
+            })
+        })?;
+        Ok(())
+    }
+
     pub fn get_direct_query_status(
         &self,
         py: Python,
@@ -554,11 +575,11 @@ impl ServerCertVerifier for NoVerifier {
 async fn create_channel(options: &ClientOptions) -> ApiResult<Channel> {
     let uri: Uri = options.uri.clone().into();
     let mut endpoint = Channel::builder(uri.clone());
+    let scheme = uri
+        .scheme_str()
+        .ok_or_else(|| PyValueError::new_err("missing uri scheme"))?;
 
     if let Some(domain_name) = &options.domain_name {
-        let scheme = uri
-            .scheme()
-            .ok_or_else(|| PyValueError::new_err("missing uri scheme"))?;
         let port = uri
             .port_u16()
             .ok_or_else(|| PyValueError::new_err("missing uri port"))?;
@@ -568,7 +589,8 @@ async fn create_channel(options: &ClientOptions) -> ApiResult<Channel> {
         endpoint = endpoint.origin(new_origin);
     }
 
-    if let Some(tls_options) = &options.tls_options {
+    if options.tls_options.is_some() || scheme == "https" {
+        let tls_options = options.tls_options.clone().unwrap_or_default();
         let mut tls = ClientTlsConfig::new();
 
         if let Some(domain_name) = &options.domain_name {
@@ -578,7 +600,7 @@ async fn create_channel(options: &ClientOptions) -> ApiResult<Channel> {
         if tls_options.insecure {
             endpoint = endpoint.tls_config_with_verifier(tls, Arc::new(NoVerifier))?
         } else {
-            if let Some(ca_cert) = &tls_options.ca_cert {
+            if let Some(ca_cert) = tls_options.ca_cert {
                 tls = tls.ca_certificate(Certificate::from_pem(ca_cert));
             }
             endpoint = endpoint.tls_config(tls.with_enabled_roots())?

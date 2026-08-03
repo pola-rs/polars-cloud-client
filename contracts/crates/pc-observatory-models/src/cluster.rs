@@ -1,3 +1,5 @@
+use std::num::NonZeroU32;
+
 use chrono::{DateTime, Utc};
 #[cfg(feature = "server")]
 use schemars::JsonSchema;
@@ -9,6 +11,7 @@ pub enum ClusterModeModel {
     AWS,
     Kubernetes,
     BareMetal,
+    ObservatoryReadOnly,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -22,10 +25,16 @@ pub struct ScratchpadConfigModel {
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 pub struct ClusterModel {
     pub scheduler_started_at: DateTime<Utc>,
-    pub node_count: u32,
+    pub node_count: Option<NonZeroU32>,
     pub region: Option<String>,
     pub mode: ClusterModeModel,
     pub scratchpad_config: Option<ScratchpadConfigModel>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct ViewOnlyClusterModel {
+    pub mode: ClusterModeModel,
 }
 
 #[derive(Clone, Debug, Serialize)]

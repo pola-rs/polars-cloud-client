@@ -292,6 +292,11 @@ class DirectQuery(InProgressQueryRemote):
             self._query_id, token=self._cluster._get_token()
         )
 
+    def delete_result(self) -> None:
+        self._client.delete_direct_query_result(
+            self._query_id, token=self._cluster._get_token()
+        )
+
     def graph(
         self,
         plan_type: PlanType = "physical",

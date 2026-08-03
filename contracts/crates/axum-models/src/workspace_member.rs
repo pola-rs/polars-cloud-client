@@ -1,3 +1,4 @@
+use deprecation_macro::deprecated_since_client;
 #[cfg(feature = "server")]
 use garde::Validate;
 #[cfg(feature = "server")]
@@ -26,16 +27,21 @@ pub struct WorkspaceMemberRole {
 pub struct ListWorkspaceMembersQueryArgs {
     pub implicit_users: Option<bool>,
     pub service_accounts: Option<bool>,
+    pub email: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
+#[deprecated_since_client]
 pub struct WorkspaceUserModel {
     pub id: Uuid,
     pub email: Option<String>,
     pub first_name: Option<String>,
     pub last_name: Option<String>,
-    pub avatar_url: String,
+    #[deprecated_since_client("0.9.1")] // (the serde_with)
+    #[cfg_attr(feature = "server", schemars(with = "Option<String>"))]
+    #[serde(with = "crate::string_empty_as_none")]
+    pub avatar_url: Option<String>,
     pub role: WorkspaceRoleModel,
     pub implicit: bool,
     pub service_account: bool,

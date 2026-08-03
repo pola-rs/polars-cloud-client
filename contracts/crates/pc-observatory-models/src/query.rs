@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
 use pc_observatory_types::{
-    DurationNs, NodeId, OutputRows, PhysNodeId, QueryId, ShuffleBytes, StageAttemptNumber,
-    StageNumber,
+    DurationNs, NodeId, OutputRows, PhysNodeId, QueryId, ShuffleBytes, ShuffleId,
+    StageAttemptNumber, StageNumber,
 };
 #[cfg(feature = "server")]
 use schemars::JsonSchema;
@@ -154,14 +154,15 @@ pub struct HostMetricsAggregatedModel {
 pub struct StageDetailMetricsModel {
     pub stage_number: StageNumber,
     pub attempt_number: StageAttemptNumber,
-    pub start_time: DateTime<Utc>,
+    pub resolved_time: Option<DateTime<Utc>>,
+    pub start_time: Option<DateTime<Utc>>,
     pub end_time_ns: Option<DateTime<Utc>>,
     pub output_rows: Option<OutputRows>,
     pub shuffle_bytes_read: Option<ShuffleBytes>,
     pub shuffle_bytes_written: Option<ShuffleBytes>,
     pub total_node_time_ns: Option<DurationNs>,
     pub used_workers: Option<i64>,
-    pub available_workers: i64,
+    pub available_workers: Option<i64>,
     pub host_metrics_aggregated: Option<HostMetricsAggregatedModel>,
 }
 
@@ -170,18 +171,20 @@ pub struct StageDetailMetricsModel {
 pub struct StageMetricsModel {
     pub stage_number: StageNumber,
     pub attempt_number: StageAttemptNumber,
-    pub start_time: DateTime<Utc>,
+    pub resolved_time: Option<DateTime<Utc>>,
+    pub start_time: Option<DateTime<Utc>>,
     pub end_time_ns: Option<DateTime<Utc>>,
     pub output_rows: Option<OutputRows>,
     pub total_node_time_ns: Option<DurationNs>,
     pub used_workers: Option<i64>,
-    pub available_workers: i64,
+    pub available_workers: Option<i64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 pub struct PartitionStatsModel {
     pub stage_number: StageNumber,
+    pub shuffle_id: ShuffleId,
     pub partition_number: i64,
     pub min_bytes: i64,
     pub max_bytes: i64,

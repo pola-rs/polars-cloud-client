@@ -5,20 +5,9 @@ from __future__ import annotations
 
 import os
 import re
-import sys
-from pathlib import Path
 from typing import Any
 
 import sphinx_autosummary_accessors  # type: ignore[import-untyped]
-
-# -- Path setup --------------------------------------------------------------
-
-# If extensions (or modules to document with autodoc) are in another directory,
-# add these directories to sys.path here.
-
-# Add client directory
-sys.path.insert(0, str(Path("../..").resolve()))
-
 
 # -- Project information -----------------------------------------------------
 
@@ -108,11 +97,18 @@ html_show_sourcelink = False
 # key site root paths
 static_assets_root = "https://raw.githubusercontent.com/pola-rs/polars-static/master"
 web_root = "https://docs.pola.rs/polars-cloud"
+docs_root = "https://docs.cloud.pola.rs"
 
 # Specify version for version switcher dropdown menu
 git_ref = os.environ.get("POLARS_CLOUD_VERSION", "main")
-version_match = re.fullmatch(r"py-(\d+)\.\d+\.\d+.*", git_ref)
+version_match = re.fullmatch(r"client-(\d+\.\d+\.\d+).*", git_ref)
 switcher_version = version_match.group(1) if version_match is not None else "dev"
+
+docs_base_url = os.environ.get("POLARS_CLOUD_DOCS_BASE_URL")
+if docs_base_url is not None:
+    extensions.append("sphinx_sitemap")
+    html_baseurl = docs_base_url.rstrip("/") + "/"
+    sitemap_url_scheme = "{link}"
 
 html_js_files = [
     (
@@ -148,6 +144,10 @@ html_theme_options = {
     "logo": {
         "image_light": f"{static_assets_root}/logos/polars-logo-dark-medium.png",
         "image_dark": f"{static_assets_root}/logos/polars-logo-dimmed-medium.png",
+    },
+    "switcher": {
+        "json_url": f"{docs_root}/api/python/stable/_static/version_switcher.json",
+        "version_match": switcher_version,
     },
     "show_version_warning_banner": False,
     "navbar_end": ["theme-switcher", "version-switcher", "navbar-icon-links"],

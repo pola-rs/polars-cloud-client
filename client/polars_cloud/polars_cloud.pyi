@@ -94,7 +94,7 @@ class PyNumWorkers:
 def serialize_query_settings(
     *,
     engine: str,
-    prefer_dot: bool,
+    plan_dot: bool,
     shuffle_opts: PyShuffleOpts,
     n_retries: int,
     n_workers: PyNumWorkers | None,
@@ -710,7 +710,7 @@ class OrganizationModel:
     description: str
     """Organization Description."""
 
-    avatar_url: str
+    avatar_url: str | None
     """Organization avatar."""
 
     creator_id: UUID
@@ -921,6 +921,7 @@ class SchedulerClient:
         observatory: ClientOptions,
     ) -> SchedulerClient: ...
     def cancel_direct_query(self, query_id: UUID, token: str | None) -> None: ...
+    def delete_direct_query_result(self, query_id: UUID, token: str | None) -> None: ...
     def get_direct_query_status(
         self, query_id: UUID, token: str | None
     ) -> QueryStatusCodeModel: ...

@@ -40,3 +40,24 @@ pub use workspace::*;
 pub use workspace_cluster_defaults::*;
 pub use workspace_member::*;
 pub use workspace_token::*;
+
+/// De/Serialize an [`Option`]`<String>`, transforming the empty string to/from [`None`].
+///
+/// An empty string (or `null`) is deserialized as [`None`]; [`None`] serializes as the empty string.
+mod string_empty_as_none {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Option::<String>::deserialize(deserializer)?.filter(|s| !s.is_empty()))
+    }
+
+    pub fn serialize<S>(option: &Option<String>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(option.as_deref().unwrap_or(""))
+    }
+}

@@ -718,9 +718,12 @@ impl ApiClient {
         &self,
         organization_id: Uuid,
         pagination: &Pagination,
+        params: ListOrganizationMembersQueryArgs,
     ) -> Result<Paginated<OrganizationUserModel>> {
         self.get(&format!("/api/v1/organization/{organization_id}/member"))
             .pagination(pagination)
+            .parameter_opt("include_service_accounts", params.include_service_accounts)
+            .parameter_opt("email", params.email)
             .await?
             .json()
             .await
@@ -1104,12 +1107,12 @@ impl ApiClient {
     pub async fn get_workspace_members(
         &self,
         workspace_id: Uuid,
-        implicit_users: Option<bool>,
-        service_accounts: Option<bool>,
+        params: ListWorkspaceMembersQueryArgs,
     ) -> Result<Vec<WorkspaceUserModel>> {
         self.get(&format!("/api/v1/workspace/{workspace_id}/member"))
-            .parameter_opt("implicit_users", implicit_users)
-            .parameter_opt("service_accounts", service_accounts)
+            .parameter_opt("implicit_users", params.implicit_users)
+            .parameter_opt("service_accounts", params.service_accounts)
+            .parameter_opt("email", params.email)
             .await?
             .json()
             .await

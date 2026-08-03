@@ -9,11 +9,19 @@ import polars.io.iceberg
 from polars.lazyframe.opt_flags import DEFAULT_QUERY_OPT_FLAGS
 
 from polars_cloud import config as pc_cfg
-from polars_cloud.query.dst import CsvDst, IcebergDst, IpcDst, ParquetDst, TmpDst
+from polars_cloud.query.dst import (
+    CallbackDst,
+    CsvDst,
+    IcebergDst,
+    IpcDst,
+    ParquetDst,
+    TmpDst,
+)
 from polars_cloud.query.lineage import LineageContext
 from polars_cloud.query.query import DistributionSettings, spawn
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from typing import Literal
 
     import pyiceberg.catalog
@@ -39,6 +47,9 @@ if TYPE_CHECKING:
     )
     from polars_cloud.context import ClientContext
     from polars_cloud.query import DirectQuery, ProxyQuery
+    from polars_cloud.query.dst import (
+        Dst,
+    )
     from polars_cloud.query.query_result import QueryResult
 
 
@@ -826,6 +837,55 @@ class LazyFrameRemote:
             optimizations=optimizations,
         )
 
+    def sink_batches(
+        self,
+        function: Callable[[DataFrame], bool | None],
+        *,
+        chunk_size: int | None = None,
+        maintain_order: bool = False,
+        optimizations: QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
+    ) -> DirectQuery | ProxyQuery:
+        """Evaluate the query and call a user-defined function for every ready batch.
+
+        This allows streaming results that are larger than RAM in certain cases.
+
+        .. warning::
+            This functionality is considered **unstable**. It may be changed
+            at any point without it being considered a breaking change.
+
+        .. warning::
+            This method is much slower than native sinks. Only use it if you cannot
+            implement your logic otherwise.
+
+        Parameters
+        ----------
+        function
+            Function to run with a batch that is ready. If the function returns
+            `True`, this signals that no more results are needed, allowing for
+            early stopping.
+            Note: this function should be idempotent, as it might be called
+            multiple times from different workers.
+        chunk_size
+            The number of rows that are buffered before the callback is called.
+        maintain_order
+            Maintain the order in which data is processed. When `True`, `function`
+            will be called serially for all batches, instead of in parallel
+            across the workers in the cluster.
+        optimizations
+            The optimization passes done during query optimization.
+
+        Examples
+        --------
+        >>> lf = pl.scan_csv("/path/to/my_larger_than_ram_file.csv")  # doctest: +SKIP
+        >>> lf.sink_batches(lambda df: print(df))  # doctest: +SKIP
+        """
+        return self._scaling_mode().sink_batches(
+            function=function,
+            chunk_size=chunk_size,
+            maintain_order=maintain_order,
+            optimizations=optimizations,
+        )
+
 
 class ExecuteRemote:
     """The namespace accessed by choosing a remote execution method in a `LazyFrameRemote`."""  # noqa: W505
@@ -926,22 +986,9 @@ class ExecuteRemote:
         >>> # await the in-progress query
         >>> in_progress.await_result()
         """
-        in_progress = spawn(
-            lf=self.lf,
+        in_progress = self._spawn(
             dst=TmpDst(),
-            context=self.context,
-            engine=self._engine,
-            plan_type=self.plan_type,
-            labels=self._labels,
-            shuffle_compression=self._shuffle_compression,
-            shuffle_format=self._shuffle_format,
-            shuffle_compression_level=self._shuffle_compression_level,
-            n_retries=self._n_retries,
-            min_workers=self._min_workers,
-            max_workers=self._max_workers,
-            distributed=self._distributed_settings,
             optimizations=optimizations,
-            lineage=self._lineage,
         )
 
         if blocking:
@@ -1145,23 +1192,10 @@ class ExecuteRemote:
             metadata=metadata,
             arrow_schema=arrow_schema,
         )
-        return spawn(
-            lf=self.lf,
+        return self._spawn(
             dst=dst,
-            sink_to_single_file=sink_to_single_file,
-            context=self.context,
-            engine=self._engine,
-            plan_type=self.plan_type,
-            labels=self._labels,
-            shuffle_compression=self._shuffle_compression,
-            shuffle_format=self._shuffle_format,
-            shuffle_compression_level=self._shuffle_compression_level,
-            n_retries=self._n_retries,
-            min_workers=self._min_workers,
-            max_workers=self._max_workers,
-            distributed=self._distributed_settings,
             optimizations=optimizations,
-            lineage=self._lineage,
+            sink_to_single_file=sink_to_single_file,
         )
 
     def sink_csv(
@@ -1325,23 +1359,10 @@ class ExecuteRemote:
             credential_provider=credential_provider,
             decimal_comma=decimal_comma,
         )
-        return spawn(
-            lf=self.lf,
+        return self._spawn(
             dst=dst,
-            context=self.context,
-            engine=self._engine,
-            plan_type=self.plan_type,
-            labels=self._labels,
-            shuffle_compression=self._shuffle_compression,
-            shuffle_format=self._shuffle_format,
-            shuffle_compression_level=self._shuffle_compression_level,
-            n_retries=self._n_retries,
-            min_workers=self._min_workers,
-            max_workers=self._max_workers,
-            distributed=self._distributed_settings,
-            sink_to_single_file=sink_to_single_file,
             optimizations=optimizations,
-            lineage=self._lineage,
+            sink_to_single_file=sink_to_single_file,
         )
 
     def sink_ipc(
@@ -1433,23 +1454,10 @@ class ExecuteRemote:
             storage_options=storage_options,
             credential_provider=credential_provider,
         )
-        return spawn(
-            lf=self.lf,
+        return self._spawn(
             dst=dst,
-            context=self.context,
-            engine=self._engine,
-            plan_type=self.plan_type,
-            labels=self._labels,
-            shuffle_compression=self._shuffle_compression,
-            shuffle_format=self._shuffle_format,
-            shuffle_compression_level=self._shuffle_compression_level,
-            n_retries=self._n_retries,
-            min_workers=self._min_workers,
-            max_workers=self._max_workers,
-            distributed=self._distributed_settings,
-            sink_to_single_file=sink_to_single_file,
             optimizations=optimizations,
-            lineage=self._lineage,
+            sink_to_single_file=sink_to_single_file,
         )
 
     def sink_iceberg(
@@ -1493,6 +1501,62 @@ class ExecuteRemote:
         dst = IcebergDst(
             target, mode=mode, catalog=catalog, storage_options=storage_options
         )
+        return self._spawn(dst=dst, optimizations=optimizations)
+
+    def sink_batches(
+        self,
+        function: Callable[[DataFrame], bool | None],
+        *,
+        chunk_size: int | None = None,
+        maintain_order: bool = False,
+        optimizations: QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
+    ) -> DirectQuery | ProxyQuery:
+        """Evaluate the query and call a user-defined function for every ready batch.
+
+        This allows streaming results that are larger than RAM in certain cases.
+
+        .. warning::
+            This functionality is considered **unstable**. It may be changed
+            at any point without it being considered a breaking change.
+
+        .. warning::
+            This method is much slower than native sinks. Only use it if you cannot
+            implement your logic otherwise.
+
+        Parameters
+        ----------
+        function
+            Function to run with a batch that is ready. If the function returns
+            `True`, this signals that no more results are needed, allowing for
+            early stopping.
+            Note: this function should be idempotent, as it might be called
+            multiple times from different workers.
+        chunk_size
+            The number of rows that are buffered before the callback is called.
+        maintain_order
+            Maintain the order in which data is processed. When `True`, `function`
+            will be called serially for all batches, instead of in parallel
+            across the workers in the cluster.
+        optimizations
+            The optimization passes done during query optimization.
+
+        Examples
+        --------
+        >>> lf = pl.scan_csv("/path/to/my_larger_than_ram_file.csv")  # doctest: +SKIP
+        >>> lf.sink_batches(lambda df: print(df))  # doctest: +SKIP
+        """
+        dst = CallbackDst(
+            function=function, chunk_size=chunk_size, maintain_order=maintain_order
+        )
+        return self._spawn(dst=dst, optimizations=optimizations)
+
+    def _spawn(
+        self,
+        *,
+        dst: Dst,
+        optimizations: QueryOptFlags,
+        sink_to_single_file: bool | None = False,
+    ) -> DirectQuery | ProxyQuery:
         return spawn(
             lf=self.lf,
             dst=dst,
@@ -1507,7 +1571,7 @@ class ExecuteRemote:
             min_workers=self._min_workers,
             max_workers=self._max_workers,
             distributed=self._distributed_settings,
-            sink_to_single_file=False,
+            sink_to_single_file=sink_to_single_file,
             optimizations=optimizations,
             lineage=self._lineage,
         )

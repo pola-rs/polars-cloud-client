@@ -1,10 +1,11 @@
+mod fmt;
 mod plans;
 use pc_observatory_types::StageNumber;
 pub use plans::QueryPlans;
 #[cfg(feature = "server")]
 use schemars::JsonSchema;
 
-use crate::ir::models::{IRVisualizationData, PartitioningModel};
+use crate::ir::models::IRVisualizationData;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
@@ -36,39 +37,20 @@ pub struct PhysStageInfo {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
-pub struct PhysStageProperties {
-    pub input: StageInputModel,
-    pub output: StageOutputModel,
-}
+pub struct PhysStageProperties {}
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
-#[cfg_attr(feature = "server", derive(JsonSchema))]
-#[serde(tag = "output_type")]
-pub enum StageInputModel {
-    Leaf,
-    Branch,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
-#[cfg_attr(feature = "server", derive(JsonSchema))]
-#[serde(tag = "output_type")]
-pub enum StageOutputModel {
-    ShuffleWrite(PartitioningModel),
-    Sink,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 pub struct LogicalNodeKey(pub u64);
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 pub struct NodeSpec {
     pub stage: StageNumber,
     pub node: LogicalNodeKey,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 pub struct StageEdge {
     pub source: NodeSpec,

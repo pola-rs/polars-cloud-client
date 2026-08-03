@@ -102,6 +102,17 @@ impl std::fmt::Display for NodeId {
 #[cfg_attr(feature = "server", derive(JsonSchema, sqlx::Type), sqlx(transparent))]
 pub struct ShuffleBytes(pub i64);
 
+#[derive(PartialEq, Clone, Copy, Debug, Hash, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+#[cfg_attr(feature = "server", derive(JsonSchema, sqlx::Type), sqlx(transparent))]
+pub struct ShuffleId(pub i64);
+
+impl std::fmt::Display for ShuffleId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Eq, Hash)]
 #[serde(transparent)]
 #[cfg_attr(feature = "server", derive(JsonSchema, sqlx::Type), sqlx(transparent))]

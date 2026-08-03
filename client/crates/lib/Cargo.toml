@@ -10,7 +10,6 @@ repository.workspace = true
 [lib]
 name = "polars_cloud"
 crate-type = ["cdylib"]
-test = false
 
 [dependencies]
 client-cli = { workspace = true }

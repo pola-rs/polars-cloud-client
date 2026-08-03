@@ -233,7 +233,7 @@ class Workspace:
             msg = (
                 f"Multiple workspaces with the same name {self._name!r}.\n\n"
                 "Hint: Specify an organization or refer to the workspace by ID\n"
-                '`workspace = WorkSpace("workspace", organization_name="organization")`'
+                '`workspace = WorkSpace("workspace", organization="organization")`'
             )
             raise WorkspaceResolveError(msg)
 

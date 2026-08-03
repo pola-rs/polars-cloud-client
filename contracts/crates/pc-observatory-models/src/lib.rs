@@ -9,6 +9,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 pub mod cluster;
+mod fmt;
 pub mod ir;
 pub mod node;
 pub mod phys;
@@ -41,7 +42,7 @@ pub struct MetricWindow {
     pub interval_seconds: u64,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Default)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Default, Copy, Clone)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 pub struct Edge {
     pub source: u64,
