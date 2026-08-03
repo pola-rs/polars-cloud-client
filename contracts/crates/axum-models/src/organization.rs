@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use deprecation_macro::deprecated_since_client;
 #[cfg(feature = "server")]
 use garde::Validate;
 #[cfg(feature = "pyo3")]
@@ -25,11 +26,15 @@ pub enum OrganizationSubscriptionStateModel {
 #[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all))]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 #[derive(Clone, Deserialize, Serialize, Debug)]
+#[deprecated_since_client]
 pub struct OrganizationModel {
     pub id: Uuid,
     pub name: String,
     pub description: String,
-    pub avatar_url: String,
+    #[deprecated_since_client("0.9.1")] // (the serde_with)
+    #[cfg_attr(feature = "server", schemars(with = "Option<String>"))]
+    #[serde(with = "crate::string_empty_as_none")]
+    pub avatar_url: Option<String>,
     pub creator_id: Uuid,
     pub subscription_state: OrganizationSubscriptionStateModel,
     pub trial_started_at: Option<DateTime<Utc>>,

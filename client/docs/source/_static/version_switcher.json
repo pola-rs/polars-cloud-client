@@ -1,7 +1,8 @@
 [
   {
-    "name": "dev",
-    "version": "dev",
-    "url": "https://docs.pola.rs/api/python/dev/"
+    "name": "stable",
+    "version": "stable",
+    "url": "https://docs.cloud.pola.rs/api/python/stable/",
+    "preferred": true
   }
 ]

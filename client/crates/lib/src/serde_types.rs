@@ -23,7 +23,8 @@ use tonic::codegen::http::uri::Authority;
 use tower_http::set_header::HeaderMetadata;
 
 use crate::query_settings::{
-    PyEngine, PyNumWorkers, PyQuerySettings, PyQueryType, PyShuffleOpts, PySingleWorkerOps,
+    PyEngine, PyNumWorkers, PyPlanner, PyQuerySettings, PyQueryType, PyShuffleOpts,
+    PySingleWorkerOps,
 };
 
 pub struct DistributedSettings {
@@ -33,6 +34,7 @@ pub struct DistributedSettings {
     equi_join_broadcast_limit: u64,
     partitions_per_worker: Option<u32>,
     single_worker_ops: PySingleWorkerOps,
+    planner: PyPlanner,
 }
 
 impl<'a, 'py> FromPyObject<'a, 'py> for DistributedSettings {
@@ -53,6 +55,15 @@ impl<'a, 'py> FromPyObject<'a, 'py> for DistributedSettings {
                 return Err(PyValueError::new_err(msg));
             },
         };
+        let planner = match obj.getattr("planner")?.extract::<&str>()? {
+            "auto" => PyPlanner::Auto,
+            "naive" => PyPlanner::Naive,
+            "miso" => PyPlanner::Miso,
+            v => {
+                let msg = format!("expected one of {{'auto', 'naive', 'miso'}}, got {v}",);
+                return Err(PyValueError::new_err(msg));
+            },
+        };
 
         Ok(DistributedSettings {
             sort_partitioned,
@@ -61,6 +72,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for DistributedSettings {
             equi_join_broadcast_limit,
             partitions_per_worker,
             single_worker_ops,
+            planner,
         })
     }
 }
@@ -68,10 +80,10 @@ impl<'a, 'py> FromPyObject<'a, 'py> for DistributedSettings {
 #[allow(clippy::needless_lifetimes)]
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature=(*, engine, prefer_dot, shuffle_opts, n_retries, n_workers, distributed_settings, optimization_flags))]
+#[pyo3(signature=(*, engine, plan_dot, shuffle_opts, n_retries, n_workers, distributed_settings, optimization_flags))]
 pub fn serialize_query_settings(
     engine: &str,
-    prefer_dot: bool,
+    plan_dot: bool,
     shuffle_opts: PyShuffleOpts,
     n_retries: u32,
     n_workers: Option<PyNumWorkers>,
@@ -88,6 +100,7 @@ pub fn serialize_query_settings(
             equi_join_broadcast_limit: settings.equi_join_broadcast_limit,
             partitions_per_worker: settings.partitions_per_worker,
             single_worker_ops: settings.single_worker_ops,
+            planner: settings.planner,
         },
     };
 
@@ -105,7 +118,7 @@ pub fn serialize_query_settings(
 
     let settings = PyQuerySettings {
         engine,
-        prefer_dot,
+        plan_dot,
         n_retries,
         query_type,
         optimization_flags,

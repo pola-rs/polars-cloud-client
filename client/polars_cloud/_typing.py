@@ -15,6 +15,7 @@ PlanTypePreference: TypeAlias = Literal["dot", "plain"]
 ShuffleCompression: TypeAlias = Literal["auto", "uncompressed", "lz4", "zstd"]
 ShuffleFormat: TypeAlias = Literal["auto", "ipc", "parquet"]
 SingleWorkerOps: TypeAlias = Literal["auto", "allow", "forbid"]
+Planner: TypeAlias = Literal["auto", "naive", "miso"]
 
 Json: TypeAlias = dict[str, Any]
 PlanType: TypeAlias = Literal["physical", "ir"]

@@ -7,6 +7,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+pub use crate::ShuffleId;
+
 // Constants for use in #[instrument] macros and as the single source of truth
 pub const PLAN_QUERY: &str = "observatory::plan_query";
 pub const PARSE_QUERY: &str = "observatory::parse_query";
@@ -80,6 +82,7 @@ impl From<ObservatorySpanTarget> for &'static str {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PartitionWriteStatistics {
+    pub shuffle_id: ShuffleId,
     pub partitions: Vec<i64>,
     pub bytes: Vec<i64>,
 }

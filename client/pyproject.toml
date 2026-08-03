@@ -30,7 +30,7 @@ dependencies = [
   # uncomment if we want a specific commit
   # "polars[rt64, cloudpickle]@git+https://github.com/pola-rs/polars.git@ebcb5a9cc3efca0cc31152139a8472566c097746#subdirectory=py-polars",
   # "polars-runtime-64@git+https://github.com/pola-rs/polars.git@ebcb5a9cc3efca0cc31152139a8472566c097746#subdirectory=py-polars/runtime/polars-runtime-64",
-  "polars[rt64,cloudpickle] == 1.42.1",
+  "polars[rt64,cloudpickle] == 1.43.2",
   # 'polars @ file:///home/jesse/dev/oss/polars/py-polars',
   # 'polars @ file:///home/ritchie46/code/polars/py-polars',
   'typing-extensions >= 4.0; python_version <= "3.12"',

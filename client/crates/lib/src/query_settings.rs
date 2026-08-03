@@ -1,8 +1,9 @@
 use std::num::NonZeroU32;
 
 use protos_client_compute::client::{
-    DistributedOpts, Engine, GraphFormat, LineageContext, NumWorkers, QuerySettings, QueryType,
-    ShuffleCompression, ShuffleFormat, ShuffleOpts, SingleWorkerOps,
+    DistributedOpts, Engine, GraphFormat, LineageContext, NumWorkers, Planner, QuerySettings,
+    QueryType, ShuffleCompression, ShuffleCompressionAlgo, ShuffleFormat, ShuffleOpts,
+    SingleWorkerOps,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::{PyResult, pyclass, pymethods};
@@ -60,8 +61,10 @@ impl From<PyShuffleOpts> for ShuffleOpts {
     fn from(value: PyShuffleOpts) -> Self {
         Self {
             format: value.format.into(),
-            compression: value.compression.into(),
-            compression_level: value.compression_level,
+            compression: ShuffleCompression {
+                algo: value.compression.into(),
+                level: value.compression_level,
+            },
         }
     }
 }
@@ -86,6 +89,24 @@ impl From<PySingleWorkerOps> for SingleWorkerOps {
 
 #[pyclass(from_py_object)]
 #[derive(Clone, Debug)]
+pub enum PyPlanner {
+    Auto,
+    Naive,
+    Miso,
+}
+
+impl From<PyPlanner> for Planner {
+    fn from(value: PyPlanner) -> Self {
+        match value {
+            PyPlanner::Auto => Self::Auto,
+            PyPlanner::Naive => Self::Naive,
+            PyPlanner::Miso => Self::Miso,
+        }
+    }
+}
+
+#[pyclass(from_py_object)]
+#[derive(Clone, Debug)]
 pub enum PyQueryType {
     Single(),
     Distributed {
@@ -96,6 +117,7 @@ pub enum PyQueryType {
         equi_join_broadcast_limit: u64,
         partitions_per_worker: Option<u32>,
         single_worker_ops: PySingleWorkerOps,
+        planner: PyPlanner,
     },
 }
 
@@ -137,7 +159,7 @@ pub struct PyQuerySettings {
     pub engine: PyEngine,
     pub query_type: PyQueryType,
     /// Whether the query plain should be in dot or plain text.
-    pub prefer_dot: bool,
+    pub plan_dot: bool,
     /// Number of retries on failed tasks
     pub n_retries: u32,
     pub n_workers: Option<PyNumWorkers>,
@@ -148,10 +170,10 @@ impl From<PyQuerySettings> for QuerySettings {
     fn from(value: PyQuerySettings) -> Self {
         Self {
             engine: value.engine.into(),
-            preferred_graph_format: if value.prefer_dot {
+            preferred_graph_format: if value.plan_dot {
                 GraphFormat::Dot
             } else {
-                GraphFormat::Auto
+                GraphFormat::Explain
             },
             n_retries: value.n_retries,
             query_type: value.query_type.into(),
@@ -184,7 +206,7 @@ impl From<PyShuffleFormat> for ShuffleFormat {
     }
 }
 
-impl From<PyShuffleCompression> for ShuffleCompression {
+impl From<PyShuffleCompression> for ShuffleCompressionAlgo {
     fn from(value: PyShuffleCompression) -> Self {
         match value {
             PyShuffleCompression::Auto => Self::Auto,
@@ -207,6 +229,7 @@ impl From<PyQueryType> for QueryType {
                 equi_join_broadcast_limit,
                 partitions_per_worker,
                 single_worker_ops,
+                planner,
             } => Self::Distributed(DistributedOpts {
                 shuffle_opts: shuffle_opts.into(),
                 pre_aggregation,
@@ -215,6 +238,7 @@ impl From<PyQueryType> for QueryType {
                 equi_join_broadcast_limit,
                 partitions_per_worker,
                 single_worker_ops: single_worker_ops.into(),
+                planner: planner.into(),
             }),
         }
     }

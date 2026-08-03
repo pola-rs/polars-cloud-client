@@ -9,7 +9,14 @@ from polars.exceptions import ComputeError, InvalidOperationError
 
 from polars_cloud.context import ComputeContext
 from polars_cloud.polars_cloud import PyNumWorkers
-from polars_cloud.query.dst import CsvDst, IcebergDst, IpcDst, ParquetDst, TmpDst
+from polars_cloud.query.dst import (
+    CallbackDst,
+    CsvDst,
+    IcebergDst,
+    IpcDst,
+    ParquetDst,
+    TmpDst,
+)
 
 with contextlib.suppress(ImportError):  # Module not available when building docs
     from pathlib import Path
@@ -167,6 +174,14 @@ If you want to:
                 lazy=True,
                 engine=engine,
             )
+    elif isinstance(dst, CallbackDst):
+        lf = lf.sink_batches(
+            function=dst.function,
+            chunk_size=dst.chunk_size,
+            maintain_order=dst.maintain_order,
+            lazy=True,
+            engine=engine,
+        )
     else:
         assert sink_dst is not None
         lf = lf.sink_parquet(
@@ -180,8 +195,7 @@ If you want to:
         plan = prepare_cloud_plan(lf, optimizations=optimizations)
 
         if isinstance(plan, tuple):
-            plan = plan[0]
-            optimization_flags = plan[1]
+            (plan, optimization_flags) = plan
         else:
             optimization_flags = None
 
@@ -190,9 +204,9 @@ If you want to:
         raise ValueError(msg) from exc
 
     if plan_type == "dot":
-        prefer_dot = True
+        plan_dot = True
     elif plan_type == "plain":
-        prefer_dot = False
+        plan_dot = False
     else:
         msg = f"'plan_type' must be one of: {{'dot', 'plain'}}, got {plan_type!r}"
         raise ValueError(msg)
@@ -207,6 +221,9 @@ If you want to:
     if distributed_settings is not None:
         if distributed_settings.single_worker_ops not in {"auto", "allow", "forbid"}:
             msg = f"`distributed_settings.single_worker_ops` must be one of {{'auto', 'allow', 'forbid'}}, got {distributed_settings.single_worker_ops!r}"
+            raise ValueError(msg)
+        if distributed_settings.planner not in {"auto", "naive", "miso"}:
+            msg = f"`distributed_settings.planner` must be one of {{'auto', 'naive', 'miso'}}, got {distributed_settings.planner!r}"
             raise ValueError(msg)
 
     shuffle_opts = pc_core.PyShuffleOpts.new(
@@ -226,7 +243,7 @@ If you want to:
     py_num_workers = PyNumWorkers(min=min_workers, max=max_workers)
     settings = pc_core.serialize_query_settings(
         engine=engine,
-        prefer_dot=prefer_dot,
+        plan_dot=plan_dot,
         shuffle_opts=shuffle_opts,
         n_retries=n_retries,
         n_workers=py_num_workers,

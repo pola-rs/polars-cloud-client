@@ -36,6 +36,11 @@ pub trait ClientService {
         request: Request<QueryIdentifier>,
     ) -> Result<Response<()>, Self::Error>;
 
+    async fn delete_query_result(
+        &self,
+        request: Request<QueryIdentifier>,
+    ) -> Result<Response<()>, Self::Error>;
+
     async fn get_query_status(
         &self,
         request: Request<QueryIdentifier>,
@@ -64,6 +69,7 @@ map_trait! {
         get_query_status(proto::GetQueryStatusRequest) -> proto::GetQueryStatusResponse;
         get_query_plans(proto::GetQueryPlansRequest) -> proto::GetQueryPlansResponse;
         cancel_query(proto::CancelQueryRequest) -> proto::CancelQueryResponse;
+        delete_query_result(proto::DeleteQueryResultRequest) -> proto::DeleteQueryResultResponse;
         get_compute_versions(proto::GetComputeVersionsRequest) -> proto::GetComputeVersionsResponse;
     }
 }
@@ -168,7 +174,7 @@ impl From<proto::QuerySettings> for QuerySettings {
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ShuffleCompression {
+pub enum ShuffleCompressionAlgo {
     #[default]
     Auto,
     LZ4,
@@ -204,26 +210,26 @@ impl From<proto::ShuffleFormat> for ShuffleFormat {
     }
 }
 
-impl From<ShuffleCompression> for proto::ShuffleCompression {
-    fn from(value: ShuffleCompression) -> Self {
+impl From<ShuffleCompressionAlgo> for proto::ShuffleCompression {
+    fn from(value: ShuffleCompressionAlgo) -> Self {
         match value {
-            ShuffleCompression::Auto => proto::ShuffleCompression::Auto,
-            ShuffleCompression::LZ4 => proto::ShuffleCompression::Lz4,
-            ShuffleCompression::ZSTD => proto::ShuffleCompression::Zstd,
-            ShuffleCompression::Uncompressed => proto::ShuffleCompression::Uncompressed,
+            ShuffleCompressionAlgo::Auto => proto::ShuffleCompression::Auto,
+            ShuffleCompressionAlgo::LZ4 => proto::ShuffleCompression::Lz4,
+            ShuffleCompressionAlgo::ZSTD => proto::ShuffleCompression::Zstd,
+            ShuffleCompressionAlgo::Uncompressed => proto::ShuffleCompression::Uncompressed,
         }
     }
 }
 
-impl From<proto::ShuffleCompression> for ShuffleCompression {
+impl From<proto::ShuffleCompression> for ShuffleCompressionAlgo {
     fn from(value: proto::ShuffleCompression) -> Self {
         match value {
             proto::ShuffleCompression::Auto | proto::ShuffleCompression::Unspecified => {
-                ShuffleCompression::Auto
+                ShuffleCompressionAlgo::Auto
             },
-            proto::ShuffleCompression::Lz4 => ShuffleCompression::LZ4,
-            proto::ShuffleCompression::Zstd => ShuffleCompression::ZSTD,
-            proto::ShuffleCompression::Uncompressed => ShuffleCompression::Uncompressed,
+            proto::ShuffleCompression::Lz4 => ShuffleCompressionAlgo::LZ4,
+            proto::ShuffleCompression::Zstd => ShuffleCompressionAlgo::ZSTD,
+            proto::ShuffleCompression::Uncompressed => ShuffleCompressionAlgo::Uncompressed,
         }
     }
 }
@@ -232,15 +238,20 @@ impl From<proto::ShuffleCompression> for ShuffleCompression {
 pub struct ShuffleOpts {
     pub format: ShuffleFormat,
     pub compression: ShuffleCompression,
-    pub compression_level: Option<i32>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
+pub struct ShuffleCompression {
+    pub algo: ShuffleCompressionAlgo,
+    pub level: Option<i32>,
 }
 
 impl From<ShuffleOpts> for proto::ShuffleOpts {
     fn from(value: ShuffleOpts) -> Self {
         Self {
             format: proto::ShuffleFormat::from(value.format).into(),
-            compression: proto::ShuffleCompression::from(value.compression).into(),
-            compression_level: value.compression_level,
+            compression: proto::ShuffleCompression::from(value.compression.algo).into(),
+            compression_level: value.compression.level,
         }
     }
 }
@@ -249,8 +260,10 @@ impl From<proto::ShuffleOpts> for ShuffleOpts {
     fn from(value: proto::ShuffleOpts) -> Self {
         Self {
             format: value.format().into(),
-            compression: value.compression().into(),
-            compression_level: value.compression_level,
+            compression: ShuffleCompression {
+                algo: value.compression().into(),
+                level: value.compression_level,
+            },
         }
     }
 }
@@ -271,6 +284,7 @@ pub struct DistributedOpts {
     pub equi_join_broadcast_limit: u64,
     pub partitions_per_worker: Option<u32>,
     pub single_worker_ops: SingleWorkerOps,
+    pub planner: Planner,
 }
 
 impl From<DistributedOpts> for proto::DistributedOpts {
@@ -283,6 +297,7 @@ impl From<DistributedOpts> for proto::DistributedOpts {
             equi_join_broadcast_limit,
             partitions_per_worker,
             single_worker_ops,
+            planner,
         } = value;
         Self {
             shuffle_opts: proto::ShuffleOpts::from(shuffle_opts).into(),
@@ -292,6 +307,7 @@ impl From<DistributedOpts> for proto::DistributedOpts {
             allow_equi_join_broadcast_limit: equi_join_broadcast_limit,
             partitions_per_worker,
             single_worker_ops: Some(proto::SingleWorkerOps::from(single_worker_ops).into()),
+            planner: Some(proto::Planner::from(planner).into()),
         }
     }
 }
@@ -306,6 +322,7 @@ impl From<proto::DistributedOpts> for DistributedOpts {
             shuffle_opts,
             partitions_per_worker,
             single_worker_ops: _,
+            planner: _,
         } = value;
         Self {
             shuffle_opts: shuffle_opts.unwrap_or_default().into(),
@@ -315,6 +332,7 @@ impl From<proto::DistributedOpts> for DistributedOpts {
             equi_join_broadcast_limit: allow_equi_join_broadcast_limit,
             partitions_per_worker,
             single_worker_ops: value.single_worker_ops().into(),
+            planner: value.planner().into(),
         }
     }
 }
@@ -344,6 +362,35 @@ impl From<proto::SingleWorkerOps> for SingleWorkerOps {
             proto::SingleWorkerOps::Allow => Self::Allow,
             proto::SingleWorkerOps::Forbid => Self::Forbid,
             proto::SingleWorkerOps::Unspecified => Self::Auto,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Planner {
+    #[default]
+    Auto,
+    Naive,
+    Miso,
+}
+
+impl From<Planner> for proto::Planner {
+    fn from(value: Planner) -> Self {
+        match value {
+            Planner::Auto => Self::Auto,
+            Planner::Naive => Self::Naive,
+            Planner::Miso => Self::Miso,
+        }
+    }
+}
+
+impl From<proto::Planner> for Planner {
+    fn from(value: proto::Planner) -> Self {
+        match value {
+            proto::Planner::Auto => Self::Auto,
+            proto::Planner::Naive => Self::Naive,
+            proto::Planner::Miso => Self::Miso,
+            proto::Planner::Unspecified => Self::Auto,
         }
     }
 }
@@ -473,6 +520,30 @@ impl From<()> for proto::CancelQueryResponse {
 
 impl From<proto::CancelQueryResponse> for () {
     fn from(proto::CancelQueryResponse {}: proto::CancelQueryResponse) -> Self {}
+}
+
+impl From<QueryIdentifier> for proto::DeleteQueryResultRequest {
+    fn from(value: QueryIdentifier) -> Self {
+        Self {
+            query_id: Some(value.into()),
+        }
+    }
+}
+
+impl From<proto::DeleteQueryResultRequest> for QueryIdentifier {
+    fn from(proto::DeleteQueryResultRequest { query_id }: proto::DeleteQueryResultRequest) -> Self {
+        query_id.unwrap().into()
+    }
+}
+
+impl From<()> for proto::DeleteQueryResultResponse {
+    fn from(_: ()) -> Self {
+        proto::DeleteQueryResultResponse {}
+    }
+}
+
+impl From<proto::DeleteQueryResultResponse> for () {
+    fn from(proto::DeleteQueryResultResponse {}: proto::DeleteQueryResultResponse) -> Self {}
 }
 
 impl From<proto::GetQueryStatusRequest> for QueryIdentifier {

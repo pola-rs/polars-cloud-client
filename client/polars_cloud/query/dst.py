@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
-    from typing import Literal
+    from typing import Any, Literal
 
     import polars.io.iceberg
     import pyiceberg.table
@@ -403,6 +404,36 @@ class IcebergDst(Dst):
         self.mode = mode
         self.catalog = catalog
         self.storage_options = storage_options
+
+
+class CallbackDst(Dst):
+    def __init__(
+        self,
+        function: Callable[[polars.DataFrame], bool | None],
+        *,
+        chunk_size: int | None = None,
+        maintain_order: bool = False,
+    ) -> None:
+        """Callback destination arguments.
+
+        Parameters
+        ----------
+        function
+            Function to run with a batch that is ready. If the function returns
+            `True`, this signals that no more results are needed, allowing for
+            early stopping.
+        chunk_size
+            The number of rows that are buffered before the callback is called.
+        maintain_order
+            Maintain the order in which data is processed. When `True`, `function`
+            will be called serially for all batches, instead of in parallel
+            across the workers in the cluster.
+        optimizations
+            The optimization passes done during query optimization.
+        """
+        self.function = function
+        self.chunk_size = chunk_size
+        self.maintain_order = maintain_order
 
 
 class TmpDst(Dst): ...

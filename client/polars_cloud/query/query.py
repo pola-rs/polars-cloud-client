@@ -102,6 +102,7 @@ class DistributionSettings:
         self.pre_aggregation = kwargs.get("pre_aggregation", True)
         # Whether individual expressions can be lowered into distributed operations.
         self.expression_lowering = expression_lowering
+        self.planner = kwargs.get("planner", "auto")
 
 
 def spawn_many(

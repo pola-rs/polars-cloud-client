@@ -63,6 +63,14 @@ message DistributedOpts {
   reserved 7; // Deprecated `bool allow_expression_extraction`
   optional SingleWorkerOps single_worker_ops = 8;
   optional bool allow_expression_lowering = 9;
+  optional Planner planner = 10;
+}
+
+enum Planner {
+  PLANNER_UNSPECIFIED = 0;
+  PLANNER_AUTO = 1;
+  PLANNER_NAIVE = 2;
+  PLANNER_MISO = 3;
 }
 
 enum GraphFormat {

@@ -106,6 +106,7 @@ class QueryResult:
         self.finished_task_info = result
         self.status = status
         self._query = query
+        self._deleted = False
 
     @property
     def head(self) -> DataFrame | None:
@@ -182,6 +183,10 @@ class QueryResult:
 
     def lazy(self) -> LazyFrame:
         """Convert the `QueryResult` into a `LazyFrame`."""
+        if self._deleted:
+            msg = "cannot create a 'LazyFrame', this result has been deleted"
+            raise InvalidOperationError(msg)
+
         if self.status != QueryStatus.SUCCESS:
             msg = "a query must be successful to convert it to a 'LazyFrame'"
             raise InvalidOperationError(msg)
@@ -370,6 +375,25 @@ class QueryResult:
             raise ComputeError(msg)
 
         return self._query.plan(plan_type=plan_type)
+
+    def delete(self) -> None:
+        """Delete anonymous results from the anonymous storage location.
+
+        This is only allowed if the anonymous_storage is configured with allow_deletes.
+
+        .. note::
+            This can only be called in 'direct' mode.
+        """
+        if self._query is None:
+            msg = "cannot call 'QueryResult.delete' in proxy mode"
+            raise ComputeError(msg)
+
+        if self._deleted:
+            msg = "this result has already been deleted"
+            raise InvalidOperationError(msg)
+
+        self._query.delete_result()
+        self._deleted = True
 
 
 def decode_error(encoded: str) -> BaseException:
