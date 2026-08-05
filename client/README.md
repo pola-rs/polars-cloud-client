@@ -5,7 +5,7 @@
     <img src="https://img.shields.io/pypi/v/polars_cloud.svg" alt="PyPi Latest Release"/>
   </a>
 
-<a href="https://docs.cloud.pola.rs/reference/index.html">Documentation</a>
+<a href="https://docs.cloud.pola.rs/api/python/stable/reference/index.html">Documentation</a>
 |
 <a href="https://stackoverflow.com/questions/tagged/polars-cloud">Stack Overflow</a>
 |
