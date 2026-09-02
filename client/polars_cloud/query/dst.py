@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -437,3 +438,14 @@ class CallbackDst(Dst):
 
 
 class TmpDst(Dst): ...
+
+
+class ClientDst(Dst):
+    def __init__(
+        self, *, ttl: int | timedelta | None = None, maintain_order: bool | None = None
+    ) -> None:
+        if isinstance(ttl, int):
+            self.ttl: timedelta | None = timedelta(seconds=ttl)
+        else:
+            self.ttl = ttl
+        self.maintain_order = maintain_order

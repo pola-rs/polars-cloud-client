@@ -2,6 +2,8 @@ use std::ops::Deref;
 
 use chrono::{DateTime, Utc};
 use deprecation_macro::deprecated_since_client;
+#[cfg(feature = "server")]
+use garde::Validate;
 #[cfg(feature = "pyo3")]
 use pyo3::pyclass;
 #[cfg(feature = "server")]
@@ -9,7 +11,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{DefaultSortDirection, EntityOrdering};
+use crate::{DefaultSortDirection, EntityOrdering, csv_vec_opt};
 
 #[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all, eq, eq_int))]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
@@ -31,8 +33,8 @@ pub struct QueryModel {
     pub id: Uuid,
     /// The workspace the query is being run in
     pub workspace_id: Uuid,
-    /// The virtual machine it is sent to
-    pub cluster_id: Uuid,
+    /// The cluster its run on, if non-local
+    pub cluster_id: Option<Uuid>,
     /// The user account that started the query
     pub user_id: Option<Uuid>,
     /// The time the query was requested
@@ -140,6 +142,9 @@ pub struct QueryWithStatusAndResultModel {
 pub struct GetQueryArgs {
     pub cluster_id: Option<Uuid>,
     pub user_id: Option<Uuid>,
+    #[serde(default)]
+    #[serde(deserialize_with = "csv_vec_opt")]
+    pub status: Option<Vec<QueryStatusCodeModel>>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -231,6 +236,7 @@ pub struct QueryWithStateTimingModel {
     pub query: QueryModel,
     #[serde(flatten)]
     pub state_timing: QueryStateTimingModel,
+    pub label_ids: Option<Vec<Uuid>>,
 }
 
 impl EntityOrdering for QueryWithStateTimingModel {
@@ -259,4 +265,85 @@ impl Deref for QueryWithStateTimingAndResultModel {
     fn deref(&self) -> &Self::Target {
         &self.query
     }
+}
+
+#[cfg_attr(
+    feature = "server",
+    derive(Validate, JsonSchema),
+    garde(allow_unvalidated)
+)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
+pub struct QueryObservedPlanArgs {
+    pub ir_plan: Option<serde_json::Value>,
+    pub phys_plan: Option<serde_json::Value>,
+}
+
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+pub enum QueryPhysNodeKind {
+    Other,
+    Scan,
+    Sink,
+}
+
+#[cfg_attr(
+    feature = "server",
+    derive(Validate, JsonSchema),
+    garde(allow_unvalidated)
+)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub struct QueryPhysNodeMetricsModel {
+    pub phys_node_key: u64,
+    pub query_phys_node_kind: QueryPhysNodeKind,
+    pub total_polls: u64,
+    pub total_stolen_polls: u64,
+    pub total_poll_time_ns: u64,
+    pub max_poll_time_ns: u64,
+    pub total_state_updates: u64,
+    pub total_state_update_time_ns: u64,
+    pub max_state_update_time_ns: u64,
+    pub morsels_sent: u64,
+    pub rows_sent: u64,
+    pub largest_morsel_sent: u64,
+    pub morsels_received: u64,
+    pub rows_received: u64,
+    pub largest_morsel_received: u64,
+    pub io_total_active_ns: u64,
+    pub io_total_bytes_requested: u64,
+    pub io_total_bytes_received: u64,
+    pub io_total_bytes_sent: u64,
+    pub total_time_ns: u64,
+    pub done: bool,
+}
+
+#[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub struct QueryStartedArgs {
+    #[cfg_attr(feature = "server", garde(skip))]
+    pub timestamp: DateTime<Utc>,
+}
+
+#[cfg_attr(
+    feature = "server",
+    derive(Validate, JsonSchema),
+    garde(allow_unvalidated)
+)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub struct QueryUpdateArgs {
+    pub timestamp: DateTime<Utc>,
+    #[cfg_attr(feature = "server", garde(dive))]
+    pub plan: Option<QueryObservedPlanArgs>,
+    #[cfg_attr(feature = "server", garde(dive))]
+    pub metrics: Option<Vec<QueryPhysNodeMetricsModel>>,
+    #[serde(default)]
+    pub is_final: bool,
+}
+
+#[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub struct QueryFailedArgs {
+    #[cfg_attr(feature = "server", garde(skip))]
+    pub timestamp: DateTime<Utc>,
+    #[cfg_attr(feature = "server", garde(skip))]
+    pub error: String,
 }

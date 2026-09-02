@@ -17,8 +17,12 @@ fn visit_files(path: &Path) -> impl Iterator<Item = PathBuf> + use<> {
         })
 }
 
+pub fn build() -> Result<(), Box<dyn std::error::Error>> {
+    build_intern(tonic_prost_build::configure(), &["protos"])
+}
+
 pub fn build_with_common() -> Result<(), Box<dyn std::error::Error>> {
-    build(
+    build_intern(
         tonic_prost_build::configure().extern_path(
             ".polars_cloud.common",
             "::protos_common::proto::polars_cloud::common",
@@ -27,7 +31,7 @@ pub fn build_with_common() -> Result<(), Box<dyn std::error::Error>> {
     )
 }
 
-pub fn build<P: AsRef<Path>>(
+fn build_intern<P: AsRef<Path>>(
     builder: tonic_prost_build::Builder,
     includes: &[P],
 ) -> Result<(), Box<dyn std::error::Error>> {

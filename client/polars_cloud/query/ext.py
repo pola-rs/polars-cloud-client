@@ -11,6 +11,7 @@ from polars.lazyframe.opt_flags import DEFAULT_QUERY_OPT_FLAGS
 from polars_cloud import config as pc_cfg
 from polars_cloud.query.dst import (
     CallbackDst,
+    ClientDst,
     CsvDst,
     IcebergDst,
     IpcDst,
@@ -21,7 +22,8 @@ from polars_cloud.query.lineage import LineageContext
 from polars_cloud.query.query import DistributionSettings, spawn
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
+    from datetime import timedelta
     from typing import Literal
 
     import pyiceberg.catalog
@@ -850,10 +852,6 @@ class LazyFrameRemote:
         This allows streaming results that are larger than RAM in certain cases.
 
         .. warning::
-            This functionality is considered **unstable**. It may be changed
-            at any point without it being considered a breaking change.
-
-        .. warning::
             This method is much slower than native sinks. Only use it if you cannot
             implement your logic otherwise.
 
@@ -884,6 +882,25 @@ class LazyFrameRemote:
             chunk_size=chunk_size,
             maintain_order=maintain_order,
             optimizations=optimizations,
+        )
+
+    def collect(
+        self,
+        *,
+        ttl: int | timedelta | None = None,
+        optimizations: QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
+    ) -> DataFrame:
+        return self._scaling_mode().collect(ttl=ttl, optimizations=optimizations)
+
+    def collect_batches(
+        self,
+        *,
+        maintain_order: bool = False,
+        ttl: int | timedelta | None = None,
+        optimizations: QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
+    ) -> Iterator[DataFrame]:
+        return self._scaling_mode().collect_batches(
+            ttl=ttl, optimizations=optimizations, maintain_order=maintain_order
         )
 
 
@@ -1503,6 +1520,38 @@ class ExecuteRemote:
         )
         return self._spawn(dst=dst, optimizations=optimizations)
 
+    def _stream(
+        self,
+        *,
+        maintain_order: bool = False,
+        ttl: int | timedelta | None = None,
+        optimizations: QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
+    ) -> pl.LazyFrame:
+        dst = ClientDst(ttl=ttl, maintain_order=maintain_order)
+        query = self._spawn(dst=dst, optimizations=optimizations)
+        return pl.scan_arrow_c_stream(query._get_stream())
+
+    def collect(
+        self,
+        *,
+        ttl: int | timedelta | None = None,
+        optimizations: QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
+    ) -> DataFrame:
+        return self._stream(
+            maintain_order=True, ttl=ttl, optimizations=optimizations
+        ).collect(optimizations=optimizations)
+
+    def collect_batches(
+        self,
+        *,
+        maintain_order: bool = False,
+        ttl: int | timedelta | None = None,
+        optimizations: QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
+    ) -> Iterator[DataFrame]:
+        return self._stream(
+            maintain_order=maintain_order, ttl=ttl, optimizations=optimizations
+        ).collect_batches(maintain_order=maintain_order, optimizations=optimizations)
+
     def sink_batches(
         self,
         function: Callable[[DataFrame], bool | None],
@@ -1549,6 +1598,24 @@ class ExecuteRemote:
             function=function, chunk_size=chunk_size, maintain_order=maintain_order
         )
         return self._spawn(dst=dst, optimizations=optimizations)
+
+    @overload
+    def _spawn(
+        self,
+        *,
+        dst: ClientDst,
+        optimizations: QueryOptFlags,
+        sink_to_single_file: bool | None = False,
+    ) -> DirectQuery: ...
+
+    @overload
+    def _spawn(
+        self,
+        *,
+        dst: Dst,
+        optimizations: QueryOptFlags,
+        sink_to_single_file: bool | None = False,
+    ) -> DirectQuery | ProxyQuery: ...
 
     def _spawn(
         self,

@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package polars_cloud.compute_plane.client.v1;
 
+import "google/protobuf/duration.proto";
 import "polars_cloud/common/query_id.proto";
 
 message SubmitQueryRequest {
@@ -97,5 +98,12 @@ message QuerySettings {
   oneof n_workers {
     uint32 single_number = 8;
     NWorkers min_max = 9;
+  }
+  message FlightSinkOptions {
+    optional google.protobuf.Duration ttl = 1;
+    optional bool maintain_order = 2;
+  }
+  oneof sink_options {
+    FlightSinkOptions flight = 10;
   }
 }

@@ -33,7 +33,7 @@ impl WrappedAPIClient {
                 req,
             )
         })
-        .map(|query_info| query_result_to_py(py, query_info.into(), None))
+        .map(|query_info| query_result_to_py(py, query_info.into(), None, None))
     }
 
     pub fn submit_query(

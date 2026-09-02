@@ -83,6 +83,14 @@ pub struct WorkspaceSetupUrlModel {
 #[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 #[derive(Deserialize, Serialize, Debug)]
+pub struct WorkspaceAwsStackModel {
+    pub workspace_id: Uuid,
+    pub console_url: String,
+}
+
+#[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct WorkspaceAWSSettingsOutputModel {
     pub worker_role_arn: Option<String>,
     pub region: String,
@@ -90,4 +98,52 @@ pub struct WorkspaceAWSSettingsOutputModel {
     pub account_id: String,
     pub cfn_template_version: String,
     pub latest_cfn_template_version: String,
+}
+
+/// Where a workspace's AWS connection is in its lifecycle.
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object, eq, eq_int))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub enum AwsConnectionStatusModel {
+    /// The CloudFormation stack is deploying and has not reported its settings yet.
+    Pending,
+    /// The stack deployed and the workspace can run AWS clusters.
+    Completed,
+    /// The stack rolled back before it ever reported its settings.
+    Failed,
+    /// The stack was torn down and AWS is no longer connected.
+    Deleted,
+}
+
+/// A workspace's AWS connection as one resource. The fields are filled in as the
+/// CloudFormation stack progresses, so everything except the status is optional.
+#[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[derive(Deserialize, Serialize, Debug)]
+pub struct WorkspaceAwsConnectionModel {
+    pub workspace_id: Uuid,
+    pub status: AwsConnectionStatusModel,
+    /// Link to the CloudFormation stack, available from the moment it starts deploying.
+    pub console_url: Option<String>,
+    pub stack_name: Option<String>,
+    pub region: Option<String>,
+    pub account_id: Option<String>,
+    pub worker_role_arn: Option<String>,
+    pub cfn_template_version: Option<String>,
+    pub latest_cfn_template_version: String,
+}
+
+/// Fields are exposed to Python one by one, as a caller needs them.
+#[cfg_attr(feature = "pyo3", pyo3::pymethods)]
+#[cfg(feature = "pyo3")]
+impl WorkspaceAwsConnectionModel {
+    #[getter]
+    fn status(&self) -> AwsConnectionStatusModel {
+        self.status.clone()
+    }
+
+    #[getter]
+    fn console_url(&self) -> Option<&str> {
+        self.console_url.as_deref()
+    }
 }

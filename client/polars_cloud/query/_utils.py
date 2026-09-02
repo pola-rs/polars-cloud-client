@@ -11,6 +11,7 @@ from polars_cloud.context import ComputeContext
 from polars_cloud.polars_cloud import PyNumWorkers
 from polars_cloud.query.dst import (
     CallbackDst,
+    ClientDst,
     CsvDst,
     IcebergDst,
     IpcDst,
@@ -101,7 +102,8 @@ If you want to:
 - sink to a single file, set `sink_to_single_file=True`.
 """
         raise ValueError(msg)
-
+    flight_ttl = None
+    flight_maintain_order = None
     if isinstance(dst, ParquetDst):
         assert dst.uri is not None
         lf = lf.sink_parquet(
@@ -182,6 +184,10 @@ If you want to:
             lazy=True,
             engine=engine,
         )
+    elif isinstance(dst, ClientDst):
+        lf = lf.sink_parquet("<flight>", lazy=True, engine=engine)
+        flight_ttl = dst.ttl
+        flight_maintain_order = dst.maintain_order
     else:
         assert sink_dst is not None
         lf = lf.sink_parquet(
@@ -249,6 +255,8 @@ If you want to:
         n_workers=py_num_workers,
         distributed_settings=distributed_settings,
         optimization_flags=optimization_flags,
+        flight_ttl=flight_ttl,
+        flight_maintain_order=flight_maintain_order,
     )
 
     return plan, settings

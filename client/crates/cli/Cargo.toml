@@ -24,5 +24,10 @@ tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 webbrowser = { workspace = true }
 
+[dev-dependencies]
+chrono = { workspace = true }
+client-core = { workspace = true, features = ["test-utils"] }
+tokio = { workspace = true, features = ["test-util"] }
+
 [lints]
 workspace = true

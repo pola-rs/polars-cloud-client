@@ -8,11 +8,12 @@ use mockall::automock;
 use polars_axum_models::{
     ComputeClusterNodeInfoModel, ComputeClusterPublicInfoModel, ComputeModel, ComputeTokenModel,
     DeleteWorkspaceModel, GetClusterFilterArgs, GetQueryArgs, ManifestModel, ManifestQueryArgs,
-    OrganizationCreateArgs, OrganizationModel, QueryModel, QueryWithStateTimingAndResultModel,
-    RegisterComputeClusterManifestArgs, StartComputeClusterArgs, StartComputeClusterManifestArgs,
-    UserModel, WorkSpaceArgs, WorkSpaceTokenBodyArgs, WorkspaceAPITokenModel,
-    WorkspaceApiTokenWithNameModel, WorkspaceClusterDefaultsModel, WorkspaceModel,
-    WorkspaceSetupUrlModel, WorkspaceWithUrlModel,
+    OrganizationCreateArgs, OrganizationModel, QueryFailedArgs, QueryModel, QueryStartedArgs,
+    QueryUpdateArgs, QueryWithStateTimingAndResultModel, RegisterComputeClusterManifestArgs,
+    StartComputeClusterArgs, StartComputeClusterManifestArgs, UserModel, WorkSpaceArgs,
+    WorkSpaceTokenBodyArgs, WorkspaceAPITokenModel, WorkspaceApiTokenWithNameModel,
+    WorkspaceAwsConnectionModel, WorkspaceAwsStackModel, WorkspaceClusterDefaultsModel,
+    WorkspaceModel, WorkspaceSetupUrlModel, WorkspaceWithUrlModel,
 };
 use uuid::Uuid;
 
@@ -47,7 +48,9 @@ pub trait ControlPlaneClient: Send + Sync {
     ) -> Result<Vec<OrganizationModel>, ApiError>;
 
     // --- Workspace ---
+    async fn create_workspace(&self, params: WorkSpaceArgs) -> Result<WorkspaceModel, ApiError>;
     async fn get_workspace(&self, workspace_id: Uuid) -> Result<WorkspaceModel, ApiError>;
+    async fn delete_workspace(&self, workspace_id: Uuid) -> Result<(), ApiError>;
     async fn get_workspaces(
         &self,
         name: Option<String>,
@@ -72,10 +75,18 @@ pub trait ControlPlaneClient: Send + Sync {
         &self,
         workspace_id: Uuid,
     ) -> Result<WorkspaceSetupUrlModel, ApiError>;
-    async fn delete_aws_workspace(
+    async fn get_aws_workspace_stack(
         &self,
         workspace_id: Uuid,
-    ) -> Result<Option<DeleteWorkspaceModel>, ApiError>;
+    ) -> Result<WorkspaceAwsStackModel, ApiError>;
+    async fn get_aws_connection(
+        &self,
+        workspace_id: Uuid,
+    ) -> Result<WorkspaceAwsConnectionModel, ApiError>;
+    async fn delete_workspace_aws_connection(
+        &self,
+        workspace_id: Uuid,
+    ) -> Result<DeleteWorkspaceModel, ApiError>;
 
     // --- Workspace (On-Prem) ---
     async fn create_on_prem_workspace(
@@ -153,6 +164,26 @@ pub trait ControlPlaneClient: Send + Sync {
         workspace_id: Uuid,
         filters: GetQueryArgs,
     ) -> Result<Vec<QueryModel>, ApiError>;
+
+    // --- Cloud-export observability ingest ---
+    async fn observe_query_started(
+        &self,
+        workspace_id: Uuid,
+        query_id: Uuid,
+        args: QueryStartedArgs,
+    ) -> Result<(), ApiError>;
+    async fn observe_query_update(
+        &self,
+        workspace_id: Uuid,
+        query_id: Uuid,
+        update: QueryUpdateArgs,
+    ) -> Result<(), ApiError>;
+    async fn observe_query_failed(
+        &self,
+        workspace_id: Uuid,
+        query_id: Uuid,
+        failure: QueryFailedArgs,
+    ) -> Result<(), ApiError>;
 
     // --- User ---
     async fn get_logged_in_user(&self) -> Result<UserModel, ApiError>;

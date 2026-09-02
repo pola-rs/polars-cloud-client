@@ -86,7 +86,7 @@ def build_ref_docs(ref: str) -> None:
                     **os.environ,
                     "BUILDING_SPHINX_DOCS": "1",
                     "POLARS_CLOUD_DOCS_BASE_URL": f"{BASE_URL}/api/python/version/{version}/",
-                    "POLARS_CLOUD_VERSION": ref,
+                    "POLARS_CLOUD_VERSION": version,
                     "SPHINXBUILD": f"{venv}/bin/sphinx-build",
                 },
             )

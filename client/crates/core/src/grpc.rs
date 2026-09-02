@@ -3,12 +3,15 @@ use protos_client_control::{ClientServiceClient, MAX_MESSAGE_LENGTH_CONTROL_PLAN
 use protos_common::tonic::Request;
 use protos_common::tonic::service::interceptor::InterceptedService;
 use protos_common::tonic::transport::{Channel, ClientTlsConfig, Endpoint};
+use tower::Layer;
+use tower_otel::{OtelLayer, OtelService};
 
 use crate::VERSIONS;
-use crate::constants::API_ADDR;
+use crate::constants::{API_ADDR, SERVICE_NAME};
 
-pub type ControlPlaneGRPCClient =
-    ClientServiceClient<InterceptedService<Channel, fn(Request<()>) -> tonic::Result<Request<()>>>>;
+pub type ControlPlaneGRPCClient = ClientServiceClient<
+    InterceptedService<OtelService<Channel>, fn(Request<()>) -> tonic::Result<Request<()>>>,
+>;
 
 pub fn get_control_plane_client() -> ControlPlaneGRPCClient {
     let endpoint: Endpoint = API_ADDR.parse().unwrap();
@@ -26,9 +29,12 @@ pub fn get_control_plane_client() -> ControlPlaneGRPCClient {
         .unwrap()
         .connect_lazy();
 
-    ClientServiceClient::with_interceptor(channel, version_interceptor as _)
-        .max_encoding_message_size(MAX_MESSAGE_LENGTH_CONTROL_PLANE)
-        .max_decoding_message_size(MAX_MESSAGE_LENGTH_CONTROL_PLANE)
+    ClientServiceClient::with_interceptor(
+        OtelLayer::client(SERVICE_NAME).layer(channel),
+        version_interceptor as _,
+    )
+    .max_encoding_message_size(MAX_MESSAGE_LENGTH_CONTROL_PLANE)
+    .max_decoding_message_size(MAX_MESSAGE_LENGTH_CONTROL_PLANE)
 }
 
 #[allow(clippy::result_large_err)]

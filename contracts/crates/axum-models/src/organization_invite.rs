@@ -60,6 +60,7 @@ impl EntityOrdering for OrganizationInviteModel {
 
 #[derive(Deserialize, Serialize, Debug)]
 #[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct InviteArgs {
     #[cfg_attr(feature = "server", garde(length(min = 1, max = 128)))]
     pub route: String,

@@ -113,10 +113,15 @@ pub async fn resolve_compute_context_specs(
         && !cpu_architectures.is_empty()
     {
         Some(cpu_architectures)
-    }
-    // TODO: Add cpu_architecture to workspace cluster defaults table in control plane. Then we can retrieve defaults from there.
-    else {
-        Some(vec![DBCPUArchitectureModel::X86_64])
+    } else if let Some(defaults) = get_defaults(&client, &mut defaults, workspace_id).await?
+        && let InstanceSpecsModel::Specs {
+            cpu_architectures, ..
+        } = &defaults.instance_specs
+        && !cpu_architectures.is_empty()
+    {
+        Some(cpu_architectures.clone())
+    } else {
+        Some(DBCPUArchitectureModel::defaults())
     };
 
     let storage_resolved = if let Some(storage) = storage {

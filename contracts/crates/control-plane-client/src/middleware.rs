@@ -2,12 +2,33 @@ use std::time::Duration;
 
 use anyhow::anyhow;
 use http::Extensions;
-use reqwest::{Request, Response};
+use reqwest::{Request, Response, StatusCode};
 use reqwest_middleware::{Middleware, Next};
+
+pub type IsTransient = fn(&reqwest_middleware::Result<Response>) -> bool;
 
 pub struct RetryTransientMiddleware {
     pub max_retries: u32,
     pub wait_period: Duration,
+    pub is_transient: IsTransient,
+}
+
+impl RetryTransientMiddleware {
+    pub fn new(max_retries: u32, wait_period: Duration) -> Self {
+        Self {
+            max_retries,
+            wait_period,
+            is_transient: default_is_transient,
+        }
+    }
+}
+
+fn default_is_transient(result: &reqwest_middleware::Result<Response>) -> bool {
+    match result {
+        Ok(response) => response.status() == StatusCode::TOO_MANY_REQUESTS,
+        Err(reqwest_middleware::Error::Reqwest(error)) => error.is_timeout() || error.is_connect(),
+        Err(_) => false,
+    }
 }
 
 #[async_trait::async_trait]
@@ -29,23 +50,19 @@ impl Middleware for RetryTransientMiddleware {
 
             let result = next.clone().run(duplicate_request, extensions).await;
             n_tries += 1;
-            if result.is_ok() || n_tries > self.max_retries {
+            if n_tries > self.max_retries {
                 return result;
             }
 
-            if let Err(reqwest_middleware::Error::Reqwest(error)) = &result {
-                // Check if error is transient, consider other error types to be fatal
-                if error.is_timeout() || error.is_connect() {
-                    println!(
-                        "{error}: retrying in {} second(s)",
-                        self.wait_period.as_secs() * n_tries as u64
-                    );
-                    tokio::time::sleep(self.wait_period * n_tries).await;
-                    continue;
-                }
+            if (self.is_transient)(&result) {
+                tracing::debug!(
+                    "retrying in {} second(s)",
+                    self.wait_period.as_secs() * n_tries as u64
+                );
+                tokio::time::sleep(self.wait_period * n_tries).await;
+                continue;
             }
 
-            // If error is fatal return even if we haven't hit max_retries
             return result;
         }
     }

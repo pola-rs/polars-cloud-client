@@ -14,6 +14,7 @@ This namespace becomes available by calling `LazyFrame.remote(...)`.
    LazyFrameRemote.distributed
    LazyFrameRemote.execute
    LazyFrameRemote.labels
+   LazyFrameRemote.sink_batches
    LazyFrameRemote.sink_parquet
    LazyFrameRemote.sink_csv
    LazyFrameRemote.sink_ipc

@@ -15,10 +15,10 @@ pub struct AggregatedPhysicalMetricFieldsModel {
     pub max_state_update_time_ns: i64,
 
     pub morsels_sent: i64,
-    pub rows_sent: i64,
+    pub rows_sent: Option<i64>,
     pub largest_morsel_sent: i64,
     pub morsels_received: i64,
-    pub rows_received: i64,
+    pub rows_received: Option<i64>,
     pub largest_morsel_received: i64,
 
     pub io_total_active_ns: i64,

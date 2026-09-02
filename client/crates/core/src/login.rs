@@ -1,5 +1,4 @@
 use std::error::Error;
-use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 use anyhow::anyhow;
@@ -66,17 +65,14 @@ If your browser did not open automatically, please go to the following URL:
         "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
     });
 
-    let start_time = Instant::now();
-    let mut last_check = Instant::now();
-    while start_time.elapsed() < Duration::from_secs(device.expires_in) {
-        if last_check.elapsed() < Duration::from_secs(device.interval) {
-            sleep(Duration::from_millis(50));
-            continue;
-        }
-        last_check = Instant::now();
+    let deadline = Instant::now() + Duration::from_secs(device.expires_in);
+    let mut interval = tokio::time::interval(Duration::from_secs(device.interval));
+    interval.tick().await;
+
+    while Instant::now() < deadline {
+        interval.tick().await;
 
         let response = connection_pool.post(url.clone()).form(&data).send().await?;
-
         if response.status().is_success() {
             let tokens = response.json::<Tokens>().await.map_err(ApiError::from)?;
             let _ = write_tokens(&tokens.access_token, &tokens.refresh_token);

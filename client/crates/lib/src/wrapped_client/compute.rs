@@ -289,6 +289,7 @@ impl WrappedAPIClient {
                 workspace_id,
                 GetClusterFilterArgs {
                     status,
+                    deployment_type: None,
                     current_user_only: false,
                 },
             ))?

@@ -136,6 +136,7 @@ impl AutoRefreshApiControlPlaneClient {
         RUNTIME.block_on(self.call_grpc_async(f, request))?
     }
 
+    #[tracing::instrument(name = "paginated_request", skip_all)]
     async fn call_paginated<'a, T: Send, F, F2>(&'a self, f: F) -> Result<Vec<T>, ApiError>
     where
         F: Fn(&'a ApiClient, i64) -> F2 + Send,
@@ -255,8 +256,18 @@ impl ControlPlaneClient for AutoRefreshApiControlPlaneClient {
         .await
     }
 
+    async fn create_workspace(&self, params: WorkSpaceArgs) -> Result<WorkspaceModel, ApiError> {
+        self.call(|client| client.create_workspace(params)).await
+    }
+
     async fn get_workspace(&self, workspace_id: Uuid) -> Result<WorkspaceModel, ApiError> {
         self.call(|client| client.get_workspace(workspace_id)).await
+    }
+
+    async fn delete_workspace(&self, workspace_id: Uuid) -> Result<(), ApiError> {
+        self.call(|client| client.delete_workspace(workspace_id))
+            .await?;
+        Ok(())
     }
 
     async fn get_workspaces(
@@ -312,11 +323,27 @@ impl ControlPlaneClient for AutoRefreshApiControlPlaneClient {
             .await
     }
 
-    async fn delete_aws_workspace(
+    async fn get_aws_workspace_stack(
         &self,
         workspace_id: Uuid,
-    ) -> Result<Option<DeleteWorkspaceModel>, ApiError> {
-        self.call(|client| client.delete_aws_workspace(workspace_id))
+    ) -> Result<WorkspaceAwsStackModel, ApiError> {
+        self.call(|client| client.get_aws_workspace_stack(workspace_id))
+            .await
+    }
+
+    async fn get_aws_connection(
+        &self,
+        workspace_id: Uuid,
+    ) -> Result<WorkspaceAwsConnectionModel, ApiError> {
+        self.call(|client| client.get_aws_connection(workspace_id))
+            .await
+    }
+
+    async fn delete_workspace_aws_connection(
+        &self,
+        workspace_id: Uuid,
+    ) -> Result<DeleteWorkspaceModel, ApiError> {
+        self.call(|client| client.delete_workspace_aws_connection(workspace_id))
             .await
     }
 
@@ -447,6 +474,7 @@ impl ControlPlaneClient for AutoRefreshApiControlPlaneClient {
             };
             let filters = GetClusterFilterArgs {
                 status: filters.status.clone(),
+                deployment_type: filters.deployment_type,
                 current_user_only: filters.current_user_only,
             };
             client.get_compute_clusters(workspace_id, filters, pagination)
@@ -468,24 +496,58 @@ impl ControlPlaneClient for AutoRefreshApiControlPlaneClient {
             .await
     }
 
+    async fn observe_query_started(
+        &self,
+        workspace_id: Uuid,
+        query_id: Uuid,
+        args: QueryStartedArgs,
+    ) -> Result<(), ApiError> {
+        self.call(move |client| client.observe_query_started(workspace_id, query_id, args))
+            .await
+    }
+
+    async fn observe_query_update(
+        &self,
+        workspace_id: Uuid,
+        query_id: Uuid,
+        update: QueryUpdateArgs,
+    ) -> Result<(), ApiError> {
+        self.call(move |client| client.observe_query_update(workspace_id, query_id, update))
+            .await
+    }
+
+    async fn observe_query_failed(
+        &self,
+        workspace_id: Uuid,
+        query_id: Uuid,
+        failure: QueryFailedArgs,
+    ) -> Result<(), ApiError> {
+        self.call(move |client| client.observe_query_failed(workspace_id, query_id, failure))
+            .await
+    }
+
     async fn get_queries(
         &self,
         workspace_id: Uuid,
         filters: GetQueryArgs,
     ) -> Result<Vec<QueryModel>, ApiError> {
-        self.call_paginated(|client, page| {
-            let pagination = Pagination {
-                page,
-                limit: 1000,
-                offset: 0,
-            };
-            let filters = GetQueryArgs {
-                cluster_id: filters.cluster_id,
-                user_id: filters.user_id,
-            };
-            client.get_queries(workspace_id, filters, pagination)
-        })
-        .await
+        let queries = self
+            .call_paginated(|client, page| {
+                let pagination = Pagination {
+                    page,
+                    limit: 1000,
+                    offset: 0,
+                };
+                let filters = GetQueryArgs {
+                    cluster_id: filters.cluster_id,
+                    user_id: filters.user_id,
+                    status: filters.status.clone(),
+                };
+                client.get_queries(workspace_id, filters, pagination)
+            })
+            .await?;
+
+        Ok(queries.into_iter().map(|q| q.query).collect())
     }
 
     async fn get_logged_in_user(&self) -> Result<UserModel, ApiError> {

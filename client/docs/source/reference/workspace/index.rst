@@ -12,3 +12,5 @@ This section contains workspace related objects and functions.
    workspace
    workspace_status
    workspace_default_cluster
+   workspace_provider_aws
+   provider_type

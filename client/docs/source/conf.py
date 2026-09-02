@@ -100,8 +100,8 @@ web_root = "https://docs.pola.rs/polars-cloud"
 docs_root = "https://docs.cloud.pola.rs"
 
 # Specify version for version switcher dropdown menu
-git_ref = os.environ.get("POLARS_CLOUD_VERSION", "main")
-version_match = re.fullmatch(r"client-(\d+\.\d+\.\d+).*", git_ref)
+client_version = os.environ.get("POLARS_CLOUD_VERSION", "")
+version_match = re.fullmatch(r"(\d+\.\d+\.\d+).*", client_version)
 switcher_version = version_match.group(1) if version_match is not None else "dev"
 
 docs_base_url = os.environ.get("POLARS_CLOUD_DOCS_BASE_URL")

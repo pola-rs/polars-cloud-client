@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import unicodedata
 from typing import TYPE_CHECKING, Any
+
+from polars_cloud.query.dst import ClientDst
 
 try:
     from IPython.core.getipython import get_ipython as _get_ipython
@@ -30,6 +33,7 @@ from polars.lazyframe.opt_flags import DEFAULT_QUERY_OPT_FLAGS
 import polars_cloud.polars_cloud as pcr
 from polars_cloud import config as pc_cfg
 from polars_cloud import constants
+from polars_cloud._tracing import traced
 from polars_cloud._utils import run_coroutine
 from polars_cloud.context import (
     ClusterContext,
@@ -41,6 +45,11 @@ from polars_cloud.query.query_in_progress import DirectQuery, ProxyQuery
 from polars_cloud.query.query_result import decode_error
 
 logger = logging.getLogger(__name__)
+
+MAX_LABELS_PER_QUERY = 64
+"""Maximum number of labels that can be attached to a single query."""
+
+_MAX_LABEL_NAME_LEN = 32
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -58,6 +67,29 @@ if TYPE_CHECKING:
     from polars_cloud.query.dst import Dst
     from polars_cloud.query.lineage import LineageContext
     from polars_cloud.query.query_result import QueryResult
+
+
+def _validate_labels(labels: list[str] | None) -> None:
+    if not labels:
+        return
+    if len(labels) > MAX_LABELS_PER_QUERY:
+        msg = (
+            f"a query can have at most {MAX_LABELS_PER_QUERY} labels, got {len(labels)}"
+        )
+        raise ValueError(msg)
+    for label in labels:
+        if not label:
+            msg = "label names must not be empty"
+            raise ValueError(msg)
+        if len(label.encode()) > _MAX_LABEL_NAME_LEN:
+            msg = f"label name {label!r} is longer than {_MAX_LABEL_NAME_LEN} bytes"
+            raise ValueError(msg)
+        if any(unicodedata.category(char) == "Cc" for char in label):
+            msg = f"label name {label!r} must not contain control characters"
+            raise ValueError(msg)
+        if label != label.strip():
+            msg = f"label name {label!r} must not have surrounding whitespace"
+            raise ValueError(msg)
 
 
 class DistributionSettings:
@@ -105,6 +137,7 @@ class DistributionSettings:
         self.planner = kwargs.get("planner", "auto")
 
 
+@traced
 def spawn_many(
     lf: list[LazyFrame],
     *,
@@ -217,6 +250,7 @@ def spawn_many(
     ]
 
 
+@traced
 def spawn_many_blocking(
     lf: list[LazyFrame],
     *,
@@ -331,6 +365,7 @@ def spawn_many_blocking(
     return run_coroutine(run())
 
 
+@traced
 def spawn(
     lf: LazyFrame,
     *,
@@ -450,6 +485,9 @@ def spawn(
         msg = f"expected a 'LazyFrame' for 'lf', got {type(lf)}"
         raise TypeError(msg)
 
+    # Check before resolving the context, so a bad label cannot start a cluster.
+    _validate_labels(labels)
+
     # Set compute context if not given
     if context is None:
         if compute_cache.cached_context is not None:
@@ -501,6 +539,9 @@ def spawn(
         else None
     )
 
+    if isinstance(dst, ClientDst) and not isinstance(context, ClusterContext):
+        msg = "Streaming query results to the client (e.g. `.collect()` or `.collect_batches()` is only supported on `ClusterContext`"
+        raise TypeError(msg)
     if isinstance(context, ClusterContext) or (
         isinstance(context, ComputeContext) and context.connection_mode == "direct"
     ):
@@ -522,6 +563,7 @@ def spawn(
                 settings=settings,
                 token=token,
                 username=username,
+                labels=labels,
                 execution_id=execution_id,
                 lineage_context=lineage_context,
             )
@@ -546,6 +588,7 @@ def spawn(
         raise ValueError(msg)
 
 
+@traced
 def spawn_blocking(
     lf: LazyFrame,
     *,

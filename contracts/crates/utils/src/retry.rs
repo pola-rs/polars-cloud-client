@@ -112,7 +112,7 @@ impl<T, E> From<Result<T, E>> for OperationResult<T, E> {
 #[macro_export]
 macro_rules! retry {
     ($backoff:expr, $task:expr, $sleep:expr) => {
-        $crate::retry!($backoff, $task, $sleep, warn_after = Duration::ZERO);
+        $crate::retry!($backoff, $task, $sleep, warn_after = Duration::ZERO)
     };
     ($backoff:expr, $task:expr, $sleep:expr, warn_after = $warn_after:expr) => {
         $crate::retry!($backoff, $task, $sleep, warn_after = $warn_after, warning = "Retrying")

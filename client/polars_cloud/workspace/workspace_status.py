@@ -12,7 +12,13 @@ else:
 
 @final
 class WorkspaceStatus(Enum):
-    """State of the workspace."""
+    """State of the workspace.
+
+    .. deprecated:: 0.11.0
+        Workspace status and deployment have been deprecated and will be removed in
+        future versions to support multiple infrastructure providers. Use
+        `.aws.is_connected()` to check whether AWS is connected.
+    """
 
     Uninitialized = 0
     """Workspace is not yet deployed in cloud environment."""

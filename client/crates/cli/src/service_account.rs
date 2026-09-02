@@ -15,14 +15,14 @@ pub async fn create_service_account(
         .create_workspace_token(workspace.id, WorkSpaceTokenBodyArgs { name, description })
         .await?;
 
-    println!("Service account created successfully.");
-    println!("ID:          {}", token.id);
-    println!("API Client ID:    {}", token.username);
-    println!("API Secret:  {}", token.api_secret);
-    println!("Workspace ID:   {}", token.workspace_id);
-    println!("Created at:  {}", token.created_at);
+    println!("Service account created.");
+    println!("ID:            {}", token.id);
+    println!("API client ID: {}", token.username);
+    println!("API secret:    {}", token.api_secret);
+    println!("Workspace ID:  {}", token.workspace_id);
+    println!("Created at:    {}", token.created_at);
     if let Some(desc) = token.description {
-        println!("Description: {}", desc);
+        println!("Description:   {}", desc);
     }
     println!();
     println!("Store the API secret securely — it will not be shown again.");

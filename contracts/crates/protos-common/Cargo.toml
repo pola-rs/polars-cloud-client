@@ -14,7 +14,6 @@ tonic-prost = { workspace = true }
 uuid = { workspace = true }
 
 [build-dependencies]
-tonic-prost-build = { version = "0.14.3" }
 build-deps = { workspace = true }
 
 [lints]

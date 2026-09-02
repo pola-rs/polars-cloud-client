@@ -3,6 +3,8 @@
 Enables users to interact with workspaces, clusters, and queries on Polars Cloud.
 """
 
+import atexit
+
 from polars_cloud import exceptions
 from polars_cloud._version import __version__
 from polars_cloud.auth import authenticate, login
@@ -18,7 +20,14 @@ from polars_cloud.context import (
 from polars_cloud.organization import (
     Organization,
 )
-from polars_cloud.polars_cloud import ClientOptions, LogLevelModel, TLSOptions, cli_main
+from polars_cloud.polars_cloud import (
+    ClientOptions,
+    LogLevelModel,
+    QueryCloudObserver,
+    TLSOptions,
+    cli_main,
+    flush_traces,
+)
 from polars_cloud.query import (
     CsvDst,
     DirectQuery,
@@ -39,8 +48,10 @@ from polars_cloud.query import (
     spawn_many_blocking,
 )
 from polars_cloud.workspace import (
+    ProviderType,
     Workspace,
     WorkspaceDefaultComputeSpecs,
+    WorkspaceProviderAWS,
     WorkspaceStatus,
 )
 
@@ -59,7 +70,9 @@ __all__ = [
     "LogLevelModel",
     "Organization",
     "ParquetDst",
+    "ProviderType",
     "ProxyQuery",
+    "QueryCloudObserver",
     "QueryDetail",
     "QueryInfo",
     "QueryPlanTiming",
@@ -69,6 +82,7 @@ __all__ = [
     "TLSOptions",
     "Workspace",
     "WorkspaceDefaultComputeSpecs",
+    "WorkspaceProviderAWS",
     "WorkspaceStatus",
     "__version__",
     "authenticate",
@@ -82,3 +96,5 @@ __all__ = [
     "spawn_many",
     "spawn_many_blocking",
 ]
+
+atexit.register(flush_traces)

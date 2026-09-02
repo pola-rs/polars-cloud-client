@@ -8,6 +8,8 @@ repository.workspace = true
 
 [dependencies]
 bytes = { workspace = true }
+futures-core = { workspace = true }
+futures-util = { workspace = true }
 prost = { workspace = true }
 prost-types = { workspace = true }
 protos-common = { workspace = true }

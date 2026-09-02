@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Utc};
+use deprecation_macro::deprecated_since_client;
 #[cfg(feature = "server")]
 use garde::Validate;
 #[cfg(feature = "pyo3")]
@@ -110,6 +111,7 @@ impl Display for WorkspaceStateModel {
     }
 }
 
+#[deprecated_since_client]
 #[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all))]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 #[derive(Clone, Deserialize, Serialize, Debug)]
@@ -122,15 +124,12 @@ pub struct WorkspaceModel {
     pub name: String,
     /// Workspace Description
     pub description: String,
-    /// Which location the workspace is deployed in
+    #[deprecated_since_client("0.11.0")]
     pub deployment: WorkspaceDeploymentModel,
     /// User who owns the Workspace
     pub creator_id: Uuid,
-    /// Status of the workspace
+    #[deprecated_since_client("0.11.0")]
     pub status: WorkspaceStateModel,
-    /// Url to deployed resources for this workspace.
-    /// For AWS this is a direct link to the cloudformation stack
-    pub cloud_resources_url: Option<String>,
     /// The time a cluster can be idle before it will be automatically killed
     pub idle_timeout_mins: i32,
     /// Creation timestamp
@@ -139,4 +138,14 @@ pub struct WorkspaceModel {
     pub updated_at: DateTime<Utc>,
     /// Timestamp of the last update
     pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[derive(Clone, Deserialize, Serialize, Debug)]
+pub struct WorkspaceProvidersModel {
+    /// Whether the workspace has a live AWS connection
+    pub aws: bool,
+    /// Whether an on-prem compute cluster has ever been registered for this workspace
+    pub on_prem: bool,
 }

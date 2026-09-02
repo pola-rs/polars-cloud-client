@@ -2,7 +2,8 @@
 
 use client_core::{ApiError, RUNTIME};
 use polars_axum_models::{
-    DBCPUArchitectureModel, InstanceSpecsModel, WorkspaceClusterDefaultsModel, WorkspaceModel,
+    DBCPUArchitectureModel, InstanceSpecsModel, WorkSpaceArgs, WorkspaceClusterDefaultsModel,
+    WorkspaceModel,
 };
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::{Python, pyclass, pymethods};
@@ -23,6 +24,23 @@ pub struct DefaultComputeSpecs {
 
 #[pymethods]
 impl WrappedAPIClient {
+    /// Create a workspace without attaching any infrastructure provider to it.
+    #[pyo3(signature=(name, organization_id))]
+    pub fn create_workspace(
+        &self,
+        py: Python,
+        name: String,
+        organization_id: Uuid,
+    ) -> Result<WorkspaceModel, ApiError> {
+        py.enter_rust(|| {
+            let params = WorkSpaceArgs {
+                name,
+                organization_id,
+            };
+            RUNTIME.block_on(self.client.create_workspace(params))?
+        })
+    }
+
     #[pyo3(signature=(workspace_id))]
     pub fn get_workspace(
         &self,
@@ -30,6 +48,11 @@ impl WrappedAPIClient {
         workspace_id: Uuid,
     ) -> Result<WorkspaceModel, ApiError> {
         py.enter_rust(|| RUNTIME.block_on(self.client.get_workspace(workspace_id))?)
+    }
+
+    #[pyo3(signature=(workspace_id))]
+    pub fn delete_workspace(&self, py: Python, workspace_id: Uuid) -> Result<(), ApiError> {
+        py.enter_rust(|| RUNTIME.block_on(self.client.delete_workspace(workspace_id))?)
     }
 
     #[pyo3(signature=(workspace_id))]
@@ -68,7 +91,7 @@ impl WrappedAPIClient {
                     cpus,
                     ram_gb,
                     cpu_architectures: cpu_architectures
-                        .unwrap_or(vec![DBCPUArchitectureModel::X86_64]),
+                        .unwrap_or_else(DBCPUArchitectureModel::defaults),
                     multiplier: None,
                 }
             } else {

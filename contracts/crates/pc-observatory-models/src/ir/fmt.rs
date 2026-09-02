@@ -33,7 +33,7 @@ impl Display for IRDisplay<'_> {
         let n_roots = self.data.num_roots;
         let mut visited_caches: HashSet<usize> = HashSet::new();
 
-        let mut stack = FmtStack::new(&self.inputs, n_roots as usize);
+        let mut stack = FmtStack::new(&self.inputs, n_roots);
         let mut f = PrefixWrite::new(f, 2);
         while let Some((item, level)) = stack.pop() {
             macro_rules! write_with_inputs {
@@ -219,6 +219,9 @@ impl Display for IRDisplay<'_> {
                 IRNodeProperties::CallbackSink { .. } => {
                     write!(f, "SINK (Callback)")?;
                 },
+                IRNodeProperties::FlightSink { .. } => {
+                    write!(f, "SINK (Flight)")?;
+                },
                 IRNodeProperties::SinkMultiple { .. } => {
                     write!(f, "SINK_MULTIPLE")?;
                 },
@@ -290,6 +293,7 @@ impl Display for IRDisplay<'_> {
                 IRNodeProperties::Union {
                     maintain_order,
                     slice,
+                    ..
                 } => {
                     let name = fmt::from_fn(|f| {
                         if let Some(slice) = slice {
@@ -407,7 +411,7 @@ impl Display for IRDisplay<'_> {
                         "SHUFFLE WRITE ({shuffle_number}) [partitioning: {partitioning}]"
                     )?;
                 },
-                IRNodeProperties::UnoptimizedDispatch { operation } => {
+                IRNodeProperties::UnoptimizedDispatch { operation, .. } => {
                     write!(f, "UNOPTIMIZED DISPATCH TO {operation}")?;
                 },
             }
@@ -420,7 +424,7 @@ impl Display for IRDisplay<'_> {
 impl Display for PartitioningModel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::RoundRobin => f.write_str("RoundRobin"),
+            Self::Partitioned => f.write_str("Partitioned"),
             Self::Local => f.write_str("Local"),
             Self::Single => f.write_str("Single"),
             Self::Broadcast => f.write_str("Broadcast"),
@@ -456,7 +460,7 @@ impl Display for DisplayExprs<'_> {
 fn fmt_scan(
     f: &mut PrefixWrite<'_, fmt::Formatter<'_>>,
     scan_type: &str,
-    sources: Option<(u64, Option<&str>)>,
+    sources: Option<(usize, Option<&str>)>,
     file_columns: Option<&[String]>,
     projection: Option<&[String]>,
     row_index: Option<(&str, Option<u64>)>,
