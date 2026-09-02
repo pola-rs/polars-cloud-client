@@ -22,10 +22,12 @@ polars-axum-models = { workspace = true }
 pyo3 = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["blocking"] }
 reqwest-middleware = { workspace = true }
+reqwest-otel = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }
 uuid = { workspace = true }
 
 [features]

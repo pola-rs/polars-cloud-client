@@ -17,6 +17,7 @@ mod user;
 pub mod workspace;
 mod workspace_cluster_defaults;
 mod workspace_member;
+mod workspace_onboarding;
 mod workspace_token;
 
 pub use aws::*;
@@ -33,12 +34,15 @@ pub use organization_invite::*;
 pub use organization_member::*;
 pub use paginate::*;
 pub use query::*;
+use serde::Deserialize;
+use serde::de::IntoDeserializer;
 pub use termination::*;
 pub use user::*;
 pub use version_number::VersionNumber;
 pub use workspace::*;
 pub use workspace_cluster_defaults::*;
 pub use workspace_member::*;
+pub use workspace_onboarding::*;
 pub use workspace_token::*;
 
 /// De/Serialize an [`Option`]`<String>`, transforming the empty string to/from [`None`].
@@ -59,5 +63,21 @@ mod string_empty_as_none {
         S: Serializer,
     {
         serializer.serialize_str(option.as_deref().unwrap_or(""))
+    }
+}
+
+pub fn csv_vec_opt<'de, D, T>(deserializer: D) -> Result<Option<Vec<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    if let Some(s) = Option::<String>::deserialize(deserializer)? {
+        Ok(Some(
+            s.split(',')
+                .map(|item| T::deserialize(item.into_deserializer()))
+                .collect::<Result<Vec<_>, _>>()?,
+        ))
+    } else {
+        Ok(None)
     }
 }

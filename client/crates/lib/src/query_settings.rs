@@ -1,16 +1,20 @@
 use std::num::NonZeroU32;
+use std::time::Duration;
 
 use protos_client_compute::client::{
     DistributedOpts, Engine, GraphFormat, LineageContext, NumWorkers, Planner, QuerySettings,
     QueryType, ShuffleCompression, ShuffleCompressionAlgo, ShuffleFormat, ShuffleOpts,
     SingleWorkerOps,
 };
+use protos_client_compute::proto::polars_cloud::compute_plane::client::v1::query_settings::{
+    FlightSinkOptions, SinkOptions,
+};
 use pyo3::exceptions::PyValueError;
 use pyo3::{PyResult, pyclass, pymethods};
 use uuid::Uuid;
 
 #[pyclass(from_py_object)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum PyEngine {
     Auto,
     InMemory,
@@ -155,6 +159,29 @@ impl PyNumWorkers {
 
 #[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
+pub enum PySinkOptions {
+    Flight {
+        ttl: Option<Duration>,
+        maintain_order: Option<bool>,
+    },
+}
+
+impl From<PySinkOptions> for SinkOptions {
+    fn from(value: PySinkOptions) -> Self {
+        match value {
+            PySinkOptions::Flight {
+                ttl,
+                maintain_order,
+            } => Self::Flight(FlightSinkOptions {
+                ttl: ttl.and_then(|v| v.try_into().ok()),
+                maintain_order,
+            }),
+        }
+    }
+}
+
+#[pyclass(from_py_object)]
+#[derive(Debug, Clone)]
 pub struct PyQuerySettings {
     pub engine: PyEngine,
     pub query_type: PyQueryType,
@@ -164,6 +191,7 @@ pub struct PyQuerySettings {
     pub n_retries: u32,
     pub n_workers: Option<PyNumWorkers>,
     pub optimization_flags: Option<u32>,
+    pub sink_options: Option<PySinkOptions>,
 }
 
 impl From<PyQuerySettings> for QuerySettings {
@@ -181,6 +209,7 @@ impl From<PyQuerySettings> for QuerySettings {
                 .n_workers
                 .map(|PyNumWorkers { min, max }| NumWorkers { min, max }),
             optimization_flags: value.optimization_flags,
+            sink_options: value.sink_options.map(Into::into),
         }
     }
 }

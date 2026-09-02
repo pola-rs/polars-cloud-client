@@ -8,13 +8,12 @@ use garde::Validate;
 use pyo3::{PyResult, exceptions::PyValueError, pyclass};
 #[cfg(feature = "server")]
 use schemars::JsonSchema;
-use serde::de::IntoDeserializer;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use version_number::VersionNumber;
 
 use crate::termination::TerminationModel;
-use crate::{DefaultSortDirection, EntityOrdering, InstanceSpecsModel};
+use crate::{DefaultSortDirection, EntityOrdering, InstanceSpecsModel, csv_vec_opt};
 
 #[derive(Default, Clone, Deserialize, Serialize, Debug, PartialEq)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
@@ -224,6 +223,13 @@ pub enum DBCPUArchitectureModel {
     Arm64,
 }
 
+impl DBCPUArchitectureModel {
+    /// The default cpu_architecture for compute
+    pub fn defaults() -> Vec<Self> {
+        vec![Self::X86_64]
+    }
+}
+
 #[cfg_attr(feature = "pyo3", pyo3::pymethods)]
 #[cfg(feature = "pyo3")]
 impl DBCPUArchitectureModel {
@@ -279,20 +285,12 @@ impl DBClusterModeModel {
     }
 }
 
-fn csv_vec_opt<'de, D, T>(deserializer: D) -> Result<Option<Vec<T>>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    if let Some(s) = Option::<String>::deserialize(deserializer)? {
-        Ok(Some(
-            s.split(',')
-                .map(|item| T::deserialize(item.into_deserializer()))
-                .collect::<Result<Vec<_>, _>>()?,
-        ))
-    } else {
-        Ok(None)
-    }
+/// Where a cluster's compute runs.
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum ClusterDeploymentModel {
+    Aws,
+    OnPrem,
 }
 
 #[derive(Deserialize, Default, Serialize, Debug)]
@@ -302,6 +300,9 @@ pub struct GetClusterFilterArgs {
     #[serde(default)]
     #[serde(deserialize_with = "csv_vec_opt")]
     pub status: Option<Vec<ComputeStatusModel>>,
+    /// Filters out any clusters that do not run on the given deployment.
+    #[serde(default)]
+    pub deployment_type: Option<ClusterDeploymentModel>,
     #[serde(default)]
     pub current_user_only: bool,
 }
@@ -348,6 +349,7 @@ pub struct ComputeModel {
     pub log_level: LogLevelModel,
     pub tunnel_addr: Option<String>,
     pub cluster_id: Option<String>,
+    pub label_ids: Option<Vec<Uuid>>,
 }
 
 impl EntityOrdering for ComputeModel {

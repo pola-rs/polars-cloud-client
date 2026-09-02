@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 import polars_cloud
 import polars_cloud.polars_cloud as pcr
 from polars_cloud import constants
+from polars_cloud._tracing import traced
 from polars_cloud.context.compute_connect_select import select_compute_cluster
 from polars_cloud.context.compute_status import ComputeContextStatus
 from polars_cloud.polars_cloud import (
@@ -20,7 +21,7 @@ from polars_cloud.polars_cloud import (
     ComputeClusterMisspecified,
     TLSOptions,
 )
-from polars_cloud.workspace import Workspace, WorkspaceStatus
+from polars_cloud.workspace import Workspace
 
 logger = logging.getLogger(__name__)
 
@@ -322,6 +323,7 @@ class ComputeContext(ClientContext, ContextDecorator):
 
     """
 
+    @traced
     def __init__(
         self,
         *,
@@ -562,6 +564,7 @@ class ComputeContext(ClientContext, ContextDecorator):
 
         self._name = None
 
+    @traced
     def start(self, *, wait: bool = False) -> None:
         """Start the compute context.
 
@@ -621,6 +624,7 @@ class ComputeContext(ClientContext, ContextDecorator):
         if wait:
             _poll_compute_status_until_started(self)
 
+    @traced
     def stop(self, *, wait: Any = _deprecation_sentinel) -> None:
         """Stop the compute context.
 
@@ -733,16 +737,7 @@ class ComputeContext(ClientContext, ContextDecorator):
         ...     workspace="WorkspaceName",
         ... )
         """
-        if workspace:
-            workspace = Workspace._parse(workspace)
-            if workspace.status != WorkspaceStatus.Active:
-                msg = "`connect your workspace with your cloud first before connecting to compute contexts.`"
-                raise ComputeClusterMisspecified(msg)
-            workspaces = [workspace]
-        else:
-            workspaces = [
-                w for w in Workspace.list() if w.status == WorkspaceStatus.Active
-            ]
+        workspaces = [Workspace._parse(workspace)] if workspace else Workspace.list()
         contexts = [
             (w, context)
             for w in workspaces
@@ -936,6 +931,7 @@ def show_versions(
     context.show_versions()
 
 
+@traced
 def _poll_compute_status_until_started(
     compute: ComputeContext,
     start_delay: int = 30,

@@ -1,13 +1,14 @@
-use std::time::Duration;
+use std::collections::HashMap;
 
 use anyhow::anyhow;
 use client_core::{ApiResult, Client};
 use comfy_table::Table;
 use comfy_table::presets::NOTHING;
-use polars_axum_models::{WorkspaceDeploymentModel, WorkspaceModel, WorkspaceStateModel};
+use polars_axum_models::{WorkSpaceArgs, WorkspaceModel};
 use uuid::Uuid;
 
-use crate::organization::get_organization_by_name;
+use crate::organization::{get_all_organizations, get_organization_by_name, resolve_organization};
+use crate::workspace_aws;
 
 pub async fn get_all_workspaces(
     client: &Client,
@@ -49,101 +50,100 @@ pub async fn get_workspace_by_name(
     Ok(workspace)
 }
 
-pub async fn wait_until_active(
-    client: &Client,
-    mut workspace: WorkspaceModel,
-    interval_secs: u64,
-    timeout_secs: u64,
-) -> ApiResult<bool> {
-    let max_polls = (timeout_secs / interval_secs) + 1;
-
-    tracing::debug!("polling workspace details endpoint");
-
-    for _ in 0..max_polls {
-        let prev_status = workspace.status.clone();
-
-        // Assuming load() updates self by calling the API
-        workspace = client.get_workspace(workspace.id).await?;
-        tracing::debug!(status = ?workspace.status, "current workspace status");
-
-        match workspace.status {
-            WorkspaceStateModel::Active => {
-                tracing::info!("workspace successfully verified");
-                return Ok(true);
-            },
-            WorkspaceStateModel::Deleted => {
-                tracing::info!(status = ?workspace.status, "workspace verification failed");
-                return Ok(false);
-            },
-            _ => {},
-        }
-
-        if workspace.status != prev_status {
-            match workspace.status {
-                WorkspaceStateModel::Pending => {
-                    tracing::info!("workspace stack is being deployed");
-                },
-                WorkspaceStateModel::Failed => {
-                    let msg = format!(
-                        "Deploying the workspace failed. Check the status in AWS CloudFormation: {}",
-                        workspace.cloud_resources_url.unwrap_or("N/A".into())
-                    );
-                    tracing::debug!("{msg}");
-                    return Err(anyhow!(msg).into());
-                },
-                _ => {},
-            }
-        }
-
-        tokio::time::sleep(Duration::from_secs(interval_secs)).await;
-    }
-
-    let base_msg = if workspace.status == WorkspaceStateModel::Failed {
-        "Workspace verification has timed out or we failed to detect a status change."
-    } else {
-        "Workspace verification has timed out."
-    };
-
-    let mut msg = format!(
-        "{base_msg} Check the status of the deployment in your AWS CloudFormation dashboard",
-    );
-
-    if let Some(ref url) = workspace.cloud_resources_url
-        && !url.is_empty()
-    {
-        msg.push_str(&format!(" or by following this link: {url}"));
-    }
-
-    tracing::debug!("{msg}");
-    Err(anyhow!(msg).into())
-}
-
-pub async fn verify_workspace(
+/// Create a workspace without attaching any infrastructure to it.
+pub async fn create_workspace(
     client: &Client,
     organization_name: Option<String>,
     workspace_name: String,
-    interval_secs: Option<u64>,
-    timeout: Option<u64>,
+    connect_aws: bool,
+    verify: bool,
 ) -> ApiResult<()> {
-    let workspace = get_workspace_by_name(client, organization_name, workspace_name).await?;
-    wait_until_active(
-        client,
-        workspace,
-        interval_secs.unwrap_or(2),
-        timeout.unwrap_or(300),
-    )
-    .await?;
+    let organization = resolve_organization(client, organization_name).await?;
+
+    tracing::debug!("creating workspace");
+    let workspace = client
+        .create_workspace(WorkSpaceArgs {
+            organization_id: organization.id,
+            name: workspace_name,
+        })
+        .await?;
+
+    println!("Created workspace {}.", workspace.name);
+
+    if connect_aws {
+        workspace_aws::connect_by_id(client, workspace.id, verify).await?;
+    } else {
+        println!(
+            "Run `pc workspace aws connect -w {}` to connect an AWS account to it.",
+            workspace.name
+        );
+    }
+
     Ok(())
 }
 
-pub async fn print_workspaces(client: &Client) -> ApiResult<()> {
+pub async fn delete_workspace(
+    client: &Client,
+    organization_name: Option<String>,
+    workspace_name: String,
+) -> ApiResult<()> {
+    let workspace = get_workspace_by_name(client, organization_name, workspace_name).await?;
+
+    workspace_aws::ensure_deletable(client, workspace.id).await?;
+
+    client
+        .delete_workspace(workspace.id)
+        .await
+        .map_err(workspace_aws::explain_delete_conflict)?;
+
+    println!("Deleted workspace {}.", workspace.name);
+
+    Ok(())
+}
+
+pub async fn print_workspaces(client: &Client, organization_name: Option<String>) -> ApiResult<()> {
+    let organization = match organization_name {
+        Some(name) => match get_organization_by_name(client, name.clone()).await? {
+            Some(organization) => Some(organization),
+            None => return Err(anyhow!("No organization with the name {name} was found").into()),
+        },
+        None => None,
+    };
+
+    let (organizations, workspaces) = tokio::try_join!(
+        get_all_organizations(client, None),
+        get_all_workspaces(client, None, organization.as_ref().map(|o| o.id)),
+    )?;
+    let organizations: HashMap<Uuid, String> = organizations
+        .into_iter()
+        .map(|org| (org.id, org.name))
+        .collect();
+
+    if workspaces.is_empty() {
+        match &organization {
+            Some(organization) => println!(
+                "Organization {} has no workspaces yet. Run `pc workspace create -o {} -w <name>` \
+                 to create one.",
+                organization.name, organization.name
+            ),
+            None => println!(
+                "No workspaces yet. Run `pc workspace create -o <org> -w <name>` to create one."
+            ),
+        }
+        return Ok(());
+    }
+
     let mut table = Table::new();
     table
         .load_preset(NOTHING)
-        .set_header(vec!["NAME", "ID", "STATUS"]);
+        .set_header(vec!["NAME", "ID", "ORGANIZATION"]);
 
-    for ws in get_all_workspaces(client, None, None).await? {
-        table.add_row(vec![ws.name, ws.id.to_string(), ws.status.to_string()]);
+    for ws in workspaces {
+        let organization = organizations
+            .get(&ws.organization_id)
+            .cloned()
+            .unwrap_or_else(|| ws.organization_id.to_string());
+        table.add_row(vec![ws.name, ws.id.to_string(), organization]);
     }
 
     println!("{table}");
@@ -157,26 +157,233 @@ pub async fn print_workspace_details(
     workspace_name: String,
 ) -> ApiResult<()> {
     let workspace = get_workspace_by_name(client, organization_name, workspace_name).await?;
-    println!("{:#?}", workspace);
+    let aws_connected = workspace_aws::is_connected(client, workspace.id).await?;
+
+    let mut table = Table::new();
+    table.load_preset(NOTHING);
+    table.add_row(vec!["Name", &workspace.name]);
+    table.add_row(vec!["ID", &workspace.id.to_string()]);
+    table.add_row(vec!["Description", &workspace.description]);
+    table.add_row(vec![
+        "Organization ID",
+        &workspace.organization_id.to_string(),
+    ]);
+    table.add_row(vec![
+        "AWS connected",
+        if aws_connected { "yes" } else { "no" },
+    ]);
+    table.add_row(vec![
+        "Idle timeout (mins)",
+        &workspace.idle_timeout_mins.to_string(),
+    ]);
+    table.add_row(vec!["Created at", &workspace.created_at.to_string()]);
+
+    println!("{table}");
 
     Ok(())
 }
 
-pub async fn delete_workspace(
-    client: &Client,
-    organization_name: Option<String>,
-    workspace_name: String,
-) -> ApiResult<()> {
-    let workspace = get_workspace_by_name(client, organization_name, workspace_name).await?;
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
 
-    match workspace.deployment {
-        WorkspaceDeploymentModel::Aws => {
-            client.delete_aws_workspace(workspace.id).await?;
-        },
-        WorkspaceDeploymentModel::OnPrem => {
-            client.delete_on_prem_workspace(workspace.id).await?;
-        },
+    use client_core::MockControlPlaneClient;
+    use polars_axum_models::AwsConnectionStatusModel;
+    use reqwest::StatusCode;
+
+    use super::*;
+    use crate::test_fixtures::{
+        aws_connection, organization, setup_url, status_error, workspace as workspace_fixture,
+    };
+
+    #[tokio::test]
+    async fn delete_refuses_while_the_stack_is_still_being_created() {
+        let mut mock = MockControlPlaneClient::new();
+        mock.expect_get_workspaces()
+            .returning(|_, _| Ok(vec![workspace_fixture("ws", Uuid::now_v7())]));
+        mock.expect_get_aws_connection()
+            .returning(|id| Ok(aws_connection(id, AwsConnectionStatusModel::Pending)));
+        mock.expect_delete_workspace().never();
+        let client: Client = Arc::new(mock);
+
+        let error = delete_workspace(&client, None, "ws".into())
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("still setting up"));
     }
 
-    Ok(())
+    #[tokio::test]
+    async fn delete_points_at_disconnect_when_aws_is_still_attached() {
+        let mut mock = MockControlPlaneClient::new();
+        mock.expect_get_workspaces()
+            .returning(|_, _| Ok(vec![workspace_fixture("ws", Uuid::now_v7())]));
+        mock.expect_get_aws_connection()
+            .returning(|id| Ok(aws_connection(id, AwsConnectionStatusModel::Completed)));
+        mock.expect_delete_workspace()
+            .returning(|_| Err(status_error(StatusCode::BAD_REQUEST)));
+        let client: Client = Arc::new(mock);
+
+        let error = delete_workspace(&client, None, "ws".into())
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("pc workspace aws disconnect"));
+    }
+
+    #[tokio::test]
+    async fn delete_succeeds_when_no_aws_is_involved() {
+        let mut mock = MockControlPlaneClient::new();
+        mock.expect_get_workspaces()
+            .returning(|_, _| Ok(vec![workspace_fixture("ws", Uuid::now_v7())]));
+        mock.expect_get_aws_connection()
+            .returning(|_| Err(status_error(StatusCode::NOT_FOUND)));
+        mock.expect_delete_workspace()
+            .times(1)
+            .returning(|_| Ok(()));
+        let client: Client = Arc::new(mock);
+
+        delete_workspace(&client, None, "ws".into()).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn create_reuses_an_existing_organization() {
+        let mut mock = MockControlPlaneClient::new();
+        mock.expect_get_organizations()
+            .returning(|_| Ok(vec![organization("org")]));
+        mock.expect_create_organization().never();
+        mock.expect_create_workspace()
+            .times(1)
+            .returning(|params| Ok(workspace_fixture("ws", params.organization_id)));
+        let client: Client = Arc::new(mock);
+
+        create_workspace(&client, Some("org".into()), "ws".into(), false, true)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn create_rejects_an_organization_that_does_not_exist() {
+        let mut mock = MockControlPlaneClient::new();
+        mock.expect_get_organizations().returning(|_| Ok(vec![]));
+        mock.expect_create_organization().never();
+        mock.expect_create_workspace().never();
+        let client: Client = Arc::new(mock);
+
+        let error = create_workspace(&client, Some("org".into()), "ws".into(), false, true)
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("pc organization setup --name org")
+        );
+    }
+
+    #[tokio::test]
+    async fn create_uses_the_only_organization_when_none_is_named() {
+        let mut mock = MockControlPlaneClient::new();
+        mock.expect_get_organizations()
+            .returning(|_| Ok(vec![organization("org")]));
+        mock.expect_create_organization().never();
+        mock.expect_create_workspace()
+            .times(1)
+            .returning(|params| Ok(workspace_fixture("ws", params.organization_id)));
+        let client: Client = Arc::new(mock);
+
+        create_workspace(&client, None, "ws".into(), false, true)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn create_asks_which_organization_when_there_are_several() {
+        let mut mock = MockControlPlaneClient::new();
+        mock.expect_get_organizations()
+            .returning(|_| Ok(vec![organization("one"), organization("two")]));
+        mock.expect_create_workspace().never();
+        let client: Client = Arc::new(mock);
+
+        let error = create_workspace(&client, None, "ws".into(), false, true)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("one, two"));
+    }
+
+    #[tokio::test]
+    async fn create_points_at_organization_setup_when_there_are_none() {
+        let mut mock = MockControlPlaneClient::new();
+        mock.expect_get_organizations().returning(|_| Ok(vec![]));
+        mock.expect_create_organization().never();
+        mock.expect_create_workspace().never();
+        let client: Client = Arc::new(mock);
+
+        let error = create_workspace(&client, None, "ws".into(), false, true)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("pc organization setup"));
+    }
+
+    #[tokio::test]
+    async fn create_only_touches_aws_when_asked_to() {
+        let mut mock = MockControlPlaneClient::new();
+        mock.expect_get_organizations()
+            .returning(|_| Ok(vec![organization("org")]));
+        mock.expect_create_workspace()
+            .returning(|params| Ok(workspace_fixture("ws", params.organization_id)));
+        mock.expect_get_aws_workspace_setup_url().never();
+        let client: Client = Arc::new(mock);
+
+        create_workspace(&client, Some("org".into()), "ws".into(), false, false)
+            .await
+            .unwrap();
+
+        let mut mock = MockControlPlaneClient::new();
+        mock.expect_get_organizations()
+            .returning(|_| Ok(vec![organization("org")]));
+        mock.expect_create_workspace()
+            .returning(|params| Ok(workspace_fixture("ws", params.organization_id)));
+        mock.expect_get_aws_workspace_setup_url()
+            .times(1)
+            .returning(|_| Ok(setup_url()));
+        let client: Client = Arc::new(mock);
+
+        create_workspace(&client, Some("org".into()), "ws".into(), true, false)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn list_only_asks_for_the_named_organization() {
+        let wanted = organization("wanted");
+        let wanted_id = wanted.id;
+        let mut mock = MockControlPlaneClient::new();
+        mock.expect_get_organizations()
+            .returning(move |_| Ok(vec![wanted.clone(), organization("other")]));
+        mock.expect_get_workspaces()
+            .withf(move |_, organization_id| *organization_id == Some(wanted_id))
+            .times(1)
+            .returning(|_, id| Ok(vec![workspace_fixture("ws", id.unwrap())]));
+        let client: Client = Arc::new(mock);
+
+        print_workspaces(&client, Some("wanted".into()))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn list_rejects_an_organization_that_does_not_exist() {
+        let mut mock = MockControlPlaneClient::new();
+        mock.expect_get_organizations()
+            .returning(|_| Ok(vec![organization("other")]));
+        mock.expect_get_workspaces().never();
+        let client: Client = Arc::new(mock);
+
+        let error = print_workspaces(&client, Some("missing".into()))
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("No organization with the name missing")
+        );
+    }
 }

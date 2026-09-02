@@ -1,0 +1,19 @@
+[package]
+name = "polars-descriptions-lib"
+edition.workspace = true
+license = "LicenseRef-Polars-Custom"
+publish.workspace = true
+
+# Reexported to make the revision management and patching with local polars easier.
+
+# To use a local clone of polars, change the patch section in "compute-plane/Cargo.toml"
+
+[dependencies]
+polars-descriptions = { git = "https://github.com/pola-rs/polars", rev = "e4ae5ead7c645d1eb01beebf53a3a0872734575e" }
+
+[lints]
+workspace = true
+
+[lib]
+test = false
+doctest = false

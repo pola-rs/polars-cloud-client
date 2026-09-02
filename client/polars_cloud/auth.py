@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from polars_cloud import constants
+from polars_cloud._tracing import traced
 
 
+@traced
 def authenticate(
     *,
     client_id: str | None = None,
@@ -39,6 +41,7 @@ def authenticate(
     constants.API_CLIENT.authenticate(client_id, client_secret, interactive)
 
 
+@traced
 def login() -> None:
     """Login interactively to Polars Cloud.
 

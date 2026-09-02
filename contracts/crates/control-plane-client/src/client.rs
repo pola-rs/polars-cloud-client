@@ -10,6 +10,7 @@ use polars_axum_models::*;
 use pyo3::pyclass;
 use reqwest::redirect;
 use reqwest_middleware::ClientBuilder;
+use reqwest_otel::TracingMiddleware;
 use uuid::Uuid;
 
 use crate::builder::ApiRequestBuilder;
@@ -42,6 +43,7 @@ impl Versions {
 pub struct ApiClientBuilder {
     builder: reqwest::ClientBuilder,
     retry_middleware: Option<RetryTransientMiddleware>,
+    telemetry_middleware: Option<TracingMiddleware>,
 }
 
 impl Default for ApiClientBuilder {
@@ -53,6 +55,7 @@ impl Default for ApiClientBuilder {
                 .user_agent(user_agent(None))
                 .http2_keep_alive_timeout(Duration::from_secs(15)),
             retry_middleware: None,
+            telemetry_middleware: Some(TracingMiddleware::new().propagate()),
         }
     }
 }
@@ -86,10 +89,12 @@ impl ApiClientBuilder {
     }
 
     pub fn with_retries(mut self) -> Self {
-        self.retry_middleware = Some(RetryTransientMiddleware {
-            max_retries: 4,
-            wait_period: Duration::from_secs(1),
-        });
+        self.retry_middleware = Some(RetryTransientMiddleware::new(4, Duration::from_secs(1)));
+        self
+    }
+
+    pub fn with_telemetry(mut self, telemetry: TracingMiddleware) -> Self {
+        self.telemetry_middleware = Some(telemetry);
         self
     }
 
@@ -97,6 +102,9 @@ impl ApiClientBuilder {
         let mut client_builder = ClientBuilder::new(self.builder.build().unwrap());
         if let Some(retry) = self.retry_middleware {
             client_builder = client_builder.with(retry);
+        }
+        if let Some(telemetry) = self.telemetry_middleware {
+            client_builder = client_builder.with(telemetry);
         }
 
         ApiClient {
@@ -186,27 +194,27 @@ impl ApiClient {
         )
     }
 
-    pub async fn create_on_prem_workspace(&self, params: WorkSpaceArgs) -> Result<WorkspaceModel> {
-        self.post("/api/v1/workspace/on-prem")
-            .json(params)
-            .await?
-            .json()
-            .await
-    }
-
-    pub async fn delete_on_prem_workspace(&self, workspace_id: Uuid) -> Result<()> {
-        self.delete(&format!("/api/v1/workspace/on-prem/{workspace_id}"))
-            .await?
-            .empty()
-            .await
-    }
-
     pub async fn register_compute(
         &self,
         workspace_id: Uuid,
         params: RegisterComputeClusterArgs,
     ) -> Result<ComputeTokenModel> {
         self.post(&format!("/api/v1/workspace/on-prem/{workspace_id}/compute"))
+            .json(params)
+            .await?
+            .json()
+            .await
+    }
+
+    pub async fn create_workspace(&self, params: WorkSpaceArgs) -> Result<WorkspaceModel> {
+        self.post("/api/v1/workspace")
+            .json(params)
+            .await?
+            .json()
+            .await
+    }
+    pub async fn create_on_prem_workspace(&self, params: WorkSpaceArgs) -> Result<WorkspaceModel> {
+        self.post("/api/v1/workspace/on-prem")
             .json(params)
             .await?
             .json()
@@ -224,12 +232,19 @@ impl ApiClient {
             .await
     }
 
-    pub async fn delete_aws_workspace(
+    pub async fn delete_on_prem_workspace(&self, workspace_id: Uuid) -> Result<()> {
+        self.delete(&format!("/api/v1/workspace/on-prem/{workspace_id}"))
+            .await?
+            .empty()
+            .await
+    }
+
+    pub async fn delete_workspace(
         &self,
         workspace_id: Uuid,
     ) -> Result<Option<DeleteWorkspaceModel>> {
         let response = self
-            .delete(&format!("/api/v1/workspace/aws/{workspace_id}"))
+            .delete(&format!("/api/v1/workspace/{workspace_id}"))
             .await?
             .response()?;
 
@@ -245,6 +260,36 @@ impl ApiClient {
         workspace_id: Uuid,
     ) -> Result<WorkspaceSetupUrlModel> {
         self.get(&format!("/api/v1/workspace/aws/{workspace_id}/setup-url"))
+            .await?
+            .json()
+            .await
+    }
+
+    pub async fn get_aws_workspace_stack(
+        &self,
+        workspace_id: Uuid,
+    ) -> Result<WorkspaceAwsStackModel> {
+        self.get(&format!("/api/v1/workspace/aws/{workspace_id}/stack"))
+            .await?
+            .json()
+            .await
+    }
+
+    pub async fn get_aws_connection(
+        &self,
+        workspace_id: Uuid,
+    ) -> Result<WorkspaceAwsConnectionModel> {
+        self.get(&format!("/api/v1/workspace/{workspace_id}/aws"))
+            .await?
+            .json()
+            .await
+    }
+
+    pub async fn delete_workspace_aws_connection(
+        &self,
+        workspace_id: Uuid,
+    ) -> Result<DeleteWorkspaceModel> {
+        self.delete(&format!("/api/v1/workspace/{workspace_id}/aws"))
             .await?
             .json()
             .await
@@ -623,11 +668,13 @@ impl ApiClient {
         organization_id: Uuid,
         params: &BillingSubscribeModel,
     ) -> Result<()> {
-        self.post(&format!("/api/v1/organization/{organization_id}/billing"))
-            .json(params)
-            .await?
-            .empty()
-            .await
+        self.post(&format!(
+            "/api/v1/organization/{organization_id}/billing/aws/setup"
+        ))
+        .json(params)
+        .await?
+        .empty()
+        .await
     }
 
     pub async fn get_organization_billing_details(
@@ -775,7 +822,7 @@ impl ApiClient {
         workspace_id: Uuid,
         filters: GetQueryArgs,
         pagination: Pagination,
-    ) -> Result<Paginated<QueryModel>> {
+    ) -> Result<Paginated<QueryWithStateTimingModel>> {
         self.get(&format!("/api/v1/workspace/{workspace_id}/query"))
             .pagination(&pagination)
             .parameter("order", "id,asc")
@@ -839,6 +886,51 @@ impl ApiClient {
         self.post(&format!(
             "/api/v1/workspace/{workspace_id}/query/{query_id}/cancel"
         ))
+        .await?
+        .empty()
+        .await
+    }
+
+    pub async fn observe_query_started(
+        &self,
+        workspace_id: Uuid,
+        query_id: Uuid,
+        args: QueryStartedArgs,
+    ) -> Result<()> {
+        self.post(&format!(
+            "/api/v1/workspace/{workspace_id}/query/{query_id}/started"
+        ))
+        .json(args)
+        .await?
+        .empty()
+        .await
+    }
+
+    pub async fn observe_query_update(
+        &self,
+        workspace_id: Uuid,
+        query_id: Uuid,
+        update: QueryUpdateArgs,
+    ) -> Result<()> {
+        self.put(&format!(
+            "/api/v1/workspace/{workspace_id}/query/{query_id}"
+        ))
+        .json(update)
+        .await?
+        .empty()
+        .await
+    }
+
+    pub async fn observe_query_failed(
+        &self,
+        workspace_id: Uuid,
+        query_id: Uuid,
+        failure: QueryFailedArgs,
+    ) -> Result<()> {
+        self.post(&format!(
+            "/api/v1/workspace/{workspace_id}/query/{query_id}/failed"
+        ))
+        .json(failure)
         .await?
         .empty()
         .await
@@ -1000,6 +1092,16 @@ impl ApiClient {
 
     pub async fn get_workspace(&self, workspace_id: Uuid) -> Result<WorkspaceModel> {
         self.get(&format!("/api/v1/workspace/{workspace_id}"))
+            .await?
+            .json()
+            .await
+    }
+
+    pub async fn get_workspace_providers(
+        &self,
+        workspace_id: Uuid,
+    ) -> Result<WorkspaceProvidersModel> {
+        self.get(&format!("/api/v1/workspace/{workspace_id}/providers"))
             .await?
             .json()
             .await

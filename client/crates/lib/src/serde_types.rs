@@ -2,10 +2,12 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 use std::ops::Deref;
 use std::str::FromStr;
+use std::time::Duration;
 
 use client_core::{ApiError, ApiResult};
 use pc_observatory_models::QueryDetailModel;
-use protos_client_compute::client::{ComputeQueryInfo, StageStatistics};
+use polars_axum_models::QueryStatusCodeModel;
+use protos_client_compute::client::{ComputeQueryInfo, QueryStatus, StageStatistics};
 use protos_client_compute::tonic::body::Body;
 use protos_client_compute::tonic::codegen::http;
 use protos_client_compute::tonic::codegen::http::header::{
@@ -24,7 +26,7 @@ use tower_http::set_header::HeaderMetadata;
 
 use crate::query_settings::{
     PyEngine, PyNumWorkers, PyPlanner, PyQuerySettings, PyQueryType, PyShuffleOpts,
-    PySingleWorkerOps,
+    PySingleWorkerOps, PySinkOptions,
 };
 
 pub struct DistributedSettings {
@@ -80,7 +82,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for DistributedSettings {
 #[allow(clippy::needless_lifetimes)]
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature=(*, engine, plan_dot, shuffle_opts, n_retries, n_workers, distributed_settings, optimization_flags))]
+#[pyo3(signature=(*, engine, plan_dot, shuffle_opts, n_retries, n_workers, distributed_settings, optimization_flags, flight_ttl, flight_maintain_order))]
 pub fn serialize_query_settings(
     engine: &str,
     plan_dot: bool,
@@ -89,6 +91,8 @@ pub fn serialize_query_settings(
     n_workers: Option<PyNumWorkers>,
     distributed_settings: Option<DistributedSettings>,
     optimization_flags: Option<u32>,
+    flight_ttl: Option<Duration>,
+    flight_maintain_order: Option<bool>,
 ) -> PyResult<PyQuerySettings> {
     let query_type = match distributed_settings {
         None => PyQueryType::Single(),
@@ -115,6 +119,14 @@ pub fn serialize_query_settings(
             return Err(PyValueError::new_err(msg));
         },
     };
+    let sink_options = if flight_ttl.is_some() || flight_maintain_order.is_some() {
+        Some(PySinkOptions::Flight {
+            ttl: flight_ttl,
+            maintain_order: flight_maintain_order,
+        })
+    } else {
+        None
+    };
 
     let settings = PyQuerySettings {
         engine,
@@ -123,6 +135,7 @@ pub fn serialize_query_settings(
         query_type,
         optimization_flags,
         n_workers,
+        sink_options,
     };
 
     Ok(settings)
@@ -162,7 +175,10 @@ pub struct QueryInfoPy {
     pub phys_plan_dot: Option<String>,
     #[pyo3(get)]
     pub stages_stats: Option<BTreeMap<u32, StageStatsPy>>,
+    #[pyo3(get)]
+    pub status: Option<QueryStatusCodeModel>,
 }
+
 #[pymethods]
 impl QueryInfoPy {
     #[getter]
@@ -186,10 +202,22 @@ impl From<&StageStatistics> for StageStatsPy {
     }
 }
 
+pub(crate) fn query_status_to_code(status: QueryStatus) -> Option<QueryStatusCodeModel> {
+    match status {
+        QueryStatus::Unspecified => None,
+        QueryStatus::Scheduled => Some(QueryStatusCodeModel::Scheduled),
+        QueryStatus::Planning | QueryStatus::Running => Some(QueryStatusCodeModel::InProgress),
+        QueryStatus::Success => Some(QueryStatusCodeModel::Success),
+        QueryStatus::Failed => Some(QueryStatusCodeModel::Failed),
+        QueryStatus::Canceled => Some(QueryStatusCodeModel::Canceled),
+    }
+}
+
 pub(crate) fn query_result_to_py(
     py: Python,
     query_info: QueryResult,
     mut compute_info: Option<ComputeQueryInfo>,
+    query_status: Option<QueryStatus>,
 ) -> QueryInfoPy {
     let file_type = match query_info.output {
         Some(QueryOutput { file_type, .. }) => match file_type {
@@ -222,6 +250,7 @@ pub(crate) fn query_result_to_py(
             ci.head
                 .map(|res| res.map(|b| PyBytes::new(py, b.as_ref()).unbind()))
         }),
+        status: query_status.and_then(query_status_to_code),
     }
 }
 

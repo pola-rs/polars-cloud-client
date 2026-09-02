@@ -8,7 +8,7 @@ inherits = "dev"
 opt-level = 1
 
 [workspace.package]
-version = "0.10.0"
+version = "0.11.0"
 edition = "2024"
 homepage = "https://www.pola.rs/"
 license = "MIT"
@@ -17,42 +17,59 @@ repository = "https://github.com/pola-rs/polars-cloud-client"
 
 [workspace.lints.clippy]
 disallowed_methods = "deny"
+# `async_trait` generates `#[must_use]` on methods already returning must_use futures.
+double_must_use = "allow"
 
 [workspace.dependencies]
 anyhow = "1.0.95"
 async-trait = "0.1"
 base64 = "0.22.1"
+chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
 client-cli = { path = "crates/cli" }
 client-core = { path = "crates/core" }
 comfy-table = "7.2"
 directories = "6.0.0"
+http = "1.1.0"
 mockall = "0.13.1"
+opentelemetry = "0.32.0"
+opentelemetry-otlp = { version = "0.32.0", features = ["grpc-tonic", "tls-aws-lc"] }
+opentelemetry-semantic-conventions = "0.32.0"
+opentelemetry_sdk = { version = "0.32.0", features = ["rt-tokio"] }
 pc-observatory-models = { path = "../contracts/crates/pc-observatory-models" }
 polars-axum-models = { path = "../contracts/crates/axum-models", features = ["pyo3"] }
 polars-backend-client = { path = "../contracts/crates/control-plane-client", features = ["pyo3"] }
+polars-descriptions = { path = "../contracts/crates/polars-descriptions-lib", package = "polars-descriptions-lib" }
 protos-client-compute = { path = "../contracts/crates/protos-client-compute" }
 protos-client-control = { path = "../contracts/crates/protos-client-control" }
 protos-common = { path = "../contracts/crates/protos-common" }
 pyo3 = { version = "0.29.0", features = ["abi3-py310", "multiple-pymethods", "uuid"] }
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
-reqwest-middleware = "0.4.1"
-reqwest-retry = "0.8.0"
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls"] }
+reqwest-middleware = { version = "0.5.1", features = ["json", "form"] }
+reqwest-otel = { path = "../contracts/crates/reqwest-otel" }
+reqwest-retry = "0.9.1"
+rmp-serde = "1.3"
 rstest = "0.25.0"
 serde = { version = "1.0" }
 serde_json = "1.0"
+strum_macros = "0.27"
 testresult = "0.4.1"
 thiserror = "2.0"
 tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "signal", "io-std"] }
 tokio-rustls = { version = "0.26.4" }
+tokio-stream = { version = "0.1.19" }
+tokio-util = { version = "0.7.19" }
 tonic = { version = "0.14.6" }
 tower = { version = "0.5.3" }
+tower-grpc-retry = { path = "../contracts/crates/tower-grpc-retry" }
 tower-http = { version = "0.7.0", features = ["set-header"] }
+tower-otel = { path = "../contracts/crates/tower-otel" }
 tracing = { version = "0.1" }
+tracing-opentelemetry = "0.33"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 utils = { path = "../contracts/crates/utils" }
 uuid = "1.11.0"
-webbrowser = "1.0.3"
+webbrowser = "1.2.2"
 
 [profile.mindebug-dev]
 inherits = "dev"

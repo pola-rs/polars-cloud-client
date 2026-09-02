@@ -9,12 +9,15 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 pub mod cluster;
+#[cfg(feature = "convert")]
+pub mod convert;
 mod fmt;
 pub mod ir;
 pub mod node;
 pub mod phys;
 pub mod physical;
 pub mod stages;
+pub mod subtitle;
 
 pub use cluster::*;
 pub use node::*;
@@ -27,10 +30,24 @@ pub struct TimeWindow {
     pub end: DateTime<Utc>,
 }
 
+/// How the samples inside a bin are collapsed into a single value.
+///
+/// When absent from a request, every metric keeps its own default (rates are averaged, gauges are maxed). When present, it overrides all of them.
+#[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum Aggregation {
+    Min,
+    Avg,
+    Max,
+}
+
 #[derive(Deserialize, Debug)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 pub struct BinSize {
     pub bin_size_seconds: u64,
+    #[serde(default)]
+    pub aggregation: Option<Aggregation>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -40,6 +57,8 @@ pub struct MetricWindow {
     pub window: TimeWindow,
     // Aide will only support chrono::Duration from 0.16 onwards (depends on Schemars 1.x)
     pub interval_seconds: u64,
+    #[serde(default)]
+    pub aggregation: Option<Aggregation>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Default, Copy, Clone)]

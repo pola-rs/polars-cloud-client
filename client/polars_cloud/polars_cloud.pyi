@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import TYPE_CHECKING, Any, final
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
 __all__ = [
     "ApiClient",
     "AuthLoadError",
+    "AwsConnectionStatusModel",
     "ClientOptions",
     "ComputeClusterMisspecified",
     "ComputeClusterNodeInfoModel",
@@ -32,19 +34,23 @@ __all__ = [
     "DeleteWorkspaceModel",
     "EncodedPolarsError",
     "FileTypeModel",
+    "FlightResult",
     "LogLevelModel",
     "ManifestModel",
     "NotFoundError",
     "OrganizationModel",
     "OrganizationSubscriptionStateModel",
+    "OrganizationTierModel",
     "PlanFormatPy",
     "PyLineageContext",
     "PyNumWorkers",
     "PyQuerySettings",
     "PyShuffleOpts",
+    "QueryCloudObserver",
     "QueryDetailPy",
     "QueryEngineModel",
     "QueryInfoPy",
+    "QueryMetricPoller",
     "QueryModel",
     "QueryPlanTimingPy",
     "QueryPlansPy",
@@ -59,9 +65,12 @@ __all__ = [
     "TLSOptions",
     "TerminationModel",
     "TerminationReasonModel",
+    "TraceSpan",
     "UserModel",
     "WorkspaceApiToken",
     "WorkspaceApiTokenWithNameModel",
+    "WorkspaceAwsConnectionModel",
+    "WorkspaceAwsStackModel",
     "WorkspaceClusterDefaultsModel",
     "WorkspaceDeploymentModel",
     "WorkspaceModel",
@@ -69,6 +78,7 @@ __all__ = [
     "WorkspaceStateModel",
     "WorkspaceWithUrlModel",
     "cli_main",
+    "flush_traces",
     "polars_version",
     "py_is_token_expired",
     "python_version",
@@ -100,7 +110,22 @@ def serialize_query_settings(
     n_workers: PyNumWorkers | None,
     distributed_settings: DistributionSettings | None,
     optimization_flags: int | None,
+    flight_ttl: timedelta | None,
+    flight_maintain_order: bool | None,
 ) -> PyQuerySettings: ...
+
+@final
+class TraceSpan:
+    def __new__(cls, name: str) -> TraceSpan: ...
+    def __enter__(self) -> TraceSpan: ...
+    def __exit__(
+        self,
+        exc_type: object = None,
+        exc_value: object = None,
+        traceback: object = None,
+    ) -> bool: ...
+
+def flush_traces() -> None: ...
 def py_is_token_expired(
     token: str, reject_tokens_expiring_in_less_than: timedelta | None
 ) -> bool: ...
@@ -118,7 +143,13 @@ class ComputeTokenModel:
 
 @final
 class WorkspaceStateModel(Enum):
-    """Represents the state of a workspace."""
+    """Represents the state of a workspace.
+
+    .. deprecated:: 0.11.0
+        Workspace status and deployment have been deprecated and will be removed in
+        future versions to support multiple infrastructure providers. Use
+        `.aws.is_connected()` to check whether AWS is connected.
+    """
 
     Uninitialized = 0
     Pending = 1
@@ -128,7 +159,13 @@ class WorkspaceStateModel(Enum):
 
 @final
 class WorkspaceDeploymentModel(Enum):
-    """Represents the deployment location of a workspace."""
+    """Represents the deployment location of a workspace.
+
+    .. deprecated:: 0.11.0
+        Workspace status and deployment have been deprecated and will be removed in
+        future versions to support multiple infrastructure providers. Use
+        `.aws.is_connected()` to check whether AWS is connected.
+    """
 
     Aws = 0
     OnPrem = 1
@@ -150,17 +187,25 @@ class WorkspaceModel:
     """Workspace Description."""
 
     deployment: WorkspaceDeploymentModel
-    """Which location the workspace is deployed in."""
+    """Which location the workspace is deployed in.
+
+    .. deprecated:: 0.11.0
+        Workspace status and deployment have been deprecated and will be removed in
+        future versions to support multiple infrastructure providers. Use
+        `.aws.is_connected()` to check whether AWS is connected.
+    """
 
     creator_id: UUID
     """User who owns the Workspace."""
 
     status: WorkspaceStateModel
-    """Status of the Workspace."""
+    """Status of the Workspace.
 
-    cloud_resources_url: str | None
-    """Url to deployed resources for this workspace. For AWS this is a direct link to
-    the cloudformation stack"""
+    .. deprecated:: 0.11.0
+        Workspace status and deployment have been deprecated and will be removed in
+        future versions to support multiple infrastructure providers. Use
+        `.aws.is_connected()` to check whether AWS is connected.
+    """
 
     idle_timeout_mins: int
     """The time a cluster can be idle before it will be automatically killed"""
@@ -567,6 +612,27 @@ class WorkspaceSetupUrlModel:
     barebones_template_url: str
 
 @final
+class WorkspaceAwsStackModel:
+    workspace_id: UUID
+    console_url: str
+
+@final
+class AwsConnectionStatusModel(Enum):
+    """Where a workspace's AWS connection is in its lifecycle."""
+
+    Pending = 0
+    Completed = 1
+    Failed = 2
+    Deleted = 3
+
+@final
+class WorkspaceAwsConnectionModel:
+    """A workspace's AWS connection."""
+
+    status: AwsConnectionStatusModel
+    console_url: str | None
+
+@final
 class WorkspaceApiTokenWithNameModel:
     id: UUID
     name: str
@@ -638,6 +704,7 @@ class QueryInfoPy:
     phys_plan_explain: str | None
     phys_plan_dot: str | None
     stages_stats: Any | None
+    status: QueryStatusCodeModel | None
 
 @final
 class TLSOptions:
@@ -717,13 +784,16 @@ class OrganizationModel:
     """User who owns the Organization."""
 
     subscription_state: OrganizationSubscriptionStateModel
-    """Subscription state of the Organization."""
+    """Deprecated, superseded by `tier`. Retained for backwards compatibility."""
 
     trial_started_at: datetime | None
-    """Timestamp the trial started, if applicable."""
+    """Deprecated, the trial no longer exists. None for organizations created since."""
 
     trial_expires_at: datetime | None
-    """Timestamp the trial expires, if applicable."""
+    """Deprecated, the trial no longer exists. None for organizations created since."""
+
+    tier: OrganizationTierModel
+    """Subscription tier of the Organization."""
 
     created_at: datetime
     """Creation timestamp."""
@@ -736,7 +806,7 @@ class OrganizationModel:
 
 @final
 class OrganizationSubscriptionStateModel(Enum):
-    """Subscription state of an organization."""
+    """Deprecated, superseded by :class:`OrganizationTierModel`."""
 
     PreTrial = 0
     Trial = 1
@@ -744,6 +814,13 @@ class OrganizationSubscriptionStateModel(Enum):
     Subscribing = 3
     Subscribed = 4
     Unsubscribed = 5
+
+@final
+class OrganizationTierModel(Enum):
+    """Subscription tier of an organization."""
+
+    FreeTier = 0
+    PayAsYouGo = 1
 
 @final
 class PyLineageContext:
@@ -769,11 +846,21 @@ class ApiClient:
     def get_auth_header(self) -> str: ...
 
     # Workspace methods
-    def create_workspace(
+    def create_workspace(self, name: str, organization_id: UUID) -> WorkspaceModel: ...
+    def delete_workspace(self, workspace_id: UUID) -> None: ...
+
+    # AWS workspace methods
+    def create_aws_workspace(
         self, name: str, organization_id: UUID
     ) -> WorkspaceWithUrlModel: ...
     def get_workspace_setup_url(self, workspace_id: UUID) -> WorkspaceSetupUrlModel: ...
-    def delete_workspace(self, workspace_id: UUID) -> DeleteWorkspaceModel | None: ...
+    def get_workspace_stack(self, workspace_id: UUID) -> WorkspaceAwsStackModel: ...
+    def get_workspace_aws_connection(
+        self, workspace_id: UUID
+    ) -> WorkspaceAwsConnectionModel | None: ...
+    def delete_workspace_aws_connection(
+        self, workspace_id: UUID
+    ) -> DeleteWorkspaceModel: ...
 
     # On-prem workspace methods
     def create_on_prem_workspace(
@@ -914,6 +1001,27 @@ class ComputeVersionsPy:
     polars_rust_revision: str
 
 @final
+class QueryCloudObserver:
+    def __new__(cls) -> QueryCloudObserver: ...
+    def on_query_started(self, query_id: UUID) -> None: ...
+    def on_query_planned(
+        self,
+        query_id: UUID,
+        metric_exporter_handle: object,
+        ir_plan: bytes,
+        physical_plan: bytes | None,
+    ) -> QueryMetricPoller: ...
+    def on_query_failed(self, query_id: UUID, err: str) -> None: ...
+
+@final
+class QueryMetricPoller:
+    def close(self) -> None: ...
+
+@final
+class FlightResult:
+    def __arrow_c_stream__(self, requested_schema: object | None = None) -> object: ...
+
+@final
 class SchedulerClient:
     def __new__(
         cls,
@@ -926,7 +1034,10 @@ class SchedulerClient:
         self, query_id: UUID, token: str | None
     ) -> QueryStatusCodeModel: ...
     def get_direct_query_result(
-        self, query_id: UUID, token: str | None
+        self,
+        query_id: UUID,
+        token_factory: Callable[[], str | None],
+        timeout_ms: int,
     ) -> QueryInfoPy: ...
     def do_query(
         self,
@@ -943,6 +1054,7 @@ class SchedulerClient:
     ) -> QueryPlansPy: ...
     def get_compute_versions(self, token: str | None) -> ComputeVersionsPy: ...
     def get_query_details(self, query_id: UUID, token: str | None) -> QueryDetailPy: ...
+    def scan_flight(self, query_id: UUID, token: str | None) -> FlightResult | None: ...
 
 @final
 class PlanFormatPy(Enum):

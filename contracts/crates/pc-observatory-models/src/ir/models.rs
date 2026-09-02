@@ -8,7 +8,7 @@ use crate::{Edge, SortColumn};
 pub struct IRVisualizationData {
     pub title: String,
     /// Number of nodes from the start of `nodes` that are root nodes.
-    pub num_roots: u64,
+    pub num_roots: usize,
     pub nodes: Vec<IRNodeInfo>,
     pub edges: Vec<Edge>,
 }
@@ -79,17 +79,17 @@ pub enum IRNodeProperties {
         id: String,
     },
     DataFrameScan {
-        n_rows: u64,
+        n_rows: usize,
         schema_names: Vec<String>,
     },
     Distinct {
         subset: Option<Vec<String>>,
         maintain_order: bool,
         keep_strategy: String,
-        slice: Option<(i64, u64)>,
+        slice: Option<(i64, usize)>,
     },
     ExtContext {
-        num_contexts: u64,
+        num_contexts: usize,
         schema_names: Vec<String>,
     },
     Filter {
@@ -103,16 +103,15 @@ pub enum IRNodeProperties {
         #[serde(flatten)]
         agg_kind: AggKind,
         maintain_order: bool,
-        slice: Option<(i64, u64)>,
+        slice: Option<(i64, usize)>,
     },
     HConcat {
-        num_inputs: u64,
+        num_inputs: usize,
         schema_names: Vec<String>,
         strict: bool,
     },
     HStack {
         exprs: Vec<String>,
-        duplicate_check: bool,
         should_broadcast: bool,
     },
     #[default]
@@ -126,11 +125,11 @@ pub enum IRNodeProperties {
         maintain_order: String,
         validation: String,
         suffix: Option<String>,
-        slice: Option<(i64, u64)>,
+        slice: Option<(i64, usize)>,
     },
     CrossJoin {
         maintain_order: String,
-        slice: Option<(i64, u64)>,
+        slice: Option<(i64, usize)>,
         predicate: Option<Predicate>,
         suffix: Option<String>,
     },
@@ -139,7 +138,7 @@ pub enum IRNodeProperties {
     },
     Scan {
         scan_type: String,
-        num_sources: u64,
+        num_sources: usize,
         first_source: Option<String>,
         file_columns: Option<Vec<String>>,
         projection: Option<Vec<String>>,
@@ -165,7 +164,7 @@ pub enum IRNodeProperties {
         location: Option<String>,
     },
     SinkMultiple {
-        num_inputs: u64,
+        num_inputs: usize,
     },
     Slice {
         offset: i64,
@@ -173,27 +172,28 @@ pub enum IRNodeProperties {
     },
     Sort {
         sort_columns: Vec<SortColumn>,
-        slice: Option<(i64, u64, Option<String>)>,
+        slice: Option<(i64, usize, Option<String>)>,
         maintain_order: bool,
         limit: Option<u64>,
     },
     Union {
+        num_inputs: usize,
         maintain_order: bool,
-        slice: Option<(i64, u64)>,
+        slice: Option<(i64, usize)>,
     },
     //
     // Feature gated
     //
     AsOfJoin {
-        left_on: String,
-        right_on: String,
+        left_on: Vec<String>,
+        right_on: Vec<String>,
         left_by: Option<Vec<String>>,
         right_by: Option<Vec<String>>,
         strategy: String,
         /// [value, dtype_str]
         tolerance: Option<[String; 2]>,
         suffix: Option<String>,
-        slice: Option<(i64, u64)>,
+        slice: Option<(i64, usize)>,
         coalesce: String,
         allow_eq: bool,
         check_sortedness: bool,
@@ -203,7 +203,7 @@ pub enum IRNodeProperties {
         right_on: Vec<String>,
         inequality_operators: Vec<String>,
         suffix: Option<String>,
-        slice: Option<(i64, u64)>,
+        slice: Option<(i64, usize)>,
     },
     DynamicGroupBy {
         index_column: String,
@@ -226,7 +226,7 @@ pub enum IRNodeProperties {
         period: String,
         offset: String,
         closed_window: String,
-        slice: Option<(i64, u64)>,
+        slice: Option<(i64, usize)>,
     },
     MergeSorted {
         keys: Vec<String>,
@@ -234,7 +234,7 @@ pub enum IRNodeProperties {
     },
     PythonScan {
         scan_source_type: String,
-        n_rows: Option<u64>,
+        n_rows: Option<usize>,
         projection: Option<Vec<String>>,
         predicate: Option<Predicate>,
         schema_names: Vec<String>,
@@ -244,7 +244,7 @@ pub enum IRNodeProperties {
 
     // New TaskPlan specific variants
     PythonMultiScan {
-        n_scans: u64,
+        n_scans: usize,
         maintain_order: bool,
     },
     ShuffleRead {
@@ -267,7 +267,11 @@ pub enum IRNodeProperties {
     CallbackSink {
         maintain_order: bool,
     },
+    FlightSink {
+        maintain_order: bool,
+    },
     UnoptimizedDispatch {
+        num_inputs: usize,
         operation: String,
     },
 }
@@ -285,10 +289,13 @@ pub struct PredicateFileSkip {
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 #[serde(tag = "partition_type")]
 pub enum PartitioningModel {
-    RoundRobin,
+    #[serde(alias = "RoundRobin")]
+    Partitioned,
     Local,
     Single,
     Broadcast,
-    Hash { by: String },
+    Hash {
+        by: String,
+    },
     Range,
 }

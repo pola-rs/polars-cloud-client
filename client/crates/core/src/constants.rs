@@ -8,6 +8,8 @@ use directories::BaseDirs;
 
 use crate::Runtime;
 
+pub static SERVICE_NAME: &str = "polars-cloud-client";
+
 pub static TOKEN_EXPIRATION_BUFFER: Duration = Duration::from_secs(10);
 
 pub static RUNTIME: LazyLock<Runtime> = LazyLock::new(Runtime::default);

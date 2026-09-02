@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+import typing
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
@@ -30,6 +31,7 @@ from polars.exceptions import (  # noqa: F401
 )
 
 from polars_cloud import constants
+from polars_cloud._tracing import traced
 from polars_cloud.polars_cloud import PlanFormatPy
 from polars_cloud.query._utils import get_token
 from polars_cloud.query.query_detail import QueryDetail
@@ -47,6 +49,10 @@ if TYPE_CHECKING:
         PlanType,
     )
     from polars_cloud.context import ClientContext, ComputeContext
+
+
+class ArrowStreamExportable(typing.Protocol):
+    def __arrow_c_stream__(self, requested_schema: object | None = None) -> object: ...
 
 
 def get_timeout() -> int:
@@ -99,18 +105,7 @@ class InProgressQueryRemote(ABC):
     def cancel(self) -> None:
         """Cancel the execution of the query."""
 
-    async def _poll_status_until_done_async(self) -> QueryStatus:
-        """Poll the status of the query until it is either completed or failed."""
-        i = 0
-        ms = get_timeout()
-        t0 = time.time()
-        while not (status := self.get_status()).is_done():
-            i += 1
-            await asyncio.sleep(min(1, 0.05 * 1.5 ** min(30, i)))
-            check_timeout(t0, ms)
-
-        return status
-
+    @traced
     def _poll_status_until_done(self) -> QueryStatus:
         """Poll the status of the query until it is either completed or failed."""
         i = 0
@@ -169,9 +164,6 @@ class ProxyQuery(InProgressQueryRemote):
             query_id=self._query_id, token=None, client=None, silent=silent
         ):
             status = self._poll_status_until_done()
-        return self._get_result(status, raise_on_failure=raise_on_failure)
-
-        status = await self._poll_status_until_done_async()
         return self._get_result(status, raise_on_failure=raise_on_failure)
 
     def await_result(
@@ -258,13 +250,17 @@ class DirectQuery(InProgressQueryRemote):
         )
         return QueryStatus._from_api_model(status_code)
 
-    def _get_result(
-        self, status: QueryStatus, *, raise_on_failure: bool = True
-    ) -> QueryResult:
+    def _await_result_via_wait(self, *, raise_on_failure: bool) -> QueryResult:
         query_info_py = self._client.get_direct_query_result(
-            self._query_id, token=self._cluster._get_token()
+            self._query_id,
+            token_factory=self._cluster._get_token,
+            timeout_ms=get_timeout(),
         )
         query_info = QueryInfo(self._query_id, query_info_py)
+
+        assert query_info_py.status is not None
+
+        status = QueryStatus._from_api_model(query_info_py.status)
         result = QueryResult(result=query_info, status=status, query=self)
 
         if raise_on_failure and status == QueryStatus.FAILED:
@@ -273,8 +269,27 @@ class DirectQuery(InProgressQueryRemote):
         return result
 
     async def await_result_async(self, *, raise_on_failure: bool = True) -> QueryResult:
-        status = await self._poll_status_until_done_async()
-        return self._get_result(status, raise_on_failure=raise_on_failure)
+        return await asyncio.to_thread(
+            self._await_result_via_wait, raise_on_failure=raise_on_failure
+        )
+
+    def _get_stream(self) -> ArrowStreamExportable:
+        res = self._client.scan_flight(
+            query_id=self._query_id, token=self._cluster._get_token()
+        )
+        if not res:
+            # scan_flight will return None if the query is not in a state
+            # to be scanned, so we can do the query error handling in python.
+            # So, handle the error here.
+            result = self._await_result_via_wait(raise_on_failure=True)
+            if result.status == QueryStatus.CANCELED:
+                msg = "Query was canceled"
+                raise RuntimeError(msg)
+            else:
+                msg = "Unknown query status"
+                raise AssertionError(msg)
+        else:
+            return res
 
     def await_result(
         self, *, raise_on_failure: bool = True, silent: bool | None = None
@@ -284,8 +299,7 @@ class DirectQuery(InProgressQueryRemote):
         with SpinnerRepr(
             query_id=self._query_id, token=token, client=self._client, silent=silent
         ):
-            status = self._poll_status_until_done()
-        return self._get_result(status, raise_on_failure=raise_on_failure)
+            return self._await_result_via_wait(raise_on_failure=raise_on_failure)
 
     def cancel(self) -> None:
         self._client.cancel_direct_query(

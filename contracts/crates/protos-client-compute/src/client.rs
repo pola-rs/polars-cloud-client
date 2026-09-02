@@ -2,14 +2,16 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
 use bytes::Bytes;
+use futures_core::stream::BoxStream;
+use futures_util::StreamExt;
 use prost::Message;
 use prost_types::FieldMask;
-use protos_common::{ComputeVersions, QueryIdentifier, QueryPlans, QueryResult, map_trait};
+use protos_common::{ComputeVersions, QueryIdentifier, QueryPlans, QueryResult, map_methods};
 use serde::{Deserialize, Serialize};
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
-use crate::client::proto::QueryStageStatistics;
+use crate::client::proto::{QueryStageStatistics, SinkOptions};
 
 mod proto {
     pub use self::client_service_server::ClientService;
@@ -25,6 +27,8 @@ pub type QueryStatus = proto::QueryStatus;
 #[trait_variant::make(Send)]
 pub trait ClientService {
     type Error: Into<Status>;
+    type GetQueryStatusStream: futures_core::stream::Stream<Item = tonic::Result<QueryStatus>>
+        + Send;
 
     async fn submit_query(
         &self,
@@ -44,7 +48,7 @@ pub trait ClientService {
     async fn get_query_status(
         &self,
         request: Request<QueryIdentifier>,
-    ) -> Result<Response<QueryStatus>, Self::Error>;
+    ) -> Result<Response<Self::GetQueryStatusStream>, Self::Error>;
 
     async fn get_query_result(
         &self,
@@ -62,15 +66,45 @@ pub trait ClientService {
     ) -> Result<Response<ComputeVersions>, Self::Error>;
 }
 
-map_trait! {
-    impl ClientService for proto::ClientService {
-        submit_query(proto::SubmitQueryRequest) -> proto::SubmitQueryResponse;
-        get_query_result(proto::GetQueryResultRequest) -> proto::GetQueryResultResponse;
-        get_query_status(proto::GetQueryStatusRequest) -> proto::GetQueryStatusResponse;
-        get_query_plans(proto::GetQueryPlansRequest) -> proto::GetQueryPlansResponse;
-        cancel_query(proto::CancelQueryRequest) -> proto::CancelQueryResponse;
-        delete_query_result(proto::DeleteQueryResultRequest) -> proto::DeleteQueryResultResponse;
-        get_compute_versions(proto::GetComputeVersionsRequest) -> proto::GetComputeVersionsResponse;
+impl<T: ClientService + Send + Sync + 'static> proto::ClientService for T
+where
+    tonic::Status: From<T::Error>,
+{
+    type GetQueryStatusStream = BoxStream<'static, tonic::Result<proto::GetQueryStatusResponse>>;
+
+    map_methods! {
+        submit_query(proto::SubmitQueryRequest)->proto::SubmitQueryResponse;
+        get_query_result(proto::GetQueryResultRequest)->proto::GetQueryResultResponse;
+        get_query_plans(proto::GetQueryPlansRequest)->proto::GetQueryPlansResponse;
+        cancel_query(proto::CancelQueryRequest)->proto::CancelQueryResponse;
+        delete_query_result(proto::DeleteQueryResultRequest)->proto::DeleteQueryResultResponse;
+        get_compute_versions(proto::GetComputeVersionsRequest)->proto::GetComputeVersionsResponse;
+    }
+
+    fn get_query_status<'life0, 'async_trait>(
+        &'life0 self,
+        request: tonic::Request<proto::GetQueryStatusRequest>,
+    ) -> ::core::pin::Pin<
+        Box<
+            dyn ::core::future::Future<
+                    Output = std::result::Result<
+                        tonic::Response<Self::GetQueryStatusStream>,
+                        tonic::Status,
+                    >,
+                > + ::core::marker::Send
+                + 'async_trait,
+        >,
+    >
+    where
+        'life0: 'async_trait,
+        Self: 'async_trait,
+    {
+        Box::pin(async move {
+            self.get_query_status(request.map(Into::into))
+                .await
+                .map_err(Into::into)
+                .map(|r| r.map(|s| futures_util::TryStreamExt::map_ok(s, Into::into).boxed()))
+        })
     }
 }
 
@@ -147,6 +181,7 @@ impl From<QuerySettings> for proto::QuerySettings {
                     max: max.map(Into::into),
                 })
             }),
+            sink_options: value.sink_options,
         }
     }
 }
@@ -169,6 +204,7 @@ impl From<proto::QuerySettings> for QuerySettings {
                     max: max.and_then(NonZeroU32::new),
                 },
             }),
+            sink_options: value.sink_options,
         }
     }
 }
@@ -486,6 +522,7 @@ pub struct QuerySettings {
     pub n_workers: Option<NumWorkers>,
     pub query_type: QueryType,
     pub optimization_flags: Option<u32>,
+    pub sink_options: Option<SinkOptions>,
 }
 
 impl QuerySettings {
@@ -579,6 +616,7 @@ impl From<QueryStatus> for proto::GetQueryStatusResponse {
 
 #[derive(Debug)]
 pub struct GetQueryResultResponse {
+    pub status: QueryStatus,
     pub result: QueryResult,
     pub compute_info: ComputeQueryInfo,
 }
@@ -590,15 +628,11 @@ pub struct ComputeQueryInfo {
 }
 
 impl From<proto::GetQueryResultResponse> for GetQueryResultResponse {
-    fn from(
-        proto::GetQueryResultResponse {
-            query_result,
-            compute_info,
-        }: proto::GetQueryResultResponse,
-    ) -> Self {
+    fn from(value: proto::GetQueryResultResponse) -> Self {
         Self {
-            result: query_result.unwrap().into(),
-            compute_info: compute_info.unwrap().into(),
+            status: value.query_status(),
+            result: value.query_result.unwrap().into(),
+            compute_info: value.compute_info.unwrap().into(),
         }
     }
 }
@@ -606,6 +640,7 @@ impl From<proto::GetQueryResultResponse> for GetQueryResultResponse {
 impl From<GetQueryResultResponse> for proto::GetQueryResultResponse {
     fn from(
         GetQueryResultResponse {
+            status,
             result,
             compute_info,
         }: GetQueryResultResponse,
@@ -613,6 +648,7 @@ impl From<GetQueryResultResponse> for proto::GetQueryResultResponse {
         Self {
             query_result: Some(result.into()),
             compute_info: Some(compute_info.into()),
+            query_status: status.into(),
         }
     }
 }

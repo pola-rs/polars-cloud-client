@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*"]
 default-members = ["crates/*"]
 [workspace.metadata.cargo-shear]
-ignored = ["prost-types", "strum", "tonic-prost", "prost"]
+ignored = ["prost-types", "strum", "tonic-prost", "prost", "tonic"]
 
 [workspace.dependencies]
 aide = { version = "0.15.1", features = ["axum-json", "macros", "axum-query"] }
@@ -15,18 +15,25 @@ build-deps = { path = "crates/build-deps" }
 bytes = { version = "1", features = ["serde"] }
 chrono = { version = "0.4.41", features = ["serde"] }
 deprecation-macro = { path = "crates/deprecation_macro" }
-futures-util = { version = "0.3.31" }
+futures-core = { version = "0.3.31" }
+futures-util = { version = "0.3.31", default-features = false, features = ["async-await", "std"] }
 garde = { version = "0.22.0", features = ["derive", "email", "regex"] }
+headers = "0.4"
 http = "1.1"
+http-body = "1.1"
+http-body-util = "0.1.4"
+jsonwebtoken = "10.3.0"
 opentelemetry = { version = "0.32.0" }
 opentelemetry-http = { version = "0.32.0" }
-opentelemetry-semantic-conventions = { version = "0.32.0" }
+opentelemetry-semantic-conventions = { version = "0.32.0", features = ["semconv_experimental"] }
 pc-observatory-database = { path = "crates/pc-observatory-database" }
 pc-observatory-models = { path = "crates/pc-observatory-models" }
 pc-observatory-types = { path = "crates/pc-observatory-types" }
 pem = { version = "3.0" }
+pin-project-lite = "0.2.17"
 polars-api-error = { path = "crates/polars-api-error" }
 polars-axum-models = { path = "crates/axum-models" }
+polars-descriptions = { path = "../contracts/crates/polars-descriptions-lib", package = "polars-descriptions-lib" }
 polars-rest = { path = "crates/polars-rest" }
 proc-macro2 = "1.0"
 prost = "0.14.3"
@@ -37,10 +44,12 @@ protos-compute-internal = { path = "crates/protos-compute-internal" }
 protos-compute-license = { path = "crates/protos-compute-license" }
 pyo3 = { version = "0.29.0", features = ["abi3-py310", "chrono", "uuid"] }
 quote = "1.0"
-rcgen = { version = "0.13", features = ["pem", "x509-parser"] }
+rcgen = { version = "0.14", default-features = false, features = ["aws_lc_rs", "pem", "x509-parser"] }
 regex = { version = "1.11" }
-reqwest = { version = "0.12", default-features = false, features = ["json", "http2"] }
-reqwest-middleware = "0.4.1"
+reqwest = { version = "0.13", default-features = false, features = ["json", "http2"] }
+reqwest-middleware = "0.5.1"
+reqwest-otel = { path = "crates/reqwest-otel" }
+reqwest-retry = { version = "0.9.1", default-features = false }
 schemars = { version = "0.9.0", features = ["uuid1", "chrono04"] }
 semver = { version = "1.0.27", features = ["serde"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
@@ -54,12 +63,13 @@ tokio = { version = "1.0", default-features = false }
 tonic = { version = "0.14.3", features = ["transport", "codegen", "tls-native-roots", "zstd"] }
 tonic-prost = "0.14.3"
 tower = { version = "0.5", default-features = false }
-tower-http = { version = "0.6", default-features = false, features = ["cors", "trace", "request-id"] }
+tower-http = { version = "0.6", default-features = false, features = ["auth", "cors", "trace", "request-id"] }
 tracing = "0.1.41"
 tracing-opentelemetry = "0.33"
 trait-variant = "0.1.2"
 uuid = { version = "1.23", features = ["v4", "v7", "serde"] }
 version-number = { path = "crates/version-number" }
+x509-parser = { version = "0.18.1" }
 
 [workspace.package]
 edition = "2024"
@@ -70,3 +80,5 @@ repository = "https://github.com/pola-rs/polars-cloud-client"
 
 [workspace.lints.clippy]
 needless_return = "allow"
+# `async_trait` generates `#[must_use]` on methods already returning must_use futures.
+double_must_use = "allow"

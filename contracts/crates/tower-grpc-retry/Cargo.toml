@@ -1,0 +1,24 @@
+[package]
+name = "tower-grpc-retry"
+authors = ["Linkerd Developers <cncf-linkerd-dev@lists.cncf.io>"]
+edition.workspace = true
+license = "Apache-2.0"
+publish.workspace = true
+
+[dependencies]
+bytes = { workspace = true }
+futures-util = { workspace = true }
+http = { workspace = true }
+http-body = { workspace = true }
+http-body-util = { workspace = true }
+pin-project-lite = { workspace = true }
+tonic = { workspace = true }
+tower = { workspace = true, features = ["retry"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+http-body-util = { workspace = true, features = ["channel"] }
+tokio = { version = "1", features = ["macros", "rt"] }
+
+[lib]
+doctest = false

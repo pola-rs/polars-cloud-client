@@ -3,8 +3,10 @@
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use anyhow::anyhow;
+use client_core::constants::SERVICE_NAME;
 use client_core::error::ApiResult;
 use client_core::{ApiError, RUNTIME};
 use pc_observatory_models::QueryDetailModel;
@@ -15,6 +17,9 @@ use protos_client_compute::client::{
     ClientServiceClient, GetComputeVersionsRequest, GetQueryPlansRequest, GetQueryResultResponse,
     PlanSelection, QueryStatus,
 };
+use protos_client_compute::proto::polars_cloud::compute_plane::client::v1::{
+    self as proto, GetQueryStatusRequest,
+};
 use protos_client_compute::tonic::body::Body;
 use protos_client_compute::tonic::codegen::http;
 use protos_common::tonic::metadata::{MetadataKey, MetadataValue};
@@ -24,49 +29,59 @@ use protos_common::{
     ComputeVersions, MAX_MESSAGE_LENGTH_UNLIMITED, PlanFormat, QueryIdentifier, QueryInfo,
     QueryPlans,
 };
-use pyo3::exceptions::{PyRuntimeError, PyValueError};
+use pyo3::exceptions::{PyRuntimeError, PyTimeoutError, PyValueError};
 use pyo3::prelude::*;
 use reqwest::header::{AUTHORIZATION, HeaderName};
+use reqwest_otel::TracingMiddleware;
 use tokio_rustls::rustls;
 use tokio_rustls::rustls::client::danger::{
     HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier,
 };
 use tokio_rustls::rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use tokio_rustls::rustls::{DigitallySignedStruct, SignatureScheme};
+use tonic::Status;
 use tower::ServiceBuilder;
 use tower::util::BoxCloneSyncService;
 use tower_http::set_header::HeaderMetadata;
 use tower_http::set_header::request::SetMultipleRequestHeadersLayer;
+use tracing::Instrument;
 use utils::{Backoff, Exponential, retry};
 use uuid::Uuid;
 
 use crate::VERSIONS;
 use crate::entry::EnterRustExt;
+use crate::flight::{Flight, FlightResult};
 use crate::query_settings::{PyLineageContext, PyQuerySettings};
 use crate::serde_types::{
     DomainName, ParsedHeaders, ParsedUri, QueryDetailPy, QueryInfoPy, query_result_to_py,
+    query_status_to_code,
 };
 
-type SchedulerGRPCClient = ClientServiceClient<
-    BoxCloneSyncService<http::Request<Body>, http::Response<Body>, tonic::transport::Error>,
->;
+type SchedulerChannel =
+    BoxCloneSyncService<http::Request<Body>, http::Response<Body>, tonic::transport::Error>;
+
+type SchedulerGRPCClient = ClientServiceClient<SchedulerChannel>;
 
 const POLAR_CLOUD_VERSION_HEADER_NAME: HeaderName = HeaderName::from_static("x-client-version");
 const POLAR_VERSION_HEADER_NAME: HeaderName = HeaderName::from_static("x-polars-version");
 const GRPC_RETRY_CONNECTION_DEADLINE: Duration = Duration::from_secs(60);
+
+const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(20);
+const LONG_POLL_RETRY_BACKOFF: Duration = Duration::from_secs(1);
 
 #[derive(Clone)]
 struct SchedulerGrpcClient {
     inner: SchedulerGRPCClient,
 }
 
-impl SchedulerGrpcClient {
-    fn build(options: &ClientOptions) -> Result<Self, ApiError> {
-        let channel = RUNTIME.block_on(async { create_channel(options).await })??;
+fn connect_scheduler(options: &ClientOptions) -> ApiResult<SchedulerChannel> {
+    let channel = RUNTIME.block_on(async { create_channel(options).await })??;
 
-        let version_layers = version_header_layers();
+    let version_layers = version_header_layers();
 
-        let channel = ServiceBuilder::new()
+    Ok(BoxCloneSyncService::new(
+        ServiceBuilder::new()
+            .layer(tower_otel::OtelLayer::client(SERVICE_NAME))
             .layer(SetMultipleRequestHeadersLayer::overriding(version_layers))
             .layer(SetMultipleRequestHeadersLayer::if_not_present(
                 options
@@ -75,13 +90,17 @@ impl SchedulerGrpcClient {
                     .unwrap_or_default()
                     .to_header_metadata(),
             ))
-            .service(channel);
+            .service(channel),
+    ))
+}
 
-        Ok(Self {
-            inner: ClientServiceClient::new(BoxCloneSyncService::new(channel))
+impl SchedulerGrpcClient {
+    fn new(channel: SchedulerChannel) -> Self {
+        Self {
+            inner: ClientServiceClient::new(channel)
                 .max_encoding_message_size(MAX_MESSAGE_LENGTH_UNLIMITED)
                 .max_decoding_message_size(MAX_MESSAGE_LENGTH_UNLIMITED),
-        })
+        }
     }
 }
 
@@ -90,10 +109,11 @@ impl SchedulerGrpcClient {
 pub struct SchedulerClient {
     scheduler_client: SchedulerGrpcClient,
     observatory_client_rest: ObservatoryRestClient,
+    flight_client: Flight<SchedulerChannel>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
 #[pyclass(from_py_object, eq, eq_int)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum PlanFormatPy {
     Dot,
     Explain,
@@ -115,7 +135,7 @@ pub struct ComputeVersionsPy {
 
 #[derive(Clone, Debug)]
 struct ObservatoryRestClient {
-    inner: reqwest::Client,
+    inner: reqwest_middleware::ClientWithMiddleware,
     base_url: String,
 }
 
@@ -161,12 +181,18 @@ impl ObservatoryRestClient {
         }
 
         Ok(Self {
-            inner: builder.build()?,
+            inner: reqwest_middleware::ClientBuilder::new(builder.build()?)
+                .with(TracingMiddleware::new().propagate())
+                .build(),
             base_url: url.to_string().trim_end_matches('/').to_string(),
         })
     }
 
-    pub fn request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
+    pub fn request(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+    ) -> reqwest_middleware::RequestBuilder {
         let url = format!(
             "{}/api/v1/query/{}",
             self.base_url.trim_end_matches('/'),
@@ -175,7 +201,7 @@ impl ObservatoryRestClient {
         self.inner.request(method, url)
     }
 
-    pub fn get(&self, path: &str) -> reqwest::RequestBuilder {
+    pub fn get(&self, path: &str) -> reqwest_middleware::RequestBuilder {
         self.request(reqwest::Method::GET, path)
     }
 }
@@ -183,13 +209,17 @@ impl ObservatoryRestClient {
 #[pymethods]
 impl SchedulerClient {
     #[new]
+    #[tracing::instrument(name = "SchedulerClient::new", skip_all)]
     pub fn new(scheduler: ClientOptions, observatory: ClientOptions) -> ApiResult<SchedulerClient> {
         let observatory_client_rest = ObservatoryRestClient::build(&observatory)?;
-        let scheduler_client = SchedulerGrpcClient::build(&scheduler)?;
+        let scheduler_channel = connect_scheduler(&scheduler)?;
+        let scheduler_client = SchedulerGrpcClient::new(scheduler_channel.clone());
+        let flight = Flight::new(scheduler_channel);
 
         Ok(SchedulerClient {
             scheduler_client,
             observatory_client_rest,
+            flight_client: flight,
         })
     }
 
@@ -248,49 +278,126 @@ impl SchedulerClient {
                     .inner
                     .clone()
                     .get_query_status(req)
-                    .await?;
-                Ok::<_, ApiError>(QueryStatus::from(result.into_inner()))
+                    .await?
+                    .into_inner()
+                    .message()
+                    .await?
+                    .ok_or_else(|| ApiError::Other(anyhow!("Unexpected End-of-Stream")))?;
+                Ok::<_, ApiError>(QueryStatus::from(result))
             })
         })??;
 
-        match result {
-            QueryStatus::Unspecified => Err(ApiError::PyErr(PyRuntimeError::new_err(
+        query_status_to_code(result).ok_or_else(|| {
+            ApiError::PyErr(PyRuntimeError::new_err(
                 "Server returned unknown query status code",
-            ))),
-            QueryStatus::Scheduled => Ok(QueryStatusCodeModel::Scheduled),
-            QueryStatus::InProgress => Ok(QueryStatusCodeModel::InProgress),
-            QueryStatus::Success => Ok(QueryStatusCodeModel::Success),
-            QueryStatus::Failed => Ok(QueryStatusCodeModel::Failed),
-            QueryStatus::Canceled => Ok(QueryStatusCodeModel::Canceled),
-        }
+            ))
+        })
     }
 
+    #[tracing::instrument(name = "await_query_result", skip(self, py, token_factory), fields(%query_id))]
     pub fn get_direct_query_result(
         &self,
         py: Python<'_>,
         query_id: Uuid,
-        token: Option<String>,
+        token_factory: Py<PyAny>,
+        timeout_ms: u64,
     ) -> ApiResult<QueryInfoPy> {
-        py.enter_rust(|| {
+        py.detach(|| {
             let query_id = QueryIdentifier::from(query_id);
             RUNTIME.block_on(async move {
-                let mut req = Request::new(query_id.into());
-                req = insert_auth_token(req, token);
-                let result = self
-                    .scheduler_client
-                    .inner
-                    .clone()
-                    .get_query_result(req)
-                    .await?;
-                Ok(result.into_inner().into())
+                let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+                loop {
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    if remaining.is_zero() {
+                        return Err(ApiError::PyErr(PyTimeoutError::new_err(
+                            "timed out waiting for the query result",
+                        )));
+                    }
+
+                    let token = Python::attach(|py| -> PyResult<Option<String>> {
+                        token_factory.bind(py).call0()?.extract()
+                    })?;
+
+                    let mut req = Request::new(query_id.into());
+                    req = insert_auth_token(req, token);
+                    req.set_timeout(remaining);
+
+                    let mut client = self.scheduler_client.inner.clone();
+                    match tokio::time::timeout(remaining, client.get_query_result(req)).await {
+                        Ok(Ok(response)) => {
+                            return Ok::<_, ApiError>(response.into_inner().into());
+                        },
+                        Ok(Err(status)) if status.code() == Code::Unavailable => {
+                            let backoff = LONG_POLL_RETRY_BACKOFF
+                                .min(deadline.saturating_duration_since(Instant::now()));
+                            tokio::time::sleep(backoff).await;
+                        },
+                        Ok(Err(status)) if status.code() == Code::DeadlineExceeded => {
+                            return Err(ApiError::PyErr(PyTimeoutError::new_err(
+                                "timed out waiting for the query result",
+                            )));
+                        },
+                        Ok(Err(status)) => return Err(ApiError::from(status)),
+                        Err(_) => {
+                            return Err(ApiError::PyErr(PyTimeoutError::new_err(
+                                "timed out waiting for the query result",
+                            )));
+                        },
+                    }
+                }
             })
         })?
-        .map(
+        .and_then(
             |GetQueryResultResponse {
                  result,
                  compute_info,
-             }| query_result_to_py(py, result, Some(compute_info)),
+                 status,
+             }| {
+                if status == QueryStatus::Unspecified {
+                    return Err(ApiError::PyErr(PyRuntimeError::new_err(
+                        "Server returned unknown query status code",
+                    )));
+                }
+                Ok(query_result_to_py(
+                    py,
+                    result,
+                    Some(compute_info),
+                    Some(status),
+                ))
+            },
         )
+    }
+
+    pub fn scan_flight(
+        &self,
+        py: Python<'_>,
+        query_id: Uuid,
+        token: Option<String>,
+    ) -> ApiResult<Option<FlightResult>> {
+        py.enter_rust(|| {
+            let query_id = QueryIdentifier::from(query_id);
+            RUNTIME.block_on(async {
+                let req = insert_auth_token(Request::new(GetQueryStatusRequest{
+                    query_id: Some(query_id.into()),
+                }), token);
+                let mut status =self.scheduler_client
+                    .inner.clone()
+                    .get_query_status(req)
+                    .await?.into_inner();
+                while let Some(status) = status.message().await? {
+                    match status.status() {
+                        proto::QueryStatus::Scheduled | proto::QueryStatus::Planning => continue,
+                        proto::QueryStatus::Success | // The result was empty or small enough to buffer on the scheduler. We can still retrieve it.
+                        proto::QueryStatus::Running => break,
+                        proto::QueryStatus::Unspecified => return Err(Status::internal("Unknown query status").into()),
+                        // Let the caller check the query result
+                        proto::QueryStatus::Failed |
+                        proto::QueryStatus::Canceled => return Ok(None),
+                    }
+                }
+                self.flight_client.scan_flight(query_id).await.map(Some)
+            })
+        })?
     }
 
     #[pyo3(signature = (plan, settings, token, username=None, labels=None, execution_id=None, lineage_context=None))]
@@ -375,6 +482,7 @@ impl SchedulerClient {
     }
 
     #[pyo3(signature = (query_id, token,  phys = false, ir = false))]
+    #[tracing::instrument(name = "get_query_plans", skip(self, py, token), fields(%query_id))]
     pub fn get_direct_query_plan(
         &self,
         py: Python<'_>,
@@ -574,7 +682,7 @@ impl ServerCertVerifier for NoVerifier {
 #[allow(clippy::result_large_err)]
 async fn create_channel(options: &ClientOptions) -> ApiResult<Channel> {
     let uri: Uri = options.uri.clone().into();
-    let mut endpoint = Channel::builder(uri.clone());
+    let mut endpoint = Channel::builder(uri.clone()).http2_keep_alive_interval(KEEP_ALIVE_INTERVAL);
     let scheme = uri
         .scheme_str()
         .ok_or_else(|| PyValueError::new_err("missing uri scheme"))?;
@@ -615,6 +723,11 @@ async fn create_channel(options: &ClientOptions) -> ApiResult<Channel> {
                 .user_agent(user_agent(VERSIONS.get().unwrap().as_ref().map(|(_, versions)| versions)))
                 .unwrap()
                 .connect()
+                .instrument(tracing::info_span!(
+                    "grpc connect",
+                    "server.address" = uri.host(),
+                    "server.port" = uri.port_u16(),
+                ))
                 .await?;
 
             Ok::<_, ApiError>(res)

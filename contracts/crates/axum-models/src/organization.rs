@@ -11,9 +11,21 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub enum OrganizationTierModel {
+    FreeTier,
+    PayAsYouGo,
+}
+
+/// Superseded by [`OrganizationTierModel`]. Kept only so that clients up to 0.10.x, which
+/// deserialize [`OrganizationModel`] strictly, can still parse our responses. None of them
+/// read the value.
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all))]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
+#[deprecated_since_client("0.11.0")]
 pub enum OrganizationSubscriptionStateModel {
     PreTrial,
     Trial,
@@ -36,9 +48,13 @@ pub struct OrganizationModel {
     #[serde(with = "crate::string_empty_as_none")]
     pub avatar_url: Option<String>,
     pub creator_id: Uuid,
+    #[deprecated_since_client("0.11.0")]
     pub subscription_state: OrganizationSubscriptionStateModel,
+    #[deprecated_since_client("0.11.0")]
     pub trial_started_at: Option<DateTime<Utc>>,
+    #[deprecated_since_client("0.11.0")]
     pub trial_expires_at: Option<DateTime<Utc>>,
+    pub tier: OrganizationTierModel,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
@@ -113,8 +129,57 @@ pub struct OrganizationDetailsArgs {
 
 #[cfg(test)]
 mod tests {
+    use chrono::{DateTime, Utc};
+    use serde::Deserialize;
+    use uuid::Uuid;
+
     #[cfg(feature = "server")]
     use crate::organization::validate_organization_name;
+    use crate::organization::{
+        OrganizationModel, OrganizationSubscriptionStateModel, OrganizationTierModel,
+    };
+
+    /// `OrganizationModel` as clients up to 0.10.x declare it. Those clients derive
+    /// `Deserialize` without field defaults, so every field here -- including the pre-tier
+    /// ones we no longer use ourselves -- has to stay on the wire or they cannot parse an
+    /// organization at all.
+    #[derive(Deserialize)]
+    #[expect(dead_code)]
+    struct OrganizationModelUpTo0_10 {
+        id: Uuid,
+        name: String,
+        description: String,
+        avatar_url: String,
+        creator_id: Uuid,
+        subscription_state: OrganizationSubscriptionStateModel,
+        trial_started_at: Option<DateTime<Utc>>,
+        trial_expires_at: Option<DateTime<Utc>>,
+        created_at: DateTime<Utc>,
+        updated_at: DateTime<Utc>,
+        deleted_at: Option<DateTime<Utc>>,
+    }
+
+    #[test]
+    fn test_organization_model_parses_on_older_clients() {
+        let model = OrganizationModel {
+            id: Uuid::now_v7(),
+            name: "Acme".to_string(),
+            description: "An organization".to_string(),
+            avatar_url: None,
+            creator_id: Uuid::now_v7(),
+            subscription_state: OrganizationSubscriptionStateModel::Trial,
+            trial_started_at: None,
+            trial_expires_at: None,
+            tier: OrganizationTierModel::FreeTier,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            deleted_at: None,
+        };
+
+        let json = serde_json::to_string(&model).unwrap();
+        serde_json::from_str::<OrganizationModelUpTo0_10>(&json)
+            .expect("older clients must still be able to deserialize an organization");
+    }
 
     #[cfg(feature = "server")]
     #[test]

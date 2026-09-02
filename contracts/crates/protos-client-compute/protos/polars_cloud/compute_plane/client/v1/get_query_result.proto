@@ -4,6 +4,7 @@ package polars_cloud.compute_plane.client.v1;
 
 import "polars_cloud/common/query_id.proto";
 import "polars_cloud/common/query_result.proto";
+import "polars_cloud/compute_plane/client/v1/get_query_status.proto";
 
 message GetQueryResultRequest {
   polars_cloud.common.QueryId query_id = 1;
@@ -28,4 +29,5 @@ message ComputeQueryInfo {
 message GetQueryResultResponse {
   polars_cloud.common.QueryResult query_result = 1;
   ComputeQueryInfo compute_info = 2;
+  QueryStatus query_status = 3;
 }

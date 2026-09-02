@@ -8,10 +8,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::DBCPUArchitectureModel;
 
-fn default_cpu_architectures() -> Vec<DBCPUArchitectureModel> {
-    vec![DBCPUArchitectureModel::X86_64]
-}
-
 #[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all))]
 #[cfg_attr(feature = "server", derive(JsonSchema, Validate))]
 #[derive(Clone, Deserialize, Serialize, Debug, PartialEq)]
@@ -28,8 +24,8 @@ pub enum InstanceSpecsModel {
         cpus: u32,
         #[cfg_attr(feature = "server", garde(range(min = 1)))]
         ram_gb: u32,
-        #[serde(default = "default_cpu_architectures")]
-        #[cfg_attr(feature = "server", garde(dive))]
+        #[serde(default = "DBCPUArchitectureModel::defaults")]
+        #[cfg_attr(feature = "server", garde(length(min = 1)))]
         cpu_architectures: Vec<DBCPUArchitectureModel>,
         #[cfg_attr(feature = "server", garde(range(min = 1)))]
         multiplier: Option<u32>,

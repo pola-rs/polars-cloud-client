@@ -8,6 +8,7 @@ pub mod grpc;
 pub mod login;
 pub mod utils;
 pub mod versions;
+pub mod workspace_aws;
 
 pub mod context;
 pub mod runtime;

@@ -9,7 +9,7 @@
 |
 <a href="https://stackoverflow.com/questions/tagged/polars-cloud">Stack Overflow</a>
 |
-<a href="https://docs.pola.rs/polars-cloud/">User guide</a>
+<a href="https://docs.cloud.pola.rs/polars-cloud/">User guide</a>
 |
 <a href="https://discord.gg/4UfP5cfBE7">Discord</a>
 

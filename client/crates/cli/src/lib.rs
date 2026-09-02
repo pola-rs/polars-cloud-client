@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use clap::builder::{NonEmptyStringValueParser, TypedValueParser, ValueParser};
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
-use client_core::{AutoRefreshApiControlPlaneClient, Client, RUNTIME};
+use client_core::{ApiResult, AutoRefreshApiControlPlaneClient, Client, RUNTIME};
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
@@ -17,9 +17,9 @@ use crate::organization::{
     delete_organization, print_organization_details, print_organizations, set_up_organization,
 };
 use crate::service_account::create_service_account;
-use crate::setup::{WorkspaceKind, setup};
+use crate::setup::setup;
 use crate::workspace::{
-    delete_workspace, print_workspace_details, print_workspaces, verify_workspace,
+    create_workspace, delete_workspace, print_workspace_details, print_workspaces,
 };
 
 pub mod compute;
@@ -27,6 +27,10 @@ pub mod organization;
 pub mod service_account;
 pub mod setup;
 pub mod workspace;
+pub mod workspace_aws;
+
+#[cfg(test)]
+mod test_fixtures;
 
 async fn get_user_input(prompt: &str) -> anyhow::Result<String> {
     print!("{prompt}");
@@ -42,6 +46,43 @@ async fn get_user_input(prompt: &str) -> anyhow::Result<String> {
             std::process::exit(130)
         },
     }
+}
+
+fn warn_deprecated(what: &str, use_instead: &str) {
+    eprintln!("warning: `{what}` is deprecated since 0.11.0, use `{use_instead}` instead");
+}
+
+/// Names an existing workspace, for the commands that operate on one.
+#[derive(Args)]
+struct WorkspaceRef {
+    #[arg(short, long)]
+    organization_name: Option<String>,
+    #[arg(short, long)]
+    workspace_name: String,
+}
+
+/// `pc setup` and the deprecated `pc workspace setup` take the same arguments.
+#[derive(Args)]
+struct SetupArgs {
+    #[arg(short, long)]
+    organization_name: Option<String>,
+    #[arg(short, long)]
+    workspace_name: Option<String>,
+    #[arg(long, default_value_t = false)]
+    connect_aws: bool,
+    #[arg(long, default_value_t = false)]
+    no_verify: bool,
+}
+
+async fn run_setup(client: &Client, args: SetupArgs) -> ApiResult<()> {
+    setup(
+        client,
+        args.organization_name,
+        args.workspace_name,
+        args.connect_aws.then_some(true),
+        !args.no_verify,
+    )
+    .await
 }
 
 #[derive(Parser)]
@@ -77,16 +118,7 @@ enum Commands {
     /// Login through the browser
     Login,
     /// Set up organization and workspace
-    Setup {
-        #[arg(short, long)]
-        organization_name: Option<String>,
-        #[arg(short, long)]
-        workspace_name: Option<String>,
-        #[arg(long)]
-        workspace_type: Option<WorkspaceKind>,
-        #[arg(long, default_value_t = false)]
-        no_verify: bool,
-    },
+    Setup(SetupArgs),
     /// Manage Polars Cloud organizations
     Organization(OrganizationArgs),
     /// Manage Polars Cloud workspaces
@@ -116,12 +148,12 @@ enum OrganizationCommands {
     },
     /// Delete an organization
     Delete {
-        #[arg(short, long, required = true)]
+        #[arg(short, long)]
         name: String,
     },
     /// Print details of an organization
     Details {
-        #[arg(short, long, required = true)]
+        #[arg(short, long)]
         name: String,
     },
 }
@@ -137,43 +169,52 @@ struct WorkspaceArgs {
 #[derive(Subcommand)]
 enum WorkspaceCommands {
     /// List all active workspaces
-    List,
-    /// Set up a workspace
-    Setup {
-        #[arg(short, long)]
-        workspace_name: Option<String>,
-        #[arg(short, long)]
+    List {
+        #[arg(short, long, help = "Only list workspaces in this organization")]
         organization_name: Option<String>,
-        #[arg(short = 't', long)]
-        workspace_type: Option<WorkspaceKind>,
+    },
+    /// Create a workspace
+    Create {
+        #[command(flatten)]
+        workspace: WorkspaceRef,
+        #[arg(long, default_value_t = false)]
+        connect_aws: bool,
         #[arg(long, default_value_t = false)]
         no_verify: bool,
     },
-    /// Verify workspace setup
-    Verify {
-        #[arg(short, long)]
-        organization_name: Option<String>,
-        #[arg(short, long, required = true)]
-        workspace_name: String,
-        #[arg(short, long)]
-        interval: Option<u64>,
-        #[arg(short = 'd', long)]
-        timeout: Option<u64>,
-    },
+    /// Manage the AWS connection of a workspace
+    Aws(WorkspaceAwsArgs),
+    /// (deprecated) Set up a workspace, use `create --connect-aws` instead
+    Setup(SetupArgs),
+    /// (deprecated) Report the AWS connection, use `aws verify` instead
+    Verify(WorkspaceRef),
     /// Delete a workspace
-    Delete {
-        #[arg(short, long)]
-        organization_name: Option<String>,
-        #[arg(short, long, required = true)]
-        workspace_name: String,
-    },
+    Delete(WorkspaceRef),
     /// Print details of a workspace
-    Details {
-        #[arg(short, long)]
-        organization_name: Option<String>,
-        #[arg(short, long, required = true)]
-        workspace_name: String,
+    Details(WorkspaceRef),
+}
+
+// --- Workspace (AWS) ---
+
+#[derive(Args)]
+struct WorkspaceAwsArgs {
+    #[command(subcommand)]
+    command: WorkspaceAwsCommands,
+}
+
+#[derive(Subcommand)]
+enum WorkspaceAwsCommands {
+    /// Connect an AWS account to a workspace
+    Connect {
+        #[command(flatten)]
+        workspace: WorkspaceRef,
+        #[arg(long, default_value_t = false)]
+        no_verify: bool,
     },
+    /// Disconnect the AWS account from a workspace
+    Disconnect(WorkspaceRef),
+    /// Report whether AWS is connected to a workspace
+    Verify(WorkspaceRef),
 }
 
 // --- Service Account ---
@@ -188,11 +229,9 @@ struct ServiceAccountArgs {
 enum ServiceAccountCommands {
     /// Create a new service account for a workspace
     Create {
+        #[command(flatten)]
+        workspace: WorkspaceRef,
         #[arg(short, long)]
-        organization_name: Option<String>,
-        #[arg(short, long, required = true)]
-        workspace_name: String,
-        #[arg(short, long, required = true)]
         name: String,
         #[arg(short, long)]
         description: Option<String>,
@@ -227,13 +266,16 @@ fn parse_env_override() -> ValueParser {
 #[derive(Subcommand)]
 enum ComputeCommands {
     /// List available compute clusters
-    List,
+    List {
+        #[arg(short, long, help = "Only list compute in this organization")]
+        organization_name: Option<String>,
+        #[arg(short, long, help = "Only list compute in this workspace")]
+        workspace_name: Option<String>,
+    },
     /// Start a compute cluster
     Start {
-        #[arg(short, long)]
-        organization_name: Option<String>,
-        #[arg(short, long)]
-        workspace_name: Option<String>,
+        #[command(flatten)]
+        workspace: WorkspaceRef,
         #[arg(short, long)]
         cpus: Option<u32>,
         #[arg(short, long)]
@@ -251,20 +293,16 @@ enum ComputeCommands {
     },
     /// Stop a compute cluster
     Stop {
+        #[command(flatten)]
+        workspace: WorkspaceRef,
         #[arg(short, long)]
-        organization_name: Option<String>,
-        #[arg(short, long)]
-        workspace_name: String,
-        #[arg(short, long, required = true)]
         id: Uuid,
     },
     /// Print details of a compute cluster
     Details {
+        #[command(flatten)]
+        workspace: WorkspaceRef,
         #[arg(short, long)]
-        organization_name: Option<String>,
-        #[arg(short, long)]
-        workspace_name: String,
-        #[arg(short, long, required = true)]
         id: Uuid,
     },
 }
@@ -290,12 +328,17 @@ async fn async_main(args: Vec<String>) -> anyhow::Result<()> {
     };
 
     if cli.verbose {
-        tracing_subscriber::fmt()
+        let installed = tracing_subscriber::fmt()
             .with_env_filter(
                 EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug")),
             )
-            .init();
-        println!("Logging level set to DEBUG");
+            .try_init()
+            .is_ok();
+        if installed {
+            println!("Logging level set to DEBUG");
+        } else {
+            println!("Logging already initialized; set RUST_LOG=debug to raise the level");
+        }
     }
 
     let client = AutoRefreshApiControlPlaneClient::default();
@@ -311,23 +354,15 @@ async fn async_main(args: Vec<String>) -> anyhow::Result<()> {
     let client: Client = Arc::new(client);
 
     match command {
-        Commands::Authenticate => client.authenticate(None, None, true).await?,
-        Commands::Login => client.login().await?,
-        Commands::Setup {
-            organization_name,
-            workspace_name,
-            workspace_type,
-            no_verify,
-        } => {
-            setup(
-                &client,
-                organization_name,
-                workspace_name,
-                workspace_type,
-                !no_verify,
-            )
-            .await?
+        Commands::Authenticate => {
+            client.authenticate(None, None, true).await?;
+            println!("Successfully logged in.");
         },
+        Commands::Login => {
+            client.login().await?;
+            println!("Successfully logged in.");
+        },
+        Commands::Setup(args) => run_setup(&client, args).await?,
         Commands::Organization(args) => match args.command {
             OrganizationCommands::List => print_organizations(&client).await?,
             OrganizationCommands::Setup { name } => {
@@ -339,57 +374,90 @@ async fn async_main(args: Vec<String>) -> anyhow::Result<()> {
             },
         },
         Commands::Workspace(args) => match args.command {
-            WorkspaceCommands::List => print_workspaces(&client).await?,
-            WorkspaceCommands::Setup {
-                organization_name,
-                workspace_name,
-                workspace_type,
+            WorkspaceCommands::List { organization_name } => {
+                print_workspaces(&client, organization_name).await?
+            },
+            WorkspaceCommands::Create {
+                workspace,
+                connect_aws,
                 no_verify,
             } => {
-                setup(
+                create_workspace(
                     &client,
-                    organization_name,
-                    workspace_name,
-                    workspace_type,
+                    workspace.organization_name,
+                    workspace.workspace_name,
+                    connect_aws,
                     !no_verify,
                 )
                 .await?
             },
-            WorkspaceCommands::Verify {
-                organization_name,
-                workspace_name,
-                interval,
-                timeout,
-            } => {
-                verify_workspace(
+            WorkspaceCommands::Aws(args) => match args.command {
+                WorkspaceAwsCommands::Connect {
+                    workspace,
+                    no_verify,
+                } => {
+                    workspace_aws::connect(
+                        &client,
+                        workspace.organization_name,
+                        workspace.workspace_name,
+                        !no_verify,
+                    )
+                    .await?
+                },
+                WorkspaceAwsCommands::Disconnect(workspace) => {
+                    workspace_aws::disconnect(
+                        &client,
+                        workspace.organization_name,
+                        workspace.workspace_name,
+                    )
+                    .await?
+                },
+                WorkspaceAwsCommands::Verify(workspace) => {
+                    workspace_aws::verify(
+                        &client,
+                        workspace.organization_name,
+                        workspace.workspace_name,
+                    )
+                    .await?
+                },
+            },
+            WorkspaceCommands::Setup(args) => run_setup(&client, args).await?,
+            WorkspaceCommands::Verify(workspace) => {
+                warn_deprecated("pc workspace verify", "pc workspace aws verify");
+                workspace_aws::verify(
                     &client,
-                    organization_name,
-                    workspace_name,
-                    interval,
-                    timeout,
+                    workspace.organization_name,
+                    workspace.workspace_name,
                 )
                 .await?
             },
-            WorkspaceCommands::Delete {
-                organization_name,
-                workspace_name,
-            } => delete_workspace(&client, organization_name, workspace_name).await?,
-            WorkspaceCommands::Details {
-                organization_name,
-                workspace_name,
-            } => print_workspace_details(&client, organization_name, workspace_name).await?,
+            WorkspaceCommands::Delete(workspace) => {
+                delete_workspace(
+                    &client,
+                    workspace.organization_name,
+                    workspace.workspace_name,
+                )
+                .await?
+            },
+            WorkspaceCommands::Details(workspace) => {
+                print_workspace_details(
+                    &client,
+                    workspace.organization_name,
+                    workspace.workspace_name,
+                )
+                .await?
+            },
         },
         Commands::ServiceAccount(args) => match args.command {
             ServiceAccountCommands::Create {
-                organization_name,
-                workspace_name,
+                workspace,
                 name,
                 description,
             } => {
                 create_service_account(
                     &client,
-                    organization_name,
-                    workspace_name,
+                    workspace.organization_name,
+                    workspace.workspace_name,
                     name,
                     description,
                 )
@@ -398,8 +466,7 @@ async fn async_main(args: Vec<String>) -> anyhow::Result<()> {
         },
         Commands::Compute(args) => match args.command {
             ComputeCommands::Start {
-                organization_name,
-                workspace_name,
+                workspace,
                 cpus,
                 memory,
                 instance_type,
@@ -410,8 +477,8 @@ async fn async_main(args: Vec<String>) -> anyhow::Result<()> {
             } => {
                 start_compute_cluster(
                     &client,
-                    organization_name,
-                    workspace_name,
+                    workspace.organization_name,
+                    workspace.workspace_name,
                     cpus,
                     memory,
                     instance_type,
@@ -422,20 +489,28 @@ async fn async_main(args: Vec<String>) -> anyhow::Result<()> {
                 )
                 .await?
             },
-            ComputeCommands::Stop {
-                organization_name,
-                workspace_name,
-                id,
-            } => stop_compute_cluster(&client, organization_name, workspace_name, id).await?,
-            ComputeCommands::Details {
-                organization_name,
-                workspace_name,
-                id,
-            } => {
-                print_compute_cluster_details(&client, organization_name, workspace_name, id)
-                    .await?
+            ComputeCommands::Stop { workspace, id } => {
+                stop_compute_cluster(
+                    &client,
+                    workspace.organization_name,
+                    workspace.workspace_name,
+                    id,
+                )
+                .await?
             },
-            ComputeCommands::List => print_compute_clusters(&client).await?,
+            ComputeCommands::Details { workspace, id } => {
+                print_compute_cluster_details(
+                    &client,
+                    workspace.organization_name,
+                    workspace.workspace_name,
+                    id,
+                )
+                .await?
+            },
+            ComputeCommands::List {
+                organization_name,
+                workspace_name,
+            } => print_compute_clusters(&client, organization_name, workspace_name).await?,
         },
     };
 
@@ -447,11 +522,130 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_no_conflicting_args() {
+        Cli::command().debug_assert();
+    }
+
+    /// `-o` is a disambiguator everywhere, including here -- it used to be the one required one.
+    #[test]
+    fn test_workspace_create_infers_the_organization() {
+        let cli = Cli::parse_from(["pc", "workspace", "create", "-w", "my-ws"]);
+        let Some(Commands::Workspace(WorkspaceArgs {
+            command: WorkspaceCommands::Create { workspace, .. },
+        })) = cli.command
+        else {
+            panic!();
+        };
+        assert_eq!(workspace.workspace_name, "my-ws");
+        assert_eq!(workspace.organization_name, None);
+    }
+
+    #[test]
+    fn test_parse_workspace_create() {
+        let cli = Cli::parse_from([
+            "pc",
+            "workspace",
+            "create",
+            "-w",
+            "my-ws",
+            "-o",
+            "my-org",
+            "--connect-aws",
+        ]);
+        let Some(Commands::Workspace(WorkspaceArgs {
+            command:
+                WorkspaceCommands::Create {
+                    workspace,
+                    connect_aws,
+                    no_verify,
+                },
+        })) = cli.command
+        else {
+            panic!();
+        };
+        assert_eq!(workspace.workspace_name, "my-ws");
+        assert_eq!(workspace.organization_name.as_deref(), Some("my-org"));
+        assert!(connect_aws);
+        assert!(!no_verify);
+    }
+
+    #[test]
+    fn test_parse_workspace_aws_subcommands() {
+        for (args, expect_no_verify) in [
+            (vec!["pc", "workspace", "aws", "connect", "-w", "ws"], false),
+            (
+                vec![
+                    "pc",
+                    "workspace",
+                    "aws",
+                    "connect",
+                    "-w",
+                    "ws",
+                    "--no-verify",
+                ],
+                true,
+            ),
+        ] {
+            let cli = Cli::parse_from(args);
+            let Some(Commands::Workspace(WorkspaceArgs {
+                command:
+                    WorkspaceCommands::Aws(WorkspaceAwsArgs {
+                        command: WorkspaceAwsCommands::Connect { no_verify, .. },
+                    }),
+            })) = cli.command
+            else {
+                panic!();
+            };
+            assert_eq!(no_verify, expect_no_verify);
+        }
+
+        let cli = Cli::parse_from(["pc", "workspace", "aws", "disconnect", "-w", "ws"]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Workspace(WorkspaceArgs {
+                command: WorkspaceCommands::Aws(WorkspaceAwsArgs {
+                    command: WorkspaceAwsCommands::Disconnect(..)
+                })
+            }))
+        ));
+
+        let cli = Cli::parse_from(["pc", "workspace", "aws", "verify", "-w", "ws"]);
+        let Some(Commands::Workspace(WorkspaceArgs {
+            command:
+                WorkspaceCommands::Aws(WorkspaceAwsArgs {
+                    command: WorkspaceAwsCommands::Verify(workspace),
+                }),
+        })) = cli.command
+        else {
+            panic!();
+        };
+        assert_eq!(workspace.workspace_name, "ws");
+    }
+
+    /// Omitting `--connect-aws` has to stay distinct from passing it, so that `setup` knows to
+    /// fall back to the interactive prompt rather than assuming "no".
+    #[test]
+    fn test_setup_connect_aws_is_tri_state() {
+        for (argv, expected) in [
+            (vec!["pc", "setup"], None),
+            (vec!["pc", "setup", "--connect-aws"], Some(true)),
+        ] {
+            let cli = Cli::parse_from(argv);
+            let Some(Commands::Setup(args)) = cli.command else {
+                panic!();
+            };
+            assert_eq!(args.connect_aws.then_some(true), expected);
+        }
+    }
+
+    #[test]
     fn test_parse_env_vars() {
         let cli = Cli::parse_from([
             "pc",
             "compute",
             "start",
+            "-w",
+            "my-ws",
             "--env-override",
             "TEST_ARG=3",
             "--env-override",

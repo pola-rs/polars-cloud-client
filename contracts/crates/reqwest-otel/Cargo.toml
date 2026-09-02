@@ -1,0 +1,25 @@
+[package]
+name = "reqwest-otel"
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+http = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry-http = { workspace = true }
+opentelemetry-semantic-conventions = { workspace = true }
+reqwest-middleware = { workspace = true }
+tracing = { workspace = true }
+tracing-opentelemetry = { workspace = true }
+url = "2"
+
+[lints]
+workspace = true
+
+[lib]
+test = false
+doctest = false

@@ -1,7 +1,10 @@
+mod cloud_export;
 mod entry;
+mod flight;
 pub mod query_scheduler;
 mod query_settings;
 mod serde_types;
+mod tracing;
 mod utils;
 mod wrapped_client;
 
@@ -13,22 +16,27 @@ use client_core::{
     ComputeContextSpecs, EncodedPolarsError, NotFoundError, RUNTIME, VERSIONS, get_versions,
 };
 use polars_axum_models::{
-    ComputeClusterNodeInfoModel, ComputeClusterPublicInfoModel, ComputeModel, ComputeStatusModel,
-    ComputeTokenModel, DBCPUArchitectureModel, DBClusterModeModel, DeleteWorkspaceModel,
-    FileTypeModel, LogLevelModel, ManifestModel, OrganizationModel,
-    OrganizationSubscriptionStateModel, QueryEngineModel, QueryModel, QueryStateTimingModel,
-    QueryStatusCodeModel, QueryTypeModel, QueryWithStateTimingAndResultModel, ResultModel,
-    StatusModel, TerminationModel, TerminationReasonModel, UserModel, WorkspaceAPITokenModel,
-    WorkspaceApiTokenWithNameModel, WorkspaceClusterDefaultsModel, WorkspaceDeploymentModel,
-    WorkspaceModel, WorkspaceSetupUrlModel, WorkspaceStateModel, WorkspaceWithUrlModel,
+    AwsConnectionStatusModel, ComputeClusterNodeInfoModel, ComputeClusterPublicInfoModel,
+    ComputeModel, ComputeStatusModel, ComputeTokenModel, DBCPUArchitectureModel,
+    DBClusterModeModel, DeleteWorkspaceModel, FileTypeModel, LogLevelModel, ManifestModel,
+    OrganizationModel, OrganizationSubscriptionStateModel, OrganizationTierModel, QueryEngineModel,
+    QueryModel, QueryStateTimingModel, QueryStatusCodeModel, QueryTypeModel,
+    QueryWithStateTimingAndResultModel, ResultModel, StatusModel, TerminationModel,
+    TerminationReasonModel, UserModel, WorkspaceAPITokenModel, WorkspaceApiTokenWithNameModel,
+    WorkspaceAwsConnectionModel, WorkspaceAwsStackModel, WorkspaceClusterDefaultsModel,
+    WorkspaceDeploymentModel, WorkspaceModel, WorkspaceSetupUrlModel, WorkspaceStateModel,
+    WorkspaceWithUrlModel,
 };
 use pyo3::exceptions::PySystemExit;
 use pyo3::prelude::*;
 
 use self::query_settings::PyShuffleOpts;
+use crate::cloud_export::{QueryCloudObserver, QueryMetricPoller};
+use crate::flight::FlightResult;
 use crate::query_scheduler::*;
 use crate::query_settings::{PyLineageContext, PyNumWorkers, PyQuerySettings};
 use crate::serde_types::{QueryDetailPy, QueryInfoPy, QueryPlanTimingPy, StageStatsPy};
+use crate::tracing::{TraceSpan, flush_traces, init_from_env};
 use crate::wrapped_client::WrappedAPIClient;
 use crate::wrapped_client::workspace::DefaultComputeSpecs;
 
@@ -41,7 +49,7 @@ pub static CTRL_PLN_CLIENT_GLOBAL: std::sync::LazyLock<Arc<AutoRefreshApiControl
 
 #[pymodule]
 fn polars_cloud(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
-    let _ = tokio_rustls::rustls::crypto::aws_lc_rs::default_provider().install_default();
+    init_from_env();
 
     let mut err = Ok(());
     VERSIONS.get_or_init(|| match get_versions(py) {
@@ -53,6 +61,7 @@ fn polars_cloud(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     });
     err?;
 
+    m.add_class::<AwsConnectionStatusModel>()?;
     m.add_class::<ClientOptions>()?;
     m.add_class::<ComputeClusterNodeInfoModel>()?;
     m.add_class::<ComputeClusterPublicInfoModel>()?;
@@ -66,18 +75,23 @@ fn polars_cloud(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<DefaultComputeSpecs>()?;
     m.add_class::<DeleteWorkspaceModel>()?;
     m.add_class::<FileTypeModel>()?;
+    m.add_class::<FlightResult>()?;
     m.add_class::<LogLevelModel>()?;
     m.add_class::<ManifestModel>()?;
     m.add_class::<OrganizationModel>()?;
     m.add_class::<OrganizationSubscriptionStateModel>()?;
+    m.add_class::<OrganizationTierModel>()?;
     m.add_class::<PlanFormatPy>()?;
+    m.add_class::<TraceSpan>()?;
     m.add_class::<PyLineageContext>()?;
     m.add_class::<PyNumWorkers>()?;
     m.add_class::<PyQuerySettings>()?;
     m.add_class::<PyShuffleOpts>()?;
+    m.add_class::<QueryCloudObserver>()?;
     m.add_class::<QueryDetailPy>()?;
     m.add_class::<QueryEngineModel>()?;
     m.add_class::<QueryInfoPy>()?;
+    m.add_class::<QueryMetricPoller>()?;
     m.add_class::<QueryModel>()?;
     m.add_class::<QueryPlanTimingPy>()?;
     m.add_class::<QueryPlansPy>()?;
@@ -95,6 +109,8 @@ fn polars_cloud(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<UserModel>()?;
     m.add_class::<WorkspaceAPITokenModel>()?;
     m.add_class::<WorkspaceApiTokenWithNameModel>()?;
+    m.add_class::<WorkspaceAwsConnectionModel>()?;
+    m.add_class::<WorkspaceAwsStackModel>()?;
     m.add_class::<WorkspaceClusterDefaultsModel>()?;
     m.add_class::<WorkspaceDeploymentModel>()?;
     m.add_class::<WorkspaceModel>()?;
@@ -118,6 +134,7 @@ fn polars_cloud(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     )?;
 
     m.add_function(wrap_pyfunction!(serde_types::serialize_query_settings, m)?)?;
+    m.add_function(wrap_pyfunction!(flush_traces, m)?)?;
     m.add_function(wrap_pyfunction!(py_is_token_expired, m)?)?;
     m.add_function(wrap_pyfunction!(polars_version, m)?)?;
     m.add_function(wrap_pyfunction!(python_version, m)?)?;
@@ -135,5 +152,5 @@ fn cli_main(py: Python) -> PyResult<()> {
         .getattr("argv")?
         .extract::<Vec<String>>()?;
     let result = py.detach(move || client_cli::entrypoint(args));
-    result.map_err(|e| PySystemExit::new_err(format!("{e:#}")))
+    result.map_err(|e| PySystemExit::new_err(format!("{e}")))
 }

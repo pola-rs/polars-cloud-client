@@ -1,0 +1,21 @@
+[package]
+name = "tower-otel"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+http = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry-semantic-conventions = { workspace = true }
+tonic = { workspace = true }
+tower = { workspace = true }
+tracing = { workspace = true }
+tracing-opentelemetry = { workspace = true }
+
+[lints]
+workspace = true
+
+[lib]
+test = false
+doctest = false

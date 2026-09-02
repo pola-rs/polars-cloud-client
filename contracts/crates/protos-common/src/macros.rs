@@ -41,6 +41,13 @@ macro_rules! method {
     };
 }
 
+#[macro_export]
+macro_rules! map_methods [
+    ($($fname:ident($($arg:path)?) $(-> $ret:path)?;)+) => {
+        $($crate::method!{$fname($($arg)?) $( -> $ret)?})+
+    };
+];
+
 pub trait StatusOrInfallible {
     fn to_status(self) -> Status;
 }
@@ -64,7 +71,9 @@ macro_rules! map_trait {
     }) => {
         impl<T: $adapted_trait + Send + Sync + 'static> $trait for T
             where tonic::Status: From<T::Error>, {
-            $($crate::method!{$fname($($arg)?) $( -> $ret)?})+
+            $crate::map_methods!{
+                $($fname($($arg)?) $( -> $ret)?;)+
+            }
         }
     };
 }

@@ -12,24 +12,56 @@ name = "polars_cloud"
 crate-type = ["cdylib"]
 
 [dependencies]
+anyhow = { workspace = true }
+arrow-array = { version = "59", features = ["ffi"] }
+arrow-flight = "59"
+arrow-ipc = { version = "59", features = ["zstd"] }
+arrow-schema = "59"
+chrono = { workspace = true }
 client-cli = { workspace = true }
 client-core = { workspace = true }
-pc-observatory-models = { workspace = true }
+http = { workspace = true }
+opentelemetry = { workspace = true, optional = true }
+opentelemetry-otlp = { workspace = true, optional = true }
+opentelemetry-semantic-conventions = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, optional = true }
+pc-observatory-models = { workspace = true, features = ["convert"] }
 polars-axum-models = { workspace = true }
 polars-backend-client = { workspace = true }
+polars-descriptions = { workspace = true }
 protos-client-compute = { workspace = true }
 protos-client-control = { workspace = true }
 protos-common = { workspace = true }
 pyo3 = { workspace = true }
 reqwest = { workspace = true }
+reqwest-middleware = { workspace = true }
+reqwest-otel = { workspace = true }
+rmp-serde = { workspace = true }
+serde_json = { workspace = true }
+strum_macros = { workspace = true }
 tokio = { workspace = true }
 tokio-rustls = { workspace = true }
-tonic = { workspace = true }
+tokio-stream = { workspace = true }
+tokio-util = { workspace = true }
+tonic = { workspace = true, features = ["tls-aws-lc"] }
 tower = { workspace = true }
+tower-grpc-retry = { workspace = true }
 tower-http = { workspace = true }
+tower-otel = { workspace = true }
 tracing = { workspace = true }
+tracing-opentelemetry = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true }
 utils = { workspace = true }
 uuid = { workspace = true }
+
+[features]
+otlp = [
+  "dep:opentelemetry",
+  "dep:opentelemetry-otlp",
+  "dep:opentelemetry-semantic-conventions",
+  "dep:opentelemetry_sdk",
+  "dep:tracing-opentelemetry",
+]
 
 [dev-dependencies]
 pyo3 = { workspace = true, features = ["auto-initialize"] }
@@ -38,4 +70,4 @@ pyo3 = { workspace = true, features = ["auto-initialize"] }
 workspace = true
 
 [package.metadata.cargo-shear]
-ignored = ["tracing"]
+ignored = ["arrow-ipc"]

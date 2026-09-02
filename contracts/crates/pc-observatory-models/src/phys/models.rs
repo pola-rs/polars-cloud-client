@@ -55,7 +55,6 @@ pub enum PhysNodeProperties {
     #[default]
     Default,
     CallbackSink {
-        callback_function: String,
         maintain_order: bool,
         chunk_size: Option<NonZeroUsize>,
     },
@@ -63,20 +62,18 @@ pub enum PhysNodeProperties {
     FileSink {
         target: String,
         file_format: String,
-        sync_on_close: String,
         maintain_order: bool,
-        mkdir: bool,
-        cloud_options: bool,
-        sinked_paths_callback: Option<String>,
+        shuffle_id: Option<u32>,
     },
     Filter {
         predicate: String,
     },
     GatherEvery {
-        n: u64,
-        offset: u64,
+        n: usize,
+        offset: usize,
     },
     GroupBy {
+        num_inputs: usize,
         key_per_input: Vec<Vec<String>>,
         aggs_per_input: Vec<Vec<String>>,
     },
@@ -110,9 +107,8 @@ pub enum PhysNodeProperties {
     },
     InMemorySink,
     InMemorySource {
-        n_rows: u64,
+        n_rows: usize,
         schema_names: Vec<String>,
-        disable_morsel_split: bool,
     },
     InputIndependentSelect {
         selectors: Vec<String>,
@@ -127,7 +123,7 @@ pub enum PhysNodeProperties {
         /// [value, dtype_str]
         tolerance: Option<[String; 2]>,
         suffix: Option<String>,
-        slice: Option<(i64, u64)>,
+        slice: Option<(i64, usize)>,
         coalesce: String,
         allow_eq: bool,
         check_sortedness: bool,
@@ -136,7 +132,7 @@ pub enum PhysNodeProperties {
         left_on: Vec<String>,
         right_on: Vec<String>,
         suffix: Option<String>,
-        slice: Option<(i64, u64)>,
+        slice: Option<(i64, usize)>,
         coalesce: String,
         descending: bool,
     },
@@ -176,18 +172,18 @@ pub enum PhysNodeProperties {
         maintain_order: String,
         validation: String,
         suffix: Option<String>,
-        slice: Option<(i64, u64)>,
+        slice: Option<(i64, usize)>,
     },
     InMemoryAsOfJoin {
-        left_on: String,
-        right_on: String,
+        left_on: Vec<String>,
+        right_on: Vec<String>,
         left_by: Option<Vec<String>>,
         right_by: Option<Vec<String>>,
         strategy: String,
         /// [value, dtype_str]
         tolerance: Option<[String; 2]>,
         suffix: Option<String>,
-        slice: Option<(i64, u64)>,
+        slice: Option<(i64, usize)>,
         coalesce: String,
         allow_eq: bool,
         check_sortedness: bool,
@@ -197,35 +193,34 @@ pub enum PhysNodeProperties {
         right_on: Vec<String>,
         inequality_operators: Vec<String>,
         suffix: Option<String>,
-        slice: Option<(i64, u64)>,
+        slice: Option<(i64, usize)>,
     },
     Map,
     MultiScan {
         scan_type: String,
-        num_sources: u64,
+        num_sources: usize,
         first_source: Option<String>,
         projected_file_columns: Vec<String>,
         row_index_name: Option<String>,
         row_index_offset: Option<u64>,
-        pre_slice: Option<(i64, u64)>,
         predicate: Option<String>,
         predicate_file_skip_applied: Option<PredicateFileSkip>,
         has_table_statistics: bool,
         include_file_paths: Option<String>,
         deletion_files_type: Option<String>,
         hive_columns: Option<Vec<String>>,
-        disable_morsel_split: bool,
+        shuffle_id: Option<u32>,
     },
     Multiplexer,
     NegativeSlice {
         offset: i64,
-        length: u64,
+        length: usize,
     },
     OrderedUnion {
-        num_inputs: u64,
+        num_inputs: usize,
     },
     UnorderedUnion {
-        num_inputs: u64,
+        num_inputs: usize,
     },
     PartitionSink {
         base_path: String,
@@ -234,13 +229,10 @@ pub enum PhysNodeProperties {
         partition_strategy: String,
         partition_key_exprs: Option<Vec<String>>,
         include_keys: Option<bool>,
-        mkdir: bool,
         maintain_order: bool,
-        sync_on_close: String,
-        cloud_options: bool,
         max_rows_per_file: u64,
         approximate_bytes_per_file: u64,
-        sinked_paths_callback: Option<String>,
+        shuffle_id: Option<u32>,
     },
     PeakMin,
     PeakMax,
@@ -267,11 +259,11 @@ pub enum PhysNodeProperties {
         columns: Vec<String>,
     },
     SinkMultiple {
-        num_sinks: u64,
+        num_sinks: usize,
     },
     Sort {
         sort_columns: Vec<SortColumn>,
-        slice: Option<(i64, u64)>,
+        slice: Option<(i64, usize)>,
         multithreaded: bool,
         maintain_order: bool,
         limit: Option<u64>,
@@ -284,7 +276,7 @@ pub enum PhysNodeProperties {
     },
     Slice {
         offset: i64,
-        length: u64,
+        length: usize,
     },
     TopK {
         by_exprs: Vec<String>,
@@ -297,7 +289,7 @@ pub enum PhysNodeProperties {
         offset: Option<u64>,
     },
     Zip {
-        num_inputs: u64,
+        num_inputs: usize,
         zip_behavior: String,
     },
     //
@@ -325,7 +317,7 @@ pub enum PhysNodeProperties {
     },
     PythonScan {
         scan_source_type: String,
-        n_rows: Option<u64>,
+        n_rows: Option<usize>,
         projection: Option<Vec<String>>,
         predicate: Option<String>,
         schema_names: Vec<String>,
@@ -344,6 +336,7 @@ pub enum PhysNodeProperties {
         null_on_oob: bool,
     },
     ColumnarFunction {
+        num_inputs: usize,
         name: Option<String>,
     },
     IsSorted {

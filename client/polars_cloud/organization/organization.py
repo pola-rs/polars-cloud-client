@@ -53,7 +53,9 @@ class Organization:
             raise OrganizationResolveError(msg)
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(id={self._id!r}, name={self._name!r}, "
+        if self._id is None or self._name is None:
+            self.load()
+        return f"{self.__class__.__name__}(id={self._id!r}, name={self._name!r})"
 
     @classmethod
     def _from_id_unchecked(cls, organization_id: UUID) -> Self:

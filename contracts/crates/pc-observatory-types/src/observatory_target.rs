@@ -83,6 +83,6 @@ impl From<ObservatorySpanTarget> for &'static str {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PartitionWriteStatistics {
     pub shuffle_id: ShuffleId,
-    pub partitions: Vec<i64>,
-    pub bytes: Vec<i64>,
+    pub partitions: Vec<u32>,
+    pub bytes: Vec<u64>,
 }
