@@ -16,11 +16,11 @@ use client_core::{
     ComputeContextSpecs, EncodedPolarsError, NotFoundError, RUNTIME, VERSIONS, get_versions,
 };
 use polars_axum_models::{
-    AwsConnectionStatusModel, ComputeClusterNodeInfoModel, ComputeClusterPublicInfoModel,
-    ComputeModel, ComputeStatusModel, ComputeTokenModel, DBCPUArchitectureModel,
-    DBClusterModeModel, DeleteWorkspaceModel, FileTypeModel, LogLevelModel, ManifestModel,
-    OrganizationModel, OrganizationSubscriptionStateModel, OrganizationTierModel, QueryEngineModel,
-    QueryModel, QueryStateTimingModel, QueryStatusCodeModel, QueryTypeModel,
+    AwsConnectionStatusModel, ClusterDeploymentModel, ComputeClusterNodeInfoModel,
+    ComputeClusterPublicInfoModel, ComputeModel, ComputeStatusModel, ComputeTokenModel,
+    DBCPUArchitectureModel, DBClusterModeModel, DeleteWorkspaceModel, FileTypeModel, LogLevelModel,
+    ManifestModel, OrganizationModel, OrganizationSubscriptionStateModel, OrganizationTierModel,
+    QueryEngineModel, QueryModel, QueryStateTimingModel, QueryStatusCodeModel, QueryTypeModel,
     QueryWithStateTimingAndResultModel, ResultModel, StatusModel, TerminationModel,
     TerminationReasonModel, UserModel, WorkspaceAPITokenModel, WorkspaceApiTokenWithNameModel,
     WorkspaceAwsConnectionModel, WorkspaceAwsStackModel, WorkspaceClusterDefaultsModel,
@@ -63,6 +63,7 @@ fn polars_cloud(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
 
     m.add_class::<AwsConnectionStatusModel>()?;
     m.add_class::<ClientOptions>()?;
+    m.add_class::<ClusterDeploymentModel>()?;
     m.add_class::<ComputeClusterNodeInfoModel>()?;
     m.add_class::<ComputeClusterPublicInfoModel>()?;
     m.add_class::<ComputeContextSpecs>()?;

@@ -22,24 +22,14 @@ pub(crate) struct CloudApiClient {
 }
 
 impl CloudApiClient {
-    pub async fn connect() -> anyhow::Result<Self> {
-        let client = CTRL_PLN_CLIENT_GLOBAL.clone();
-
-        let user = client
-            .get_logged_in_user()
-            .await
-            .map_err(|e| anyhow::anyhow!("failed to resolve user for cloud export: {e:#}"))?;
-
-        let workspace_id = user.default_workspace_id.ok_or_else(|| {
-            anyhow::anyhow!(
-                "no default workspace set; set a default workspace to enable cloud export"
-            )
-        })?;
-
-        Ok(Self {
-            client,
+    /// Connect to the workspace query profiles are exported to. Resolving a
+    /// workspace from user input (name, id, or the account default) happens on the
+    /// Python side through `polars_cloud.Workspace`.
+    pub fn connect(workspace_id: Uuid) -> Self {
+        Self {
+            client: CTRL_PLN_CLIENT_GLOBAL.clone(),
             workspace_id,
-        })
+        }
     }
 
     pub async fn submit_started(

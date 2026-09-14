@@ -554,6 +554,17 @@ impl ControlPlaneClient for AutoRefreshApiControlPlaneClient {
         self.call(|client| client.get_logged_in_user()).await
     }
 
+    async fn set_default_workspace(&self, workspace_id: Uuid) -> Result<(), ApiError> {
+        let args = UserBodyArgs {
+            first_name: None,
+            last_name: None,
+            default_workspace_id: Some(workspace_id),
+            newsletter_updates: None,
+            personal_emails: None,
+        };
+        self.call(|client| client.patch_user(&args)).await
+    }
+
     async fn get_workspace_tokens(
         &self,
         workspace_id: Uuid,

@@ -757,8 +757,18 @@ impl ApiClient {
         .await
     }
 
-    pub async fn redeem_organization_invite(&self, uri: &str) -> Result<()> {
-        self.get(uri).await?.empty().await
+    pub async fn redeem_organization_invite(
+        &self,
+        organization_id: Uuid,
+        params: &RedeemInviteArgs,
+    ) -> Result<()> {
+        self.post(&format!(
+            "/api/v1/organization/{organization_id}/invite/redeem"
+        ))
+        .json(params)
+        .await?
+        .empty()
+        .await
     }
 
     pub async fn get_organization_members(
@@ -825,7 +835,7 @@ impl ApiClient {
     ) -> Result<Paginated<QueryWithStateTimingModel>> {
         self.get(&format!("/api/v1/workspace/{workspace_id}/query"))
             .pagination(&pagination)
-            .parameter("order", "id,asc")
+            .parameter("order", "request_time,asc")
             .parameter_opt("cluster_id", filters.cluster_id)
             .parameter_opt("user_id", filters.user_id)
             .await?

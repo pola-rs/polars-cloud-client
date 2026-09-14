@@ -111,6 +111,7 @@ if docs_base_url is not None:
     sitemap_url_scheme = "{link}"
 
 html_js_files = [
+    "js/posthog.js",
     (
         "https://plausible.io/js/script.js",
         {"data-domain": "docs.cloud.pola.rs", "defer": "defer"},

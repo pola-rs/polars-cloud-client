@@ -28,9 +28,10 @@ classifiers = [
 ]
 dependencies = [
   # uncomment if we want a specific commit
-  #  "polars[rt64, cloudpickle]@git+https://github.com/pola-rs/polars.git@e4ae5ead7c645d1eb01beebf53a3a0872734575e#subdirectory=py-polars",
-  #  "polars-runtime-64@git+https://github.com/pola-rs/polars.git@e4ae5ead7c645d1eb01beebf53a3a0872734575e#subdirectory=py-polars/runtime/polars-runtime-64",
-  "polars[rt64,cloudpickle] == 1.44.1",
+  # "polars[rt64, cloudpickle]@git+https://github.com/pola-rs/polars.git@2bd55b18dd649aeb1e8f186931255d968f4dd4f0#subdirectory=py-polars",
+  # "polars-runtime-64@git+https://github.com/pola-rs/polars.git@2bd55b18dd649aeb1e8f186931255d968f4dd4f0#subdirectory=py-polars/runtime/polars-runtime-64",
+  # "polars-runtime-32@git+https://github.com/pola-rs/polars.git@2bd55b18dd649aeb1e8f186931255d968f4dd4f0#subdirectory=py-polars/runtime/polars-runtime-32",
+  "polars[rt64,cloudpickle] == 1.44.2",
   # 'polars @ file:///home/jesse/dev/oss/polars/py-polars',
   # 'polars @ file:///home/ritchie46/code/polars/py-polars',
   # 4.5 is the first release with `deprecated`.
@@ -64,13 +65,18 @@ addopts = [
   "--import-mode=importlib",
   # Default to not running monitoring tests as they are hard to setup locally
   "-m not monitoring and not barebones and not auth",
+  # co-locate tests on clusters, when possible (-n N).
+  "--dist=loadgroup",
 ]
 markers = [
-  "monitoring: Tests that check if OTEL metrics are collected",
-  "barebones: Test barebones cloudformation workflow",
+  # include based on marker
   "auth: Test JWT token authorization",
+  "barebones: Test barebones cloudformation workflow",
   "cf_tunnel: Test cloudflare tunnel to observatory API",
   "local_context: Test using the LocalContext",
+  "monitoring: Test that check if metrics are collected",
+  "starts_cluster: Test brings up its own EC2 cluster in its body; scheduled early",
+  # skip based on version
   "requires_version_client(spec): skip test if installed polars_cloud version doesn't match the specifier",
   "requires_version_compute(spec): skip test if polars-on-premises version doesn't match the specifier",
 ]

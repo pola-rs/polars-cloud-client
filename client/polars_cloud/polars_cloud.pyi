@@ -20,6 +20,7 @@ __all__ = [
     "AuthLoadError",
     "AwsConnectionStatusModel",
     "ClientOptions",
+    "ClusterDeploymentModel",
     "ComputeClusterMisspecified",
     "ComputeClusterNodeInfoModel",
     "ComputeClusterPublicInfoModel",
@@ -271,8 +272,8 @@ class QueryModel:
     workspace_id: UUID
     """The workspace the query is being run in."""
 
-    cluster_id: UUID
-    """The virtual machine it is sent to."""
+    cluster_id: UUID | None
+    """The cluster it is run on, if non-local."""
 
     user_id: UUID | None
     """The user account that started the query."""
@@ -412,6 +413,13 @@ class DBClusterModeModel(Enum):
     Direct = 1
 
 @final
+class ClusterDeploymentModel(Enum):
+    """Where a compute cluster's compute runs."""
+
+    Aws = 0
+    OnPrem = 1
+
+@final
 class DBCPUArchitectureModel(Enum):
     """CPU Architecture."""
 
@@ -547,6 +555,9 @@ class ComputeModel:
     mode: DBClusterModeModel
     """Mode of the database cluster."""
 
+    deployment_type: ClusterDeploymentModel
+    """Where the compute cluster's compute runs."""
+
     log_level: LogLevelModel
     """Log level of the compute cluster."""
 
@@ -643,7 +654,7 @@ class WorkspaceApiTokenWithNameModel:
 @final
 class WorkspaceApiToken:
     id: UUID
-    username: str
+    username: UUID
     api_secret: str
     workspace_id: UUID
     description: str | None
@@ -971,6 +982,7 @@ class ApiClient:
 
     # User methods
     def get_user(self) -> UserModel: ...
+    def set_user_default_workspace(self, workspace_id: UUID) -> None: ...
     def get_query_result(self, query_id: UUID) -> QueryInfoPy: ...
     def submit_query(
         self,
@@ -1002,7 +1014,7 @@ class ComputeVersionsPy:
 
 @final
 class QueryCloudObserver:
-    def __new__(cls) -> QueryCloudObserver: ...
+    def __new__(cls, workspace_id: UUID) -> QueryCloudObserver: ...
     def on_query_started(self, query_id: UUID) -> None: ...
     def on_query_planned(
         self,

@@ -187,6 +187,8 @@ pub trait ControlPlaneClient: Send + Sync {
 
     // --- User ---
     async fn get_logged_in_user(&self) -> Result<UserModel, ApiError>;
+    /// Make `workspace_id` the account-level default workspace, as shown in the dashboard.
+    async fn set_default_workspace(&self, workspace_id: Uuid) -> Result<(), ApiError>;
 
     // --- Service Accounts / Workspace Tokens ---
     async fn get_workspace_tokens(

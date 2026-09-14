@@ -414,6 +414,9 @@ impl Display for IRDisplay<'_> {
                 IRNodeProperties::UnoptimizedDispatch { operation, .. } => {
                     write!(f, "UNOPTIMIZED DISPATCH TO {operation}")?;
                 },
+                IRNodeProperties::RemoveOverlap => {
+                    write!(f, "REMOVE PARTITION OVERLAP")?;
+                },
             }
             stack.add_sources(idx, level + 1);
         }
@@ -430,6 +433,7 @@ impl Display for PartitioningModel {
             Self::Broadcast => f.write_str("Broadcast"),
             Self::Hash { by } => write!(f, "Hash {by}"),
             Self::Range => f.write_str("Range"),
+            Self::Overlapped => f.write_str("Overlapped"),
         }
     }
 }

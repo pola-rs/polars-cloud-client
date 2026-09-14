@@ -9,7 +9,7 @@ publish.workspace = true
 # To use a local clone of polars, change the patch section in "compute-plane/Cargo.toml"
 
 [dependencies]
-polars-descriptions = { git = "https://github.com/pola-rs/polars", rev = "e4ae5ead7c645d1eb01beebf53a3a0872734575e" }
+polars-descriptions = { git = "https://github.com/pola-rs/polars", rev = "2bd55b18dd649aeb1e8f186931255d968f4dd4f0" }
 
 [lints]
 workspace = true

@@ -1,6 +1,7 @@
 #[cfg(feature = "server")]
 use schemars::JsonSchema;
 
+use crate::serde_compat::string_or_vec;
 use crate::{Edge, SortColumn};
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
@@ -33,32 +34,7 @@ impl<'a> serde::Deserialize<'a> for Predicate {
     where
         D: serde::Deserializer<'a>,
     {
-        use serde::de::{self, Visitor};
-
-        struct StringOrVec;
-        impl<'de> Visitor<'de> for StringOrVec {
-            type Value = Vec<String>;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("string or list")
-            }
-
-            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(vec![value.to_owned()])
-            }
-
-            fn visit_seq<A>(self, seq: A) -> Result<Self::Value, A::Error>
-            where
-                A: serde::de::SeqAccess<'de>,
-            {
-                de::Deserialize::deserialize(de::value::SeqAccessDeserializer::new(seq))
-            }
-        }
-
-        Ok(Self(deserializer.deserialize_any(StringOrVec)?))
+        Ok(Self(string_or_vec(deserializer)?))
     }
 }
 
@@ -177,7 +153,7 @@ pub enum IRNodeProperties {
         limit: Option<u64>,
     },
     Union {
-        num_inputs: usize,
+        num_inputs: Option<usize>,
         maintain_order: bool,
         slice: Option<(i64, usize)>,
     },
@@ -185,7 +161,9 @@ pub enum IRNodeProperties {
     // Feature gated
     //
     AsOfJoin {
+        #[serde(deserialize_with = "string_or_vec")]
         left_on: Vec<String>,
+        #[serde(deserialize_with = "string_or_vec")]
         right_on: Vec<String>,
         left_by: Option<Vec<String>>,
         right_by: Option<Vec<String>>,
@@ -271,9 +249,10 @@ pub enum IRNodeProperties {
         maintain_order: bool,
     },
     UnoptimizedDispatch {
-        num_inputs: usize,
+        num_inputs: Option<usize>,
         operation: String,
     },
+    RemoveOverlap,
 }
 
 #[derive(
@@ -298,4 +277,5 @@ pub enum PartitioningModel {
         by: String,
     },
     Range,
+    Overlapped,
 }

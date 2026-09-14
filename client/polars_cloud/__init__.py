@@ -17,13 +17,13 @@ from polars_cloud.context import (
     set_compute_context,
     show_versions,
 )
+from polars_cloud.monitoring import QueryCloudObserver
 from polars_cloud.organization import (
     Organization,
 )
 from polars_cloud.polars_cloud import (
     ClientOptions,
     LogLevelModel,
-    QueryCloudObserver,
     TLSOptions,
     cli_main,
     flush_traces,

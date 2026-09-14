@@ -63,7 +63,7 @@ tokio = { version = "1.0", default-features = false }
 tonic = { version = "0.14.3", features = ["transport", "codegen", "tls-native-roots", "zstd"] }
 tonic-prost = "0.14.3"
 tower = { version = "0.5", default-features = false }
-tower-http = { version = "0.6", default-features = false, features = ["auth", "cors", "trace", "request-id"] }
+tower-http = { version = "0.6", default-features = false, features = ["auth", "catch-panic", "cors", "map-response-body", "trace", "request-id"] }
 tracing = "0.1.41"
 tracing-opentelemetry = "0.33"
 trait-variant = "0.1.2"

@@ -195,7 +195,7 @@ fn to_ir_props(props: IrPropsDescription) -> IRNodeProperties {
             maintain_order,
             slice,
         } => IRNodeProperties::Union {
-            num_inputs,
+            num_inputs: Some(num_inputs),
             maintain_order,
             slice,
         },
@@ -305,7 +305,7 @@ fn to_ir_props(props: IrPropsDescription) -> IRNodeProperties {
             num_inputs,
             operation,
         } => IRNodeProperties::UnoptimizedDispatch {
-            num_inputs,
+            num_inputs: Some(num_inputs),
             operation,
         },
     }

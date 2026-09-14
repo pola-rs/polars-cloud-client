@@ -287,6 +287,7 @@ impl DBClusterModeModel {
 
 /// Where a cluster's compute runs.
 #[cfg_attr(feature = "server", derive(JsonSchema))]
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object, eq, eq_int))]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum ClusterDeploymentModel {
     Aws,
@@ -339,6 +340,7 @@ pub struct ComputeModel {
     pub gc_inactive_hours: i32,
     pub request_time: DateTime<Utc>,
     pub mode: DBClusterModeModel,
+    pub deployment_type: ClusterDeploymentModel,
     #[cfg_attr(feature = "server", schemars(with = "String"))]
     pub polars_version: VersionNumber,
     #[cfg_attr(feature = "server", schemars(with = "Option<String>"))]
@@ -465,6 +467,11 @@ impl ComputeModel {
     #[getter]
     pub fn mode(&self) -> pyo3::PyResult<DBClusterModeModel> {
         Ok(self.mode)
+    }
+
+    #[getter]
+    pub fn deployment_type(&self) -> pyo3::PyResult<ClusterDeploymentModel> {
+        Ok(self.deployment_type)
     }
 
     #[getter]
