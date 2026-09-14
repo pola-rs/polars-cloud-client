@@ -5,15 +5,15 @@ use chrono::Utc;
 use client_core::RUNTIME;
 use polars_axum_models::QueryPhysNodeKind;
 use polars_descriptions::{PhysicalNodeDescription, PhysicalPropsDescription};
-use pyo3::exceptions::PyRuntimeError;
 use pyo3::{Py, PyAny, PyResult, Python, pyclass, pymethods};
 use tokio::sync::mpsc;
+use uuid::Uuid;
 
 use crate::cloud_export::client::CloudApiClient;
 use crate::cloud_export::metrics::{QueryMetricPoller, init_metric_poller};
-use crate::cloud_export::{QueryId, QueryStateMessage, init_tracing};
+use crate::cloud_export::{QueryId, QueryStateMessage};
 
-const METRICS_POLL_INTERVAL: Duration = Duration::from_secs(10);
+const METRICS_POLL_INTERVAL: Duration = Duration::from_secs(5);
 
 #[pyclass]
 pub struct QueryCloudObserver {
@@ -22,18 +22,15 @@ pub struct QueryCloudObserver {
 
 #[pymethods]
 impl QueryCloudObserver {
+    /// `workspace_id` is the workspace query profiles are exported to. Use
+    /// `polars_cloud.QueryCloudObserver` from Python, which resolves a workspace
+    /// given by name or id (or the account default) before constructing this.
     #[new]
-    fn new(py: Python<'_>) -> PyResult<Self> {
+    fn new(py: Python<'_>, workspace_id: Uuid) -> PyResult<Self> {
         py.detach(|| {
-            init_tracing();
-            tracing::debug!("initializing new QueryCloudObserver");
+            tracing::debug!(%workspace_id, "initializing new QueryCloudObserver");
 
-            let client = RUNTIME
-                .0
-                .block_on(CloudApiClient::connect())
-                .map_err(|error| {
-                    PyRuntimeError::new_err(format!("failed to connect to Polars Cloud: {error:#}"))
-                })?;
+            let client = CloudApiClient::connect(workspace_id);
 
             let (sender, receiver) = mpsc::channel(8);
 

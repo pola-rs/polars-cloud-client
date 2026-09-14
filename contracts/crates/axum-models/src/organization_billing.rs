@@ -72,8 +72,6 @@ pub struct OrganizationBillingModel {
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 #[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
 pub struct StripeCheckoutSessionRequestModel {
-    #[cfg_attr(feature = "server", garde(length(min = 1, max = 512)))]
-    pub frontend_origin: String,
     #[cfg_attr(feature = "server", garde(skip))]
     pub tier: OrganizationTierModel,
 }

@@ -90,6 +90,7 @@ pub struct QueryDetailModel {
     pub total_num_files: Option<u64>,
     pub original_num_files: Option<u64>,
     pub total_rows_read: Option<i64>,
+    pub total_bytes_read: Option<i64>,
     pub errors: Option<Vec<String>>,
     pub engine: EngineTypeModel,
     pub query_type: QueryType2Model,

@@ -198,14 +198,17 @@ def spawn_many(
     min_workers : int | None
         The minimum number of workers that have to be available to start
         query execution. The cluster will wait until this many workers are
-        available.
-        When `min_workers=None`, it defaults to the number of workers the
-        cluster is configured to have, or the current number of workers for
-        dynamically sized clusters.
+        available, up to the maximum a single query is allowed to use.
+        When `min_workers=None`, execution starts as soon as one worker is
+        available and the query grows toward `max_workers` from there.
     max_workers : int | None
-        The maximum number of workers to use for query execution.
-        When `max_workers=None`, the query will use all available workers
-        and any workers that join afterwards.
+        The maximum number of workers to use for query execution, up to the
+        maximum a single query is allowed to use. This also determines how
+        many workers the query is planned for, and how much capacity is
+        requested from a dynamically sized cluster.
+        When `max_workers=None`, it defaults to the number of workers the
+        cluster is configured to give a query, or to all available workers
+        and any that join afterwards when the cluster configures no default.
         It is recommended to set this to the expected number of workers for
         dynamically sized clusters, so the query planner can determine the
         correct number of data partitions.
@@ -311,14 +314,17 @@ def spawn_many_blocking(
     min_workers : int | None
         The minimum number of workers that have to be available to start
         query execution. The cluster will wait until this many workers are
-        available.
-        When `min_workers=None`, it defaults to the number of workers the
-        cluster is configured to have, or the current number of workers for
-        dynamically sized clusters.
+        available, up to the maximum a single query is allowed to use.
+        When `min_workers=None`, execution starts as soon as one worker is
+        available and the query grows toward `max_workers` from there.
     max_workers : int | None
-        The maximum number of workers to use for query execution.
-        When `max_workers=None`, the query will use all available workers
-        and any workers that join afterwards.
+        The maximum number of workers to use for query execution, up to the
+        maximum a single query is allowed to use. This also determines how
+        many workers the query is planned for, and how much capacity is
+        requested from a dynamically sized cluster.
+        When `max_workers=None`, it defaults to the number of workers the
+        cluster is configured to give a query, or to all available workers
+        and any that join afterwards when the cluster configures no default.
         It is recommended to set this to the expected number of workers for
         dynamically sized clusters, so the query planner can determine the
         correct number of data partitions.
@@ -430,14 +436,17 @@ def spawn(
     min_workers : int | None
         The minimum number of workers that have to be available to start
         query execution. The cluster will wait until this many workers are
-        available.
-        When `min_workers=None`, it defaults to the number of workers the
-        cluster is configured to have, or the current number of workers for
-        dynamically sized clusters.
+        available, up to the maximum a single query is allowed to use.
+        When `min_workers=None`, execution starts as soon as one worker is
+        available and the query grows toward `max_workers` from there.
     max_workers : int | None
-        The maximum number of workers to use for query execution.
-        When `max_workers=None`, the query will use all available workers
-        and any workers that join afterwards.
+        The maximum number of workers to use for query execution, up to the
+        maximum a single query is allowed to use. This also determines how
+        many workers the query is planned for, and how much capacity is
+        requested from a dynamically sized cluster.
+        When `max_workers=None`, it defaults to the number of workers the
+        cluster is configured to give a query, or to all available workers
+        and any that join afterwards when the cluster configures no default.
         It is recommended to set this to the expected number of workers for
         dynamically sized clusters, so the query planner can determine the
         correct number of data partitions.

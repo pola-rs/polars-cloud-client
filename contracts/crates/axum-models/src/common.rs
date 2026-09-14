@@ -44,6 +44,9 @@ pub trait EntityOrdering {
     fn default_ordering() -> Option<(&'static str, DefaultSortDirection)> {
         None
     }
+    fn tiebreaker_field() -> Option<&'static str> {
+        None
+    }
 }
 
 #[cfg(feature = "server")]

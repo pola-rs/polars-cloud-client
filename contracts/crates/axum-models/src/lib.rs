@@ -38,7 +38,7 @@ use serde::Deserialize;
 use serde::de::IntoDeserializer;
 pub use termination::*;
 pub use user::*;
-pub use version_number::VersionNumber;
+pub use version_number::{PreRelease, PreReleaseKind, VersionNumber};
 pub use workspace::*;
 pub use workspace_cluster_defaults::*;
 pub use workspace_member::*;

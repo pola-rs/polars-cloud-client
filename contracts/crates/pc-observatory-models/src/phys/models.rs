@@ -6,6 +6,7 @@ use schemars::JsonSchema;
 
 use crate::ir::models::PredicateFileSkip;
 use crate::phys::warning::PhysNodeWarning;
+use crate::serde_compat::string_or_vec;
 use crate::{Edge, SortColumn};
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
@@ -175,7 +176,9 @@ pub enum PhysNodeProperties {
         slice: Option<(i64, usize)>,
     },
     InMemoryAsOfJoin {
+        #[serde(deserialize_with = "string_or_vec")]
         left_on: Vec<String>,
+        #[serde(deserialize_with = "string_or_vec")]
         right_on: Vec<String>,
         left_by: Option<Vec<String>>,
         right_by: Option<Vec<String>>,
@@ -336,7 +339,7 @@ pub enum PhysNodeProperties {
         null_on_oob: bool,
     },
     ColumnarFunction {
-        num_inputs: usize,
+        num_inputs: Option<usize>,
         name: Option<String>,
     },
     IsSorted {

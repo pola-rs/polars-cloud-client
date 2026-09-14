@@ -50,7 +50,7 @@ tower-http = { workspace = true }
 tower-otel = { workspace = true }
 tracing = { workspace = true }
 tracing-opentelemetry = { workspace = true, optional = true }
-tracing-subscriber = { workspace = true }
+tracing-subscriber = { workspace = true, optional = true }
 utils = { workspace = true }
 uuid = { workspace = true }
 
@@ -61,6 +61,7 @@ otlp = [
   "dep:opentelemetry-semantic-conventions",
   "dep:opentelemetry_sdk",
   "dep:tracing-opentelemetry",
+  "dep:tracing-subscriber",
 ]
 
 [dev-dependencies]

@@ -522,7 +522,10 @@ fn to_phys_props(props: PhysicalPropsDescription) -> PhysNodeProperties {
             PhysNodeProperties::Gather { null_on_oob }
         },
         PhysicalPropsDescription::ColumnarFunction { num_inputs, name } => {
-            PhysNodeProperties::ColumnarFunction { num_inputs, name }
+            PhysNodeProperties::ColumnarFunction {
+                num_inputs: Some(num_inputs),
+                name,
+            }
         },
         PhysicalPropsDescription::IsSorted {
             descending,

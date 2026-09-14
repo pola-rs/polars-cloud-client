@@ -9,6 +9,7 @@ import polars.io.iceberg
 from polars.lazyframe.opt_flags import DEFAULT_QUERY_OPT_FLAGS
 
 from polars_cloud import config as pc_cfg
+from polars_cloud.query._utils import LOCAL_ENGINE
 from polars_cloud.query.dst import (
     CallbackDst,
     ClientDst,
@@ -142,14 +143,17 @@ class LazyFrameRemote:
         min_workers : int | None
             The minimum number of workers that have to be available to start
             query execution. The cluster will wait until this many workers are
-            available.
-            When `min_workers=None`, it defaults to the number of workers the
-            cluster is configured to have, or the current number of workers for
-            dynamically sized clusters.
+            available, up to the maximum a single query is allowed to use.
+            When `min_workers=None`, execution starts as soon as one worker is
+            available and the query grows toward `max_workers` from there.
         max_workers : int | None
-            The maximum number of workers to use for query execution.
-            When `max_workers=None`, the query will use all available workers
-            and any workers that join afterwards.
+            The maximum number of workers to use for query execution, up to the
+            maximum a single query is allowed to use. This also determines how
+            many workers the query is planned for, and how much capacity is
+            requested from a dynamically sized cluster.
+            When `max_workers=None`, it defaults to the number of workers the
+            cluster is configured to give a query, or to all available workers
+            and any that join afterwards when the cluster configures no default.
             It is recommended to set this to the expected number of workers for
             dynamically sized clusters, so the query planner can determine the
             correct number of data partitions.
@@ -396,7 +400,7 @@ class LazyFrameRemote:
             blocking=blocking, optimizations=optimizations, silent=silent
         )
 
-    def await_and_scan(self) -> pl.LazyFrame:
+    def await_and_scan(self, *, silent: bool | None = None) -> pl.LazyFrame:
         """Start executing the query and store a temporary result.
 
         This will immediately block this thread and wait for
@@ -407,6 +411,11 @@ class LazyFrameRemote:
 
         ``.execute().lazy()``
 
+        Parameters
+        ----------
+        silent
+            Don't print to stdout during blocking execution.
+
         Examples
         --------
         >>> query.remote(ctx).await_and_scan()
@@ -414,9 +423,9 @@ class LazyFrameRemote:
         run LazyFrame.show_graph() to see the optimized version
         Parquet SCAN [https://s3.eu-west-1.amazonaws.com/polars-cloud-xxxxxxx-xxxx-..]
         """
-        return self._scaling_mode().await_and_scan()
+        return self._scaling_mode().await_and_scan(silent=silent)
 
-    def show(self, n: int = 10) -> DataFrame:
+    def show(self, n: int = 10, *, silent: bool | None = None) -> DataFrame:
         """Start executing the query return the first `n` rows.
 
         Show will immediately block this thread and wait for
@@ -427,6 +436,8 @@ class LazyFrameRemote:
         ----------
         n
             Number of rows to return
+        silent
+            Don't print to stdout during blocking execution.
 
         Examples
         --------
@@ -443,7 +454,7 @@ class LazyFrameRemote:
         └───────┘
 
         """
-        return self._scaling_mode().show(n)
+        return self._scaling_mode().show(n, silent=silent)
 
     def sink_parquet(
         self,
@@ -461,6 +472,7 @@ class LazyFrameRemote:
         | None = "auto",
         metadata: ParquetMetadata | None = None,
         arrow_schema: ArrowSchemaExportable | None = None,
+        sink_to_single_file: bool | None = None,
         optimizations: QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
     ) -> DirectQuery | ProxyQuery:
         """Start executing the query and write the result to parquet.
@@ -556,6 +568,12 @@ class LazyFrameRemote:
             .. warning::
                 This functionality is considered **unstable**. It may be changed at any
                 point without it being considered a breaking change.
+        sink_to_single_file
+            Perform the sink into a single file.
+
+            Setting this to `True` can reduce the amount of work that can be done in a
+            distributed manner and therefore be more memory intensive and
+            slower.
         optimizations
             The optimization passes done during query optimization.
 
@@ -576,6 +594,7 @@ class LazyFrameRemote:
             credential_provider=credential_provider,
             metadata=metadata,
             arrow_schema=arrow_schema,
+            sink_to_single_file=sink_to_single_file,
             optimizations=optimizations,
         )
 
@@ -597,10 +616,12 @@ class LazyFrameRemote:
         decimal_comma: bool = False,
         null_value: str | None = None,
         quote_style: CsvQuoteStyle | None = None,
+        maintain_order: bool = True,
         storage_options: dict[str, Any] | None = None,
         credential_provider: CredentialProviderFunction
         | Literal["auto"]
         | None = "auto",
+        sink_to_single_file: bool | None = None,
         optimizations: QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
     ) -> DirectQuery | ProxyQuery:
         """Start executing the query and write the result to csv.
@@ -671,6 +692,13 @@ class LazyFrameRemote:
               Namely, when writing a field that does not parse as a valid float
               or integer, then quotes will be used even if they aren`t strictly
               necessary.
+        maintain_order
+            Maintain the order in which data is processed.
+            Setting this to `False` can be much faster.
+
+            .. warning::
+                This functionality is considered **unstable**. It may be changed at any
+                point without it being considered a breaking change.
         storage_options
             Options that indicate how to connect to a cloud provider.
 
@@ -693,6 +721,12 @@ class LazyFrameRemote:
             .. warning::
                 This functionality is considered **unstable**. It may be changed
                 at any point without it being considered a breaking change.
+        sink_to_single_file
+            Perform the sink into a single file.
+
+            Setting this to `True` can reduce the amount of work that can be done in a
+            distributed manner and therefore be more memory intensive and
+            slower.
         optimizations
             The optimization passes done during query optimization.
 
@@ -717,8 +751,10 @@ class LazyFrameRemote:
             decimal_comma=decimal_comma,
             null_value=null_value,
             quote_style=quote_style,
+            maintain_order=maintain_order,
             storage_options=storage_options,
             credential_provider=credential_provider,
+            sink_to_single_file=sink_to_single_file,
             optimizations=optimizations,
         )
 
@@ -728,10 +764,12 @@ class LazyFrameRemote:
         *,
         compression: IpcCompression | None = "zstd",
         compat_level: CompatLevel | None = None,
+        maintain_order: bool = True,
         storage_options: dict[str, Any] | None = None,
         credential_provider: CredentialProviderFunction
         | Literal["auto"]
         | None = "auto",
+        sink_to_single_file: bool | None = None,
         optimizations: QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
     ) -> DirectQuery | ProxyQuery:
         """Start executing the query and write the result to ipc.
@@ -754,6 +792,13 @@ class LazyFrameRemote:
         compat_level
             Use a specific compatibility level
             when exporting Polars' internal data structures.
+        maintain_order
+            Maintain the order in which data is processed.
+            Setting this to `False` can be much faster.
+
+            .. warning::
+                This functionality is considered **unstable**. It may be changed at any
+                point without it being considered a breaking change.
         storage_options
             Options that indicate how to connect to a cloud provider.
 
@@ -776,6 +821,12 @@ class LazyFrameRemote:
             .. warning::
                 This functionality is considered **unstable**. It may be changed
                 at any point without it being considered a breaking change.
+        sink_to_single_file
+            Perform the sink into a single file.
+
+            Setting this to `True` can reduce the amount of work that can be done in a
+            distributed manner and therefore be more memory intensive and
+            slower.
         optimizations
             The optimization passes done during query optimization.
 
@@ -788,8 +839,10 @@ class LazyFrameRemote:
             uri=uri,
             compression=compression,
             compat_level=compat_level,
+            maintain_order=maintain_order,
             storage_options=storage_options,
             credential_provider=credential_provider,
+            sink_to_single_file=sink_to_single_file,
             optimizations=optimizations,
         )
 
@@ -1069,7 +1122,7 @@ class ExecuteRemote:
         """
         this = copy.copy(self)
         this.lf = this.lf.limit(n)
-        return this.await_and_scan(silent=silent).collect()
+        return this.await_and_scan(silent=silent).collect(engine=LOCAL_ENGINE)
 
     def sink_parquet(
         self,
@@ -1539,7 +1592,7 @@ class ExecuteRemote:
     ) -> DataFrame:
         return self._stream(
             maintain_order=True, ttl=ttl, optimizations=optimizations
-        ).collect(optimizations=optimizations)
+        ).collect(engine=LOCAL_ENGINE, optimizations=optimizations)
 
     def collect_batches(
         self,
@@ -1550,7 +1603,11 @@ class ExecuteRemote:
     ) -> Iterator[DataFrame]:
         return self._stream(
             maintain_order=maintain_order, ttl=ttl, optimizations=optimizations
-        ).collect_batches(maintain_order=maintain_order, optimizations=optimizations)
+        ).collect_batches(
+            engine=LOCAL_ENGINE,
+            maintain_order=maintain_order,
+            optimizations=optimizations,
+        )
 
     def sink_batches(
         self,

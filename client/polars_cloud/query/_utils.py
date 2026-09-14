@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import contextlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 import polars as pl
 from polars._utils.cloud import prepare_cloud_plan
@@ -40,6 +40,16 @@ if TYPE_CHECKING:
     from polars_cloud.polars_cloud import PyQuerySettings
     from polars_cloud.query.dst import Dst
     from polars_cloud.query.query import DistributionSettings
+
+
+LOCAL_ENGINE: Final = "streaming"
+"""
+Engine for reading a remote query's result back to this machine.
+
+This is here to prevent `engine="auto"` from resolving to the remote engine (in case we
+have set the affinity to `RemoteEngine` and are currently in the process of reading back
+the result).
+"""
 
 
 def prepare_query(
@@ -119,7 +129,6 @@ If you want to:
             metadata=dst.metadata,
             arrow_schema=dst.arrow_schema,
             lazy=True,
-            engine=engine,
         )
     elif isinstance(dst, CsvDst):
         lf = lf.sink_csv(
@@ -142,7 +151,6 @@ If you want to:
             credential_provider=dst.credential_provider,
             decimal_comma=dst.decimal_comma,
             lazy=True,
-            engine=engine,
         )
     elif isinstance(dst, IpcDst):
         lf = lf.sink_ipc(
@@ -153,7 +161,6 @@ If you want to:
             storage_options=dst.storage_options,
             credential_provider=dst.credential_provider,
             lazy=True,
-            engine=engine,
         )
     elif isinstance(dst, IcebergDst):
         from polars.io.iceberg._sink import IcebergSinkState
@@ -174,7 +181,6 @@ If you want to:
             lf = lf.sink_parquet(
                 "<in-memory>",
                 lazy=True,
-                engine=engine,
             )
     elif isinstance(dst, CallbackDst):
         lf = lf.sink_batches(
@@ -182,10 +188,9 @@ If you want to:
             chunk_size=dst.chunk_size,
             maintain_order=dst.maintain_order,
             lazy=True,
-            engine=engine,
         )
     elif isinstance(dst, ClientDst):
-        lf = lf.sink_parquet("<flight>", lazy=True, engine=engine)
+        lf = lf.sink_parquet("<flight>", lazy=True)
         flight_ttl = dst.ttl
         flight_maintain_order = dst.maintain_order
     else:
@@ -194,7 +199,6 @@ If you want to:
             sink_dst,
             credential_provider=None,
             lazy=True,
-            engine=engine,
         )
 
     try:

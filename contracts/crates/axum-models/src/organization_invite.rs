@@ -9,17 +9,6 @@ use uuid::Uuid;
 use crate::{DefaultSortDirection, EntityOrdering};
 
 #[derive(Deserialize, Serialize, Debug)]
-#[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
-pub struct OrganizationInviteArgs {
-    #[cfg_attr(feature = "server", garde(length(min = 1, max = 128)))]
-    pub route: String,
-    #[cfg_attr(feature = "server", garde(email))]
-    pub email: String,
-    #[cfg_attr(feature = "server", garde(skip))]
-    pub send_email: bool,
-}
-
-#[derive(Deserialize, Serialize, Debug)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 pub struct OrganizationInviteWithUrlModel {
     #[serde(flatten)]
@@ -62,8 +51,6 @@ impl EntityOrdering for OrganizationInviteModel {
 #[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct InviteArgs {
-    #[cfg_attr(feature = "server", garde(length(min = 1, max = 128)))]
-    pub route: String,
     #[cfg_attr(feature = "server", garde(email))]
     pub email: String,
     #[cfg_attr(feature = "server", garde(skip))]
@@ -72,10 +59,13 @@ pub struct InviteArgs {
     pub workspace_ids: Vec<Uuid>,
 }
 
-#[derive(Deserialize, Debug)]
-#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[derive(Deserialize, Serialize, Debug)]
+#[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct RedeemInviteArgs {
+    #[cfg_attr(feature = "server", garde(skip))]
     pub id: Uuid,
+    #[cfg_attr(feature = "server", garde(skip))]
     pub key: String,
 }
 

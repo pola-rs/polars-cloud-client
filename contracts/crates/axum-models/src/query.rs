@@ -241,11 +241,15 @@ pub struct QueryWithStateTimingModel {
 
 impl EntityOrdering for QueryWithStateTimingModel {
     fn order_fields() -> &'static [&'static str] {
-        &["id", "latest_status_time", "request_time"]
+        &["latest_status_time", "request_time", "id"]
     }
 
     fn default_ordering() -> Option<(&'static str, DefaultSortDirection)> {
-        Some(("id", DefaultSortDirection::Desc))
+        Some(("request_time", DefaultSortDirection::Desc))
+    }
+
+    fn tiebreaker_field() -> Option<&'static str> {
+        Some("id")
     }
 }
 

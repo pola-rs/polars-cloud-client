@@ -16,6 +16,7 @@ pub mod ir;
 pub mod node;
 pub mod phys;
 pub mod physical;
+mod serde_compat;
 pub mod stages;
 pub mod subtitle;
 

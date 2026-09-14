@@ -305,6 +305,23 @@ class Workspace:
             )
             raise WorkspaceResolveError(msg) from exc
 
+    @traced
+    def set_default(self) -> None:
+        """Make this workspace the default workspace of your account.
+
+        This is the same setting as the default workspace in the dashboard. It is
+        used by `Workspace()` and by any call that does not name a workspace
+        explicitly.
+
+        Examples
+        --------
+        >>> pc.Workspace("workspace-name").set_default()
+        >>> pc.Workspace()
+        Workspace(id=UUID('xxxxxxxx-xxxx-7fd0-899b-5aaeefa553d1'),
+            name='workspace-name', defaults=None)
+        """
+        constants.API_CLIENT.set_user_default_workspace(self.id)
+
     @deprecated(f"`Workspace.is_active`: {_DEPRECATED_STATUS_HINT}")
     def is_active(self) -> bool:
         """Whether the Workspace is active.

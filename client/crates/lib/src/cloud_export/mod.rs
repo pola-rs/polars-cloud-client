@@ -8,19 +8,9 @@ pub use observer::QueryCloudObserver;
 use polars_axum_models::QueryPhysNodeMetricsModel;
 use strum_macros::IntoStaticStr;
 use tokio::sync::oneshot;
-use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
 type QueryId = Uuid;
-
-fn init_tracing() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .with_writer(std::io::stderr)
-        .try_init();
-}
 
 #[derive(IntoStaticStr)]
 enum QueryStateMessage {

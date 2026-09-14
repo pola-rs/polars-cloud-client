@@ -22,5 +22,7 @@ PlanType: TypeAlias = Literal["physical", "ir"]
 ConnectionMode: TypeAlias = Literal["direct", "proxy"]
 CPUArchitecture: TypeAlias = Literal["x86_64", "arm64"]
 LogLevel: TypeAlias = Literal["info", "debug", "trace"]
-FileType: TypeAlias = Literal["none", "parquet", "ipc", "csv", "ndjson", "json"]
+FileType: TypeAlias = Literal[
+    "none", "unknown", "parquet", "ipc", "csv", "ndjson", "json"
+]
 ScalingMode: TypeAlias = Literal["auto", "single-node", "distributed"]
