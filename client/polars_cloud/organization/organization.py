@@ -23,6 +23,9 @@ class Organization:
     With this class you can list the organizations the user is a member of
     or set up a new organization
 
+    Organization names are not unique. If several organizations you belong to
+    share a name, pass ``id`` instead of ``name``.
+
     Parameters
     ----------
      name
@@ -136,9 +139,17 @@ class Organization:
         if len(matches) == 0:
             msg = f"Organization {self._name!r} does not exist"
             raise OrganizationResolveError(msg)
+        elif len(matches) > 1:
+            ids = ", ".join(str(org.id) for org in matches)
+            msg = (
+                f"Multiple organizations with the same name {self._name!r}: {ids}.\n\n"
+                "Hint: Refer to the organization by ID with "
+                "`pc.Organization(id=UUID('...'))`, or rename one of them in the "
+                "dashboard under Organization > Settings."
+            )
+            raise OrganizationResolveError(msg)
         else:
-            organization = matches[0]
-            self._id = organization.id
+            self._id = matches[0].id
 
     def _load_by_id(self) -> None:
         """Load the workspace by id."""

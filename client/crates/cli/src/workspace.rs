@@ -24,13 +24,7 @@ pub async fn get_workspace_by_name(
     workspace_name: String,
 ) -> ApiResult<WorkspaceModel> {
     let mut workspaces = if let Some(organization_name) = organization_name {
-        let Some(organization) =
-            get_organization_by_name(client, organization_name.clone()).await?
-        else {
-            return Err(
-                anyhow!("No organization with the name {organization_name} was found").into(),
-            );
-        };
+        let organization = get_organization_by_name(client, organization_name).await?;
         get_all_workspaces(client, Some(workspace_name.clone()), Some(organization.id)).await?
     } else {
         get_all_workspaces(client, Some(workspace_name.clone()), None).await?
@@ -103,10 +97,7 @@ pub async fn delete_workspace(
 
 pub async fn print_workspaces(client: &Client, organization_name: Option<String>) -> ApiResult<()> {
     let organization = match organization_name {
-        Some(name) => match get_organization_by_name(client, name.clone()).await? {
-            Some(organization) => Some(organization),
-            None => return Err(anyhow!("No organization with the name {name} was found").into()),
-        },
+        Some(name) => Some(get_organization_by_name(client, name).await?),
         None => None,
     };
 

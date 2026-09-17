@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use clap::builder::{NonEmptyStringValueParser, TypedValueParser, ValueParser};
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
-use client_core::{ApiResult, AutoRefreshApiControlPlaneClient, Client, RUNTIME};
+use client_core::{AutoRefreshApiControlPlaneClient, Client, RUNTIME};
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
@@ -17,7 +17,6 @@ use crate::organization::{
     delete_organization, print_organization_details, print_organizations, set_up_organization,
 };
 use crate::service_account::create_service_account;
-use crate::setup::setup;
 use crate::workspace::{
     create_workspace, delete_workspace, print_workspace_details, print_workspaces,
 };
@@ -25,7 +24,6 @@ use crate::workspace::{
 pub mod compute;
 pub mod organization;
 pub mod service_account;
-pub mod setup;
 pub mod workspace;
 pub mod workspace_aws;
 
@@ -61,30 +59,6 @@ struct WorkspaceRef {
     workspace_name: String,
 }
 
-/// `pc setup` and the deprecated `pc workspace setup` take the same arguments.
-#[derive(Args)]
-struct SetupArgs {
-    #[arg(short, long)]
-    organization_name: Option<String>,
-    #[arg(short, long)]
-    workspace_name: Option<String>,
-    #[arg(long, default_value_t = false)]
-    connect_aws: bool,
-    #[arg(long, default_value_t = false)]
-    no_verify: bool,
-}
-
-async fn run_setup(client: &Client, args: SetupArgs) -> ApiResult<()> {
-    setup(
-        client,
-        args.organization_name,
-        args.workspace_name,
-        args.connect_aws.then_some(true),
-        !args.no_verify,
-    )
-    .await
-}
-
 #[derive(Parser)]
 #[command(name = "pc")]
 #[command(about = "Command line interface for Polars Cloud", long_about = None)]
@@ -117,8 +91,6 @@ enum Commands {
     Authenticate,
     /// Login through the browser
     Login,
-    /// Set up organization and workspace
-    Setup(SetupArgs),
     /// Manage Polars Cloud organizations
     Organization(OrganizationArgs),
     /// Manage Polars Cloud workspaces
@@ -184,8 +156,6 @@ enum WorkspaceCommands {
     },
     /// Manage the AWS connection of a workspace
     Aws(WorkspaceAwsArgs),
-    /// (deprecated) Set up a workspace, use `create --connect-aws` instead
-    Setup(SetupArgs),
     /// (deprecated) Report the AWS connection, use `aws verify` instead
     Verify(WorkspaceRef),
     /// Delete a workspace
@@ -362,7 +332,6 @@ async fn async_main(args: Vec<String>) -> anyhow::Result<()> {
             client.login().await?;
             println!("Successfully logged in.");
         },
-        Commands::Setup(args) => run_setup(&client, args).await?,
         Commands::Organization(args) => match args.command {
             OrganizationCommands::List => print_organizations(&client).await?,
             OrganizationCommands::Setup { name } => {
@@ -421,7 +390,6 @@ async fn async_main(args: Vec<String>) -> anyhow::Result<()> {
                     .await?
                 },
             },
-            WorkspaceCommands::Setup(args) => run_setup(&client, args).await?,
             WorkspaceCommands::Verify(workspace) => {
                 warn_deprecated("pc workspace verify", "pc workspace aws verify");
                 workspace_aws::verify(
@@ -620,22 +588,6 @@ mod tests {
             panic!();
         };
         assert_eq!(workspace.workspace_name, "ws");
-    }
-
-    /// Omitting `--connect-aws` has to stay distinct from passing it, so that `setup` knows to
-    /// fall back to the interactive prompt rather than assuming "no".
-    #[test]
-    fn test_setup_connect_aws_is_tri_state() {
-        for (argv, expected) in [
-            (vec!["pc", "setup"], None),
-            (vec!["pc", "setup", "--connect-aws"], Some(true)),
-        ] {
-            let cli = Cli::parse_from(argv);
-            let Some(Commands::Setup(args)) = cli.command else {
-                panic!();
-            };
-            assert_eq!(args.connect_aws.then_some(true), expected);
-        }
     }
 
     #[test]
