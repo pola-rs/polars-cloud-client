@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use anyhow::anyhow;
 use client_core::{
     ApiResult, Client, VERSIONS, poll_compute_status_until, resolve_compute_context_specs,
 };
@@ -40,12 +39,7 @@ async fn workspaces_to_list(
     }
 
     let organization_id = match organization_name {
-        Some(name) => match get_organization_by_name(client, name.clone()).await? {
-            Some(organization) => Some(organization.id),
-            None => {
-                return Err(anyhow!("No organization with the name {name} was found").into());
-            },
-        },
+        Some(name) => Some(get_organization_by_name(client, name).await?.id),
         None => None,
     };
 

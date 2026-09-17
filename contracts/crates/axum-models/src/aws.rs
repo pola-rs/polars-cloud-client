@@ -60,6 +60,7 @@ pub struct AWSWorkspaceStartCallbackArgs {
     pub stack_url: Option<String>,
 }
 
+/// The CloudFormation stack a delete leaves behind. Remove it to finish the teardown.
 #[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 #[derive(Deserialize, Serialize, Debug)]

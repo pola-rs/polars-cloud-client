@@ -1,3 +1,7 @@
+// https://github.com/PyO3/pyo3/pull/6309
+// TODO: remove when PyO3 is updated to 0.30
+#![cfg_attr(feature = "pyo3", allow(clippy::clone_on_copy))]
+
 mod aws;
 mod common;
 mod compute;

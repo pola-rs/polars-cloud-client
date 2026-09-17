@@ -11,6 +11,11 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// Organization created for a user on their first request.
+pub const DEFAULT_ORGANIZATION_NAME: &str = "My organization";
+/// Workspace created inside the default organization.
+pub const DEFAULT_WORKSPACE_NAME: &str = "My workspace";
+
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all))]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
