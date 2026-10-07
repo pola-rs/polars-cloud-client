@@ -69,7 +69,10 @@ fn shuffle_path_parts(path: &str) -> Option<(String, u32)> {
 
 fn to_phys_props(props: PhysicalPropsDescription) -> PhysNodeProperties {
     match props {
-        PhysicalPropsDescription::Default | PhysicalPropsDescription::Other => {
+        PhysicalPropsDescription::Default
+        | PhysicalPropsDescription::Other
+        | PhysicalPropsDescription::Window { .. }
+        | PhysicalPropsDescription::RollingFixedWindowFunction { .. } => {
             PhysNodeProperties::Default
         },
         PhysicalPropsDescription::CallbackSink {
@@ -103,10 +106,12 @@ fn to_phys_props(props: PhysicalPropsDescription) -> PhysNodeProperties {
         PhysicalPropsDescription::GroupBy {
             num_inputs,
             key_per_input,
+            fused_agg_inputs_per_input,
             aggs_per_input,
         } => PhysNodeProperties::GroupBy {
-            num_inputs,
+            num_inputs: Some(num_inputs),
             key_per_input,
+            fused_agg_inputs_per_input,
             aggs_per_input,
         },
         PhysicalPropsDescription::DynamicGroupBy {
@@ -215,6 +220,7 @@ fn to_phys_props(props: PhysicalPropsDescription) -> PhysNodeProperties {
             how,
             left_on,
             right_on,
+            fused_predicate,
             nulls_equal,
             coalesce,
             maintain_order,
@@ -224,6 +230,7 @@ fn to_phys_props(props: PhysicalPropsDescription) -> PhysNodeProperties {
             how,
             left_on,
             right_on,
+            fused_predicate,
             nulls_equal,
             coalesce,
             maintain_order,
@@ -356,11 +363,13 @@ fn to_phys_props(props: PhysicalPropsDescription) -> PhysNodeProperties {
         PhysicalPropsDescription::NegativeSlice { offset, length } => {
             PhysNodeProperties::NegativeSlice { offset, length }
         },
-        PhysicalPropsDescription::OrderedUnion { num_inputs } => {
-            PhysNodeProperties::OrderedUnion { num_inputs }
+        PhysicalPropsDescription::OrderedUnion { num_inputs } => PhysNodeProperties::OrderedUnion {
+            num_inputs: Some(num_inputs),
         },
         PhysicalPropsDescription::UnorderedUnion { num_inputs } => {
-            PhysNodeProperties::UnorderedUnion { num_inputs }
+            PhysNodeProperties::UnorderedUnion {
+                num_inputs: Some(num_inputs),
+            }
         },
         PhysicalPropsDescription::PartitionSink {
             base_path,
@@ -456,7 +465,7 @@ fn to_phys_props(props: PhysicalPropsDescription) -> PhysNodeProperties {
             num_inputs,
             zip_behavior,
         } => PhysNodeProperties::Zip {
-            num_inputs,
+            num_inputs: Some(num_inputs),
             zip_behavior,
         },
         PhysicalPropsDescription::CumAgg { kind } => PhysNodeProperties::CumAgg { kind },
@@ -497,6 +506,8 @@ fn to_phys_props(props: PhysicalPropsDescription) -> PhysNodeProperties {
             schema_names,
             is_pure,
             validate_schema,
+            explain_name,
+            explain_detail,
         } => PhysNodeProperties::PythonScan {
             scan_source_type,
             n_rows,
@@ -505,6 +516,8 @@ fn to_phys_props(props: PhysicalPropsDescription) -> PhysNodeProperties {
             schema_names,
             is_pure,
             validate_schema,
+            explain_name,
+            explain_detail,
         },
         PhysicalPropsDescription::StrptimeInfer {
             format,

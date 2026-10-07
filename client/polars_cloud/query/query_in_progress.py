@@ -33,7 +33,6 @@ from polars.exceptions import (  # noqa: F401
 from polars_cloud import constants
 from polars_cloud._tracing import traced
 from polars_cloud.polars_cloud import PlanFormatPy
-from polars_cloud.query._utils import get_token
 from polars_cloud.query.query_detail import QueryDetail
 from polars_cloud.query.query_info import QueryInfo
 from polars_cloud.query.query_result import QueryResult
@@ -160,18 +159,14 @@ class ProxyQuery(InProgressQueryRemote):
     async def await_result_async(
         self, *, raise_on_failure: bool = True, silent: bool | None = None
     ) -> QueryResult:
-        with SpinnerRepr(
-            query_id=self._query_id, token=None, client=None, silent=silent
-        ):
+        with SpinnerRepr(query_id=self._query_id, client=None, silent=silent):
             status = self._poll_status_until_done()
         return self._get_result(status, raise_on_failure=raise_on_failure)
 
     def await_result(
         self, *, raise_on_failure: bool = True, silent: bool | None = None
     ) -> QueryResult:
-        with SpinnerRepr(
-            query_id=self._query_id, token=None, client=None, silent=silent
-        ):
+        with SpinnerRepr(query_id=self._query_id, client=None, silent=silent):
             status = self._poll_status_until_done()
 
         return self._get_result(status, raise_on_failure=raise_on_failure)
@@ -245,16 +240,12 @@ class DirectQuery(InProgressQueryRemote):
         assert cluster._compute_id is not None
 
     def get_status(self) -> QueryStatus:
-        status_code = self._client.get_direct_query_status(
-            self._query_id, token=self._cluster._get_token()
-        )
+        status_code = self._client.get_direct_query_status(self._query_id)
         return QueryStatus._from_api_model(status_code)
 
     def _await_result_via_wait(self, *, raise_on_failure: bool) -> QueryResult:
         query_info_py = self._client.get_direct_query_result(
-            self._query_id,
-            token_factory=self._cluster._get_token,
-            timeout_ms=get_timeout(),
+            self._query_id, timeout_ms=get_timeout()
         )
         query_info = QueryInfo(self._query_id, query_info_py)
 
@@ -274,9 +265,7 @@ class DirectQuery(InProgressQueryRemote):
         )
 
     def _get_stream(self) -> ArrowStreamExportable:
-        res = self._client.scan_flight(
-            query_id=self._query_id, token=self._cluster._get_token()
-        )
+        res = self._client.scan_flight(query_id=self._query_id)
         if not res:
             # scan_flight will return None if the query is not in a state
             # to be scanned, so we can do the query error handling in python.
@@ -294,22 +283,14 @@ class DirectQuery(InProgressQueryRemote):
     def await_result(
         self, *, raise_on_failure: bool = True, silent: bool | None = None
     ) -> QueryResult:
-        token = get_token(self._cluster)
-
-        with SpinnerRepr(
-            query_id=self._query_id, token=token, client=self._client, silent=silent
-        ):
+        with SpinnerRepr(query_id=self._query_id, client=self._client, silent=silent):
             return self._await_result_via_wait(raise_on_failure=raise_on_failure)
 
     def cancel(self) -> None:
-        self._client.cancel_direct_query(
-            self._query_id, token=self._cluster._get_token()
-        )
+        self._client.cancel_direct_query(self._query_id)
 
     def delete_result(self) -> None:
-        self._client.delete_direct_query_result(
-            self._query_id, token=self._cluster._get_token()
-        )
+        self._client.delete_direct_query_result(self._query_id)
 
     def graph(
         self,
@@ -339,19 +320,18 @@ class DirectQuery(InProgressQueryRemote):
             Passed to matplotlib if `show == True`.
         """
         if plan_type == "ir":
-            plans = self._client.get_direct_query_plan(
-                query_id=self._query_id, token=self._cluster._get_token(), ir=True
-            )
+            plans = self._client.get_direct_query_plan(query_id=self._query_id, ir=True)
             if plans.format != PlanFormatPy.Dot or plans.ir_plan is None:
                 msg = "no dot diagram created for this query.\n\nConsider setting 'plan_type' to 'dot'"
                 raise NoDataError(msg)
             dot = plans.ir_plan
         elif plan_type == "physical":
             plans = self._client.get_direct_query_plan(
-                query_id=self._query_id, token=self._cluster._get_token(), phys=True
+                query_id=self._query_id,
+                phys=PlanFormatPy.Dot,
             )
-            if plans.format != PlanFormatPy.Dot or plans.phys_plan is None:
-                msg = "no dot diagram created for this query.\n\nConsider setting 'plan_type' to 'dot'. If the query wasn't distributed, no physical plan was created."
+            if plans.phys_plan is None:
+                msg = "no physical plan was created for this query"
                 raise NoDataError(msg)
             dot = plans.phys_plan
         else:
@@ -397,15 +377,12 @@ class DirectQuery(InProgressQueryRemote):
         """
         if plan_type == "physical":
             plans = self._client.get_direct_query_plan(
-                query_id=self._query_id, token=self._cluster._get_token(), phys=True
+                query_id=self._query_id,
+                phys=PlanFormatPy.Explain,
             )
-            if plans.format != PlanFormatPy.Explain:
-                return ""
             return plans.phys_plan or ""
         elif plan_type == "ir":
-            plans = self._client.get_direct_query_plan(
-                query_id=self._query_id, token=self._cluster._get_token(), ir=True
-            )
+            plans = self._client.get_direct_query_plan(query_id=self._query_id, ir=True)
             if plans.format != PlanFormatPy.Explain:
                 return ""
             return plans.ir_plan or ""
@@ -452,7 +429,6 @@ class SpinnerRepr:
     def __init__(
         self,
         query_id: UUID,
-        token: str | None,
         client: pcr.SchedulerClient | None,
         *,
         silent: bool | None,
@@ -463,7 +439,6 @@ class SpinnerRepr:
         self._notebook = _IPYTHON_AVAILABLE and pl._utils.various._in_notebook()
         self._query_id = query_id
         self._client = client
-        self._token = token
         self._silent = silent
 
     def start(self) -> SpinnerRepr:
@@ -487,7 +462,7 @@ class SpinnerRepr:
         try:
             while not self._done:
                 detail = QueryDetail._from_inner(
-                    self._client.get_query_details(self._query_id, self._token)
+                    self._client.get_query_details(self._query_id)
                 )
                 clear_output(wait=True)  # type: ignore[no-untyped-call, unused-ignore]
                 display(HTML(detail._repr_html_()))  # type: ignore[no-untyped-call, unused-ignore]
@@ -508,7 +483,7 @@ class SpinnerRepr:
 
                 if i % 5 == 0:
                     detail = QueryDetail._from_inner(
-                        self._client.get_query_details(self._query_id, self._token)
+                        self._client.get_query_details(self._query_id)
                     )
                     metrics = [
                         f"{len(detail.finished_stages)}/{detail.total_num_stages} stages"

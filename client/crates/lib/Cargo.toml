@@ -17,6 +17,7 @@ arrow-array = { version = "59", features = ["ffi"] }
 arrow-flight = "59"
 arrow-ipc = { version = "59", features = ["zstd"] }
 arrow-schema = "59"
+async-trait = { workspace = true }
 chrono = { workspace = true }
 client-cli = { workspace = true }
 client-core = { workspace = true }

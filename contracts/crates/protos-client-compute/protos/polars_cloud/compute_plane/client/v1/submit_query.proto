@@ -81,6 +81,20 @@ enum GraphFormat {
   GRAPH_FORMAT_EXPLAIN = 3;
 }
 
+// How far through the query pipeline to run before stopping.
+//
+// `UNSPECIFIED` means `EXECUTE`, so clients that predate this field keep
+// executing their queries unchanged.
+enum ExecuteUntil {
+  EXECUTE_UNTIL_UNSPECIFIED = 0;
+  // Stop after the optimized IR is produced, skipping distributed planning.
+  EXECUTE_UNTIL_OPTIMIZE_IR = 1;
+  // Stop after the physical/stage plan is built, but do not execute it.
+  EXECUTE_UNTIL_PLAN = 2;
+  // Run the whole pipeline. The default.
+  EXECUTE_UNTIL_EXECUTE = 3;
+}
+
 message QuerySettings {
   reserved 3; // Deprecated `query_type` variant `PartitionedByKeyOpts
   Engine engine = 1;
@@ -106,4 +120,9 @@ message QuerySettings {
   oneof sink_options {
     FlightSinkOptions flight = 10;
   }
+  // Scheduling priority. Higher values are started first; queries of equal
+  // priority keep submission order. Defaults to 0.
+  int32 priority = 11;
+  // How far to run the pipeline. Defaults to executing the whole query.
+  ExecuteUntil execute_until = 12;
 }

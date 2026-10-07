@@ -18,11 +18,13 @@ pub mod phys;
 pub mod physical;
 mod serde_compat;
 pub mod stages;
+mod stored;
 pub mod subtitle;
 
 pub use cluster::*;
 pub use node::*;
 pub use physical::*;
+pub use stored::StoredPlan;
 
 #[derive(Deserialize, Debug)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]

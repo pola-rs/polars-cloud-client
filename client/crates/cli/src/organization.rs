@@ -6,7 +6,7 @@ use polars_axum_models::{OrganizationCreateArgs, OrganizationModel};
 
 use crate::get_user_input;
 
-pub async fn get_all_organizations(
+pub async fn get_organizations(
     client: &Client,
     name: Option<String>,
 ) -> ApiResult<Vec<OrganizationModel>> {
@@ -19,11 +19,13 @@ pub async fn get_organization_by_name(
     client: &Client,
     name: String,
 ) -> ApiResult<OrganizationModel> {
-    let mut matches: Vec<OrganizationModel> = get_all_organizations(client, Some(name.clone()))
-        .await?
-        .into_iter()
-        .filter(|o| o.name == name)
-        .collect();
+    let lowercase_org_name = name.to_lowercase();
+    let mut matches: Vec<OrganizationModel> =
+        get_organizations(client, Some(lowercase_org_name.clone()))
+            .await?
+            .into_iter()
+            .filter(|o| o.name.to_lowercase() == lowercase_org_name)
+            .collect();
 
     match matches.len() {
         0 => Err(anyhow!(
@@ -59,7 +61,7 @@ pub async fn resolve_organization(
     name: Option<String>,
 ) -> ApiResult<OrganizationModel> {
     let Some(name) = name else {
-        let mut organizations = get_all_organizations(client, None).await?;
+        let mut organizations = get_organizations(client, None).await?;
 
         return match organizations.len() {
             0 => Err(anyhow!(
@@ -105,7 +107,7 @@ pub async fn set_up_organization(
 }
 
 pub async fn print_organizations(client: &Client) -> ApiResult<()> {
-    let organizations = get_all_organizations(client, None).await?;
+    let organizations = get_organizations(client, None).await?;
 
     if organizations.is_empty() {
         println!("No organizations yet. Run `pc organization setup --name <name>` to create one.");

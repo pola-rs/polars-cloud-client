@@ -9,25 +9,28 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from polars_cloud import constants
+from polars_cloud.exceptions import WorkspaceResolveError
 from polars_cloud.polars_cloud import QueryCloudObserver as _QueryCloudObserver
-from polars_cloud.workspace import Workspace
 
 __all__ = ["QueryCloudObserver"]
 
 
-def _parse_name_or_id(value: str | None) -> UUID | str | None:
-    """Read a workspace or organization given as one string: a UUID id, else a name."""
+def _parse_name_or_id(value: str | UUID | None) -> tuple[str | None, UUID | None]:
+    """Read a workspace or organization given as one value into a name or an id."""
     if value is None:
-        return None
+        return None, None
+    if isinstance(value, UUID):
+        return None, value
     try:
-        return UUID(value)
+        return None, UUID(value)
     except ValueError:
-        return value
+        return value, None
 
 
 def QueryCloudObserver(
-    workspace: str | None = None,
-    organization: str | None = None,
+    workspace: str | UUID | None = None,
+    organization: str | UUID | None = None,
 ) -> _QueryCloudObserver:
     """Create the observer that exports query profiles to Polars Cloud.
 
@@ -44,15 +47,27 @@ def QueryCloudObserver(
     Raises
     ------
     WorkspaceResolveError
-        If the workspace does not exist, is ambiguous, does not belong to the
-        organization, or no default is set.
-    OrganizationResolveError
-        If the organization does not exist or is ambiguous.
+        If no workspace was given and no default is set anywhere.
+    ValueError
+        If the workspace or organization does not exist or is ambiguous.
     """
-    parsed_workspace = _parse_name_or_id(workspace)
-    workspace_id = Workspace(
-        name=parsed_workspace if isinstance(parsed_workspace, str) else None,
-        id=parsed_workspace if isinstance(parsed_workspace, UUID) else None,
-        organization=_parse_name_or_id(organization),
-    ).id
-    return _QueryCloudObserver(workspace_id)
+    workspace_name, workspace_id = _parse_name_or_id(workspace)
+    organization_name, organization_id = _parse_name_or_id(organization)
+
+    resolved_workspace_id = constants.API_CLIENT.resolve_default_workspace_id(
+        workspace_name=workspace_name,
+        workspace_id=workspace_id,
+        organization_name=organization_name,
+        organization_id=organization_id,
+    )
+    if resolved_workspace_id is None:
+        msg = (
+            "No (default) workspace specified."
+            "\n\nHint: Either directly specify the workspace, set one with"
+            " `pc.Workspace('name').set_default()`, set the"
+            " `POLARS_CLOUD_DEFAULT_WORKSPACE_ID` environment variable, or set your"
+            " default workspace in the dashboard."
+        )
+        raise WorkspaceResolveError(msg)
+
+    return _QueryCloudObserver(resolved_workspace_id)

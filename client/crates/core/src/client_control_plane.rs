@@ -1,6 +1,5 @@
 #![allow(clippy::result_large_err)]
 
-use std::path::PathBuf;
 use std::sync::RwLock;
 
 use async_trait::async_trait;
@@ -9,34 +8,35 @@ use polars_backend_client::client::ApiClient;
 use polars_backend_client::error::ApiError as ClientApiError;
 use protos_common::tonic::{Request, Status};
 use pyo3::exceptions::PyValueError;
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::client_trait::ControlPlaneClient;
-use crate::constants::{API_ADDR, RUNTIME};
+use crate::constants::RUNTIME;
 use crate::error::ApiError;
 use crate::grpc::{ControlPlaneGRPCClient, get_control_plane_client};
-use crate::{AuthError, AuthMethod, AuthToken, VERSIONS, login_new};
+use crate::utils::get_auth_header_from_access_token_env;
+use crate::{AuthError, AuthToken, PolarsCloudConfig, VERSIONS, login_new};
 
 pub struct AutoRefreshApiControlPlaneClient {
     rest: ApiClient,
     grpc: ControlPlaneGRPCClient,
-    auth_token: RwLock<Option<AuthToken>>,
+    auth_token: Mutex<Option<AuthToken>>,
     override_token: RwLock<Option<String>>,
-    override_token_path: RwLock<Option<PathBuf>>,
 }
 
 impl Default for AutoRefreshApiControlPlaneClient {
     fn default() -> Self {
         let versions = VERSIONS.get().unwrap().clone().unwrap();
+        let api_addr = PolarsCloudConfig::resolve_api_addr();
         let rest =
-            ApiClient::new_with_versions("PLACEHOLDER".to_string(), API_ADDR.clone(), versions.1);
-        let grpc = get_control_plane_client();
+            ApiClient::new_with_versions("PLACEHOLDER".to_string(), api_addr.clone(), versions.1);
+        let grpc = get_control_plane_client(&api_addr);
         AutoRefreshApiControlPlaneClient {
             rest,
             grpc,
             auth_token: Default::default(),
             override_token: RwLock::new(None),
-            override_token_path: RwLock::new(None),
         }
     }
 }
@@ -50,49 +50,39 @@ impl AutoRefreshApiControlPlaneClient {
         *self.override_token.write().unwrap() = Some(token);
     }
 
-    pub fn set_token_path_override(&self, path: PathBuf) {
-        *self.override_token_path.write().unwrap() = Some(path);
-    }
+    async fn set_or_refresh_auth(&self) -> Result<AuthToken, AuthError> {
+        let client = self.rest.client.clone();
 
-    async fn set_or_refresh_auth(&self) -> Result<(), AuthError> {
-        let connection_pool = self.rest.client.clone();
+        let mut auth_token = self.auth_token.lock().await;
 
-        let auth_token = self.auth_token.read().unwrap().clone();
-
-        let auth_token = if let Some(token) = auth_token {
-            if let Some(new_token) = token.check_and_refresh(connection_pool).await? {
-                *self.auth_token.write().unwrap() = Some(new_token.clone());
+        let auth_token = if let Some(token) = auth_token.clone() {
+            if let Some(new_token) = token.check_and_refresh(client).await? {
+                *auth_token = Some(new_token.clone());
                 new_token
             } else {
                 token
             }
+        } else if let Some(token) = self.override_token.read().unwrap().clone() {
+            AuthToken::new_with_token(token)?
+        } else if let Some(token) = get_auth_header_from_access_token_env()? {
+            AuthToken::EnvVar(token)
         } else {
-            let token = self.override_token.read().unwrap().clone();
-            let token_path = self.override_token_path.read().unwrap().clone();
-            if let Some(token) = token {
-                AuthToken::new_with_token(token)?
-            } else {
-                AuthToken::new_from_env_or_disk(token_path, connection_pool).await?
-            }
+            let new_token = AuthToken::new_from_service_account_or_disk(client).await?;
+            *auth_token = Some(new_token.clone());
+            new_token
         };
-        let auth_header = auth_token.to_auth_header();
-
-        self.rest.set_auth_header(auth_header);
-        Ok(())
+        self.rest.set_auth_header(auth_token.to_auth_header());
+        Ok(auth_token)
     }
 
     pub async fn login(&self) -> Result<(), ApiError> {
         let token = login_new(self.rest.client.clone()).await?;
-        *self.auth_token.write().unwrap() = Some(token);
+        *self.auth_token.lock().await = Some(token);
         Ok(())
     }
 
-    pub fn clear_authentication(&self) {
-        *self.auth_token.write().unwrap() = None
-    }
-
-    fn get_auth_method(&self) -> Option<AuthMethod> {
-        self.auth_token.read().unwrap().as_ref().map(|t| t.method())
+    pub async fn clear_authentication(&self) {
+        *self.auth_token.lock().await = None
     }
 
     async fn call<'a, T: Send, F, F2>(&'a self, f: F) -> Result<T, ApiError>
@@ -100,10 +90,10 @@ impl AutoRefreshApiControlPlaneClient {
         F: FnOnce(&'a ApiClient) -> F2 + Send,
         F2: Future<Output = Result<T, ClientApiError>> + Send + 'a,
     {
-        self.set_or_refresh_auth().await?;
+        let token = self.set_or_refresh_auth().await?;
         f(&self.rest)
             .await
-            .map_err(|e| ApiError::from_with_auth_method(e, self.get_auth_method()))
+            .map_err(|e| ApiError::from_with_auth_method(e, Some(token.method())))
     }
 
     pub async fn call_grpc_async<'a, T: Send, U, F, F2>(
@@ -142,13 +132,13 @@ impl AutoRefreshApiControlPlaneClient {
         F: Fn(&'a ApiClient, i64) -> F2 + Send,
         F2: Future<Output = Result<Paginated<T>, ClientApiError>> + Send + 'a,
     {
-        self.set_or_refresh_auth().await?;
+        let token = self.set_or_refresh_auth().await?;
         let mut results = Vec::with_capacity(25);
 
         for page in 1..10 {
             let mut paginated_response = f(&self.rest, page)
                 .await
-                .map_err(|e| ApiError::from_with_auth_method(e, self.get_auth_method()))?;
+                .map_err(|e| ApiError::from_with_auth_method(e, Some(token.method())))?;
 
             results.append(&mut paginated_response.result);
 
@@ -170,7 +160,7 @@ impl AutoRefreshApiControlPlaneClient {
                 let client_clone = self.rest.client.clone();
                 let token =
                     AuthToken::from_service_account(client_id, client_secret, client_clone).await?;
-                *self.auth_token.write().unwrap() = Some(token);
+                *self.auth_token.lock().await = Some(token);
             },
             (Some(_), None) | (None, Some(_)) => {
                 return Err(PyValueError::new_err(
@@ -213,13 +203,16 @@ impl ControlPlaneClient for AutoRefreshApiControlPlaneClient {
             .await
     }
 
-    fn clear_authentication(&self) {
-        AutoRefreshApiControlPlaneClient::clear_authentication(self)
+    async fn clear_authentication(&self) {
+        AutoRefreshApiControlPlaneClient::clear_authentication(self).await
     }
 
     async fn get_auth_header(&self) -> Result<String, ApiError> {
-        self.call(|_client: &ApiClient| async { Ok(()) }).await?;
-        Ok(self.rest.auth_header.read().unwrap().clone())
+        Ok(self.set_or_refresh_auth().await?.to_auth_header())
+    }
+
+    async fn get_access_token(&self) -> Result<String, ApiError> {
+        Ok(self.set_or_refresh_auth().await?.access_token().to_string())
     }
 
     async fn get_organization(&self, organization_id: Uuid) -> Result<OrganizationModel, ApiError> {
@@ -400,15 +393,6 @@ impl ControlPlaneClient for AutoRefreshApiControlPlaneClient {
             .await
     }
 
-    async fn get_compute_cluster_token(
-        &self,
-        workspace_id: Uuid,
-        compute_id: Uuid,
-    ) -> Result<ComputeTokenModel, ApiError> {
-        self.call(|client| client.get_compute_cluster_token(workspace_id, compute_id))
-            .await
-    }
-
     async fn get_compute_cluster_nodes(
         &self,
         workspace_id: Uuid,
@@ -474,7 +458,7 @@ impl ControlPlaneClient for AutoRefreshApiControlPlaneClient {
             };
             let filters = GetClusterFilterArgs {
                 status: filters.status.clone(),
-                deployment_type: filters.deployment_type,
+                deployment_type: filters.deployment_type.clone(),
                 current_user_only: filters.current_user_only,
             };
             client.get_compute_clusters(workspace_id, filters, pagination)

@@ -35,11 +35,13 @@ pub struct OrganizationInviteModel {
     pub inviter_email: String,
     /// Time the invited was accepted
     pub accepted_at: Option<DateTime<Utc>>,
+    /// Time after which the invite can no longer be redeemed
+    pub expires_at: DateTime<Utc>,
 }
 
 impl EntityOrdering for OrganizationInviteModel {
     fn order_fields() -> &'static [&'static str] {
-        &["id", "organization_name", "accepted_at"]
+        &["id", "organization_name", "accepted_at", "expires_at"]
     }
 
     fn default_ordering() -> Option<(&'static str, DefaultSortDirection)> {

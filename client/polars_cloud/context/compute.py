@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import datetime
 import logging
 import time
 import warnings
@@ -14,6 +13,7 @@ import polars_cloud
 import polars_cloud.polars_cloud as pcr
 from polars_cloud import constants
 from polars_cloud._tracing import traced
+from polars_cloud.constants import FRONTEND_DOMAIN
 from polars_cloud.context.compute_connect_select import select_compute_cluster
 from polars_cloud.context.compute_status import ComputeContextStatus
 from polars_cloud.polars_cloud import (
@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 
     from polars_cloud._typing import ConnectionMode, CPUArchitecture, LogLevel
     from polars_cloud.organization import Organization
+    from polars_cloud.polars_cloud import ComputeClusterEndpointModel
 
     if sys.version_info >= (3, 11):
         from typing import Self
@@ -62,9 +63,6 @@ class ClientContext:
     def _get_direct_client(self) -> pcr.SchedulerClient | None:
         return self._direct_client
 
-    def _get_token(self) -> str | None:
-        return None
-
     def show_versions(self) -> None:
         """Print the versions of the compute plane components.
 
@@ -86,7 +84,7 @@ class ClientContext:
             msg = "Cannot show versions, no direct client available"
             raise RuntimeError(msg)
 
-        versions = client.get_compute_versions(token=self._get_token())
+        versions = client.get_compute_versions()
         print(f"Compute Plane Version: {versions.compute_plane_version}")
         print(f"Polars Python Version: {versions.polars_python_version}")
         print(f"Polars Rust Revision: {versions.polars_rust_revision}")
@@ -189,7 +187,7 @@ class ClusterContext(ClientContext):
             tls_options=tls_options,
         )
 
-        self._direct_client = pcr.SchedulerClient(
+        self._direct_client = pcr.SchedulerClient.without_default_auth(
             scheduler=scheduler_options,
             observatory=observatory_options,
         )
@@ -347,7 +345,6 @@ class ComputeContext(ClientContext, ContextDecorator):
         self._insecure = insecure
         self._direct_client = None
         self._compute_id: UUID | None = None
-        self._compute_token: str | None = None
         self._requirements_txt: str | None
         self._env_vars: dict[str, str]
         self._name: str | None = None
@@ -617,7 +614,7 @@ class ComputeContext(ClientContext, ContextDecorator):
 
         self._last_known_status = ComputeContextStatus.STARTING
 
-        msg = f"View your compute metrics on: https://cloud.pola.rs/portal/{self.organization.id}/{self.workspace.id}/compute/{self._compute_id}"
+        msg = f"View your compute metrics on: https://{FRONTEND_DOMAIN}/portal/{self.organization.id}/{self.workspace.id}/compute/{self._compute_id}"
         logger.info(msg)
 
         wait = True if self._connection_mode == pcr.DBClusterModeModel.Direct else wait
@@ -836,16 +833,15 @@ class ComputeContext(ClientContext, ContextDecorator):
         scheme = "https" if not self._insecure else "http"
         tls_options = TLSOptions(ca_cert=str.encode(server_info.public_server_key))
 
-        scheduler_options = ClientOptions(
-            uri=f"{scheme}://{server_info.public_address}:{DEFAULT_SCHEDULER_PORT}",
-            domain_name=DEFAULT_COMPUTE_CLUSTER_DOMAIN_NAME,
-            tls_options=tls_options if not self._insecure else None,
-        )
-        observatory_options = ClientOptions(
-            uri=f"{scheme}://{server_info.public_address}:{DEFAULT_OBSERVATORY_PORT}",
-            domain_name=DEFAULT_COMPUTE_CLUSTER_DOMAIN_NAME,
-            tls_options=tls_options if not self._insecure else None,
-        )
+        def endpoint_options(endpoint: ComputeClusterEndpointModel) -> ClientOptions:
+            return ClientOptions(
+                uri=f"{scheme}://{endpoint.address}",
+                domain_name=endpoint.tls_server_name,
+                tls_options=tls_options if not self._insecure else None,
+            )
+
+        scheduler_options = endpoint_options(server_info.scheduler)
+        observatory_options = endpoint_options(server_info.observatory)
 
         self._direct_client = pcr.SchedulerClient(
             scheduler=scheduler_options,
@@ -853,25 +849,6 @@ class ComputeContext(ClientContext, ContextDecorator):
         )
 
         return self._direct_client
-
-    def _get_token(self) -> str | None:
-        assert self._compute_id is not None, "Compute id undefined while getting token"
-
-        if self.connection_mode != "direct":
-            return None
-
-        if self._direct_client is None:
-            self._get_direct_client()
-
-        if self._compute_token is None or pcr.py_is_token_expired(
-            self._compute_token, datetime.timedelta(minutes=5)
-        ):
-            response = constants.API_CLIENT.get_compute_cluster_token(
-                self.workspace.id, self._compute_id
-            )
-            self._compute_token = response.token
-
-        return self._compute_token
 
     @property
     def polars_version(self) -> str:

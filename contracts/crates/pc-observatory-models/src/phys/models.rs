@@ -1,3 +1,12 @@
+//! User-facing representation of the physical plan.
+//! This must remain deserializable from old plans stored as JSON in the database:
+//! - Existing struct fields *may* be removed.
+//! - Existing struct fields *may* be renamed if an alias is provided: `#[serde(alias = "OldName")]`
+//! - New struct fields *may* be added, but *must* be optional OR *must* provide a default value.
+//! - Existing enum variants *must not* be removed.
+//! - Existing enum variants *may* be renamed if an alias is provided: `#[serde(alias = "OldName")]`
+//! - New enum variants *may* be added.
+
 use std::hash::{Hash, Hasher};
 use std::num::NonZeroUsize;
 
@@ -74,8 +83,10 @@ pub enum PhysNodeProperties {
         offset: usize,
     },
     GroupBy {
-        num_inputs: usize,
+        num_inputs: Option<usize>,
         key_per_input: Vec<Vec<String>>,
+        #[serde(default)]
+        fused_agg_inputs_per_input: Vec<Vec<String>>,
         aggs_per_input: Vec<Vec<String>>,
     },
     DynamicGroupBy {
@@ -145,6 +156,7 @@ pub enum PhysNodeProperties {
         how: String,
         left_on: Vec<String>,
         right_on: Vec<String>,
+        fused_predicate: Option<Vec<String>>,
         nulls_equal: bool,
         coalesce: String,
         maintain_order: String,
@@ -220,10 +232,10 @@ pub enum PhysNodeProperties {
         length: usize,
     },
     OrderedUnion {
-        num_inputs: usize,
+        num_inputs: Option<usize>,
     },
     UnorderedUnion {
-        num_inputs: usize,
+        num_inputs: Option<usize>,
     },
     PartitionSink {
         base_path: String,
@@ -292,7 +304,7 @@ pub enum PhysNodeProperties {
         offset: Option<u64>,
     },
     Zip {
-        num_inputs: usize,
+        num_inputs: Option<usize>,
         zip_behavior: String,
     },
     //
@@ -326,6 +338,9 @@ pub enum PhysNodeProperties {
         schema_names: Vec<String>,
         is_pure: bool,
         validate_schema: bool,
+        /// Display name supplied by the IO plugin.
+        explain_name: Option<String>,
+        explain_detail: Option<String>,
     },
     StrptimeInfer {
         format: Option<String>,

@@ -3,8 +3,10 @@ use std::time::Duration;
 
 use chrono::Utc;
 use client_core::RUNTIME;
-use polars_axum_models::{QueryPhysNodeKind, QueryPhysNodeMetricsModel};
-use polars_descriptions::NodeMetricsDescription;
+use polars_axum_models::{
+    QueryCustomMetricModel, QueryMetricUnitModel, QueryPhysNodeKind, QueryPhysNodeMetricsModel,
+};
+use polars_descriptions::{CustomMetricDescription, MetricUnit, NodeMetricsDescription};
 use pyo3::{Py, PyAny, PyResult, Python, pyclass, pymethods};
 use tokio::sync::mpsc::Sender;
 use tokio_util::sync::CancellationToken;
@@ -186,6 +188,31 @@ pub(crate) fn node_phys_metrics_model(
         io_total_bytes_received: m.io_total_bytes_received,
         io_total_bytes_sent: m.io_total_bytes_sent,
         total_time_ns: m.total_time_ns,
+        custom: m.custom.iter().filter_map(IntoModel::into_model).collect(),
         done: m.done,
+    }
+}
+
+trait IntoModel<T> {
+    fn into_model(self) -> T;
+}
+
+impl IntoModel<Option<QueryCustomMetricModel>> for &CustomMetricDescription {
+    fn into_model(self) -> Option<QueryCustomMetricModel> {
+        Some(QueryCustomMetricModel {
+            key: self.key.clone(),
+            unit: self.unit.into_model(),
+            value: self.value?,
+        })
+    }
+}
+
+impl IntoModel<QueryMetricUnitModel> for MetricUnit {
+    fn into_model(self) -> QueryMetricUnitModel {
+        match self {
+            MetricUnit::Unit => QueryMetricUnitModel::Unit,
+            MetricUnit::Bytes => QueryMetricUnitModel::Bytes,
+            MetricUnit::DurationNs => QueryMetricUnitModel::DurationNs,
+        }
     }
 }

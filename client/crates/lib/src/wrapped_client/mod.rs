@@ -10,6 +10,7 @@ use crate::entry::EnterRustExt;
 
 pub mod aws;
 pub mod compute;
+pub mod config;
 pub mod on_prem;
 pub mod organization;
 pub mod query;
@@ -44,7 +45,7 @@ impl WrappedAPIClient {
     }
 
     fn clear_authentication(&self, py: Python) {
-        let _ = py.enter_rust_ok(|| self.client.clear_authentication());
+        let _ = py.enter_rust_ok(|| RUNTIME.block_on(self.client.clear_authentication()));
     }
 
     fn get_auth_header(&self, py: Python) -> Result<String, ApiError> {

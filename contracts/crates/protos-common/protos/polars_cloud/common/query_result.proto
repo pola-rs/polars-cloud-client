@@ -34,6 +34,8 @@ message QueryResult {
   uint32 finished_stages = 2;
   uint32 failed_stages = 3;
   repeated Error errors = 4;
-  // If this is set, the query was successful, otherwise it failed
+  // Where the query wrote its results. Absent when the query failed, and also
+  // when it was only planned and never executed -- see `execute_until` on the
+  // compute plane's `ComputeQueryInfo` to tell those apart.
   optional QueryOutput output = 5;
 }

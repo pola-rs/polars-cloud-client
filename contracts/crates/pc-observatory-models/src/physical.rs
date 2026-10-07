@@ -27,5 +27,27 @@ pub struct AggregatedPhysicalMetricFieldsModel {
     pub io_total_bytes_sent: i64,
 
     pub total_time_ns: i64,
+    pub custom: Vec<CustomPhysicalMetricModel>,
     pub done: bool,
+}
+
+/// UCUM units custom metric OTel instruments are exported with
+pub const CUSTOM_METRIC_UNIT_UNIT: &str = "1";
+pub const CUSTOM_METRIC_UNIT_BYTES: &str = "By";
+pub const CUSTOM_METRIC_UNIT_DURATION_NS: &str = "ns";
+
+#[derive(Clone, Copy, Debug, Serialize)]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub enum PhysicalMetricUnitModel {
+    Unit,
+    Bytes,
+    DurationNs,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct CustomPhysicalMetricModel {
+    pub key: String,
+    pub unit: PhysicalMetricUnitModel,
+    pub value: i64,
 }

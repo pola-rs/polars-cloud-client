@@ -1,6 +1,5 @@
 use std::io;
 use std::io::Write;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::builder::{NonEmptyStringValueParser, TypedValueParser, ValueParser};
@@ -74,13 +73,6 @@ struct Cli {
         help = "Authentication token to override other auth methods"
     )]
     token: Option<String>,
-    #[arg(
-        short = 'p',
-        long,
-        global = true,
-        help = "Path to authentication token file"
-    )]
-    token_path: Option<String>,
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -315,10 +307,6 @@ async fn async_main(args: Vec<String>) -> anyhow::Result<()> {
 
     if let Some(token) = cli.token {
         client.set_token_override(token);
-    }
-
-    if let Some(token_path) = cli.token_path {
-        client.set_token_path_override(PathBuf::from(token_path));
     }
 
     let client: Client = Arc::new(client);

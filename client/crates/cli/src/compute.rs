@@ -13,7 +13,7 @@ use polars_axum_models::{
 use uuid::Uuid;
 
 use crate::organization::get_organization_by_name;
-use crate::workspace::{get_all_workspaces, get_workspace_by_name};
+use crate::workspace::{get_workspace_by_name, get_workspaces};
 
 pub async fn get_all_clusters(client: &Client, workspace_id: Uuid) -> ApiResult<Vec<ComputeModel>> {
     let params = GetClusterFilterArgs {
@@ -43,7 +43,7 @@ async fn workspaces_to_list(
         None => None,
     };
 
-    get_all_workspaces(client, None, organization_id).await
+    get_workspaces(client, None, organization_id).await
 }
 
 pub async fn print_compute_clusters(

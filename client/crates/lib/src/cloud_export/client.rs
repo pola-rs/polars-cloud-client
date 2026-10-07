@@ -22,10 +22,7 @@ pub(crate) struct CloudApiClient {
 }
 
 impl CloudApiClient {
-    /// Connect to the workspace query profiles are exported to. Resolving a
-    /// workspace from user input (name, id, or the account default) happens on the
-    /// Python side through `polars_cloud.Workspace`.
-    pub fn connect(workspace_id: Uuid) -> Self {
+    pub fn new(workspace_id: Uuid) -> Self {
         Self {
             client: CTRL_PLN_CLIENT_GLOBAL.clone(),
             workspace_id,

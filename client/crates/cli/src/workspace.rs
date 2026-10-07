@@ -7,10 +7,10 @@ use comfy_table::presets::NOTHING;
 use polars_axum_models::{WorkSpaceArgs, WorkspaceModel};
 use uuid::Uuid;
 
-use crate::organization::{get_all_organizations, get_organization_by_name, resolve_organization};
+use crate::organization::{get_organization_by_name, get_organizations, resolve_organization};
 use crate::workspace_aws;
 
-pub async fn get_all_workspaces(
+pub async fn get_workspaces(
     client: &Client,
     name: Option<String>,
     organization_id: Option<Uuid>,
@@ -23,14 +23,20 @@ pub async fn get_workspace_by_name(
     organization_name: Option<String>,
     workspace_name: String,
 ) -> ApiResult<WorkspaceModel> {
+    let lowercase_workspace_name = workspace_name.to_lowercase();
     let mut workspaces = if let Some(organization_name) = organization_name {
         let organization = get_organization_by_name(client, organization_name).await?;
-        get_all_workspaces(client, Some(workspace_name.clone()), Some(organization.id)).await?
+        get_workspaces(
+            client,
+            Some(lowercase_workspace_name.clone()),
+            Some(organization.id),
+        )
+        .await?
     } else {
-        get_all_workspaces(client, Some(workspace_name.clone()), None).await?
+        get_workspaces(client, Some(lowercase_workspace_name.clone()), None).await?
     };
 
-    workspaces.retain(|x| x.name == workspace_name);
+    workspaces.retain(|x| x.name.to_lowercase() == lowercase_workspace_name);
 
     let workspace = match workspaces.len() {
         0 => return Err(anyhow!("No workspace with the name {workspace_name} was found").into()),
@@ -102,8 +108,8 @@ pub async fn print_workspaces(client: &Client, organization_name: Option<String>
     };
 
     let (organizations, workspaces) = tokio::try_join!(
-        get_all_organizations(client, None),
-        get_all_workspaces(client, None, organization.as_ref().map(|o| o.id)),
+        get_organizations(client, None),
+        get_workspaces(client, None, organization.as_ref().map(|o| o.id)),
     )?;
     let organizations: HashMap<Uuid, String> = organizations
         .into_iter()

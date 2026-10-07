@@ -42,6 +42,8 @@ if TYPE_CHECKING:
 
     from polars_cloud._typing import (
         Engine,
+        ExecuteUntil,
+        PlanType,
         PlanTypePreference,
         ScalingMode,
         ShuffleCompression,
@@ -68,6 +70,7 @@ class LazyFrameRemote:
         context: ClientContext | None = None,
         plan_type: PlanTypePreference = "dot",
         n_retries: int = 0,
+        priority: int = 0,
         engine: Engine = "auto",
         scaling_mode: ScalingMode = "auto",
     ) -> None:
@@ -76,6 +79,7 @@ class LazyFrameRemote:
         self._engine: Engine = engine
         self._labels: None | list[str] = None
         self._n_retries = n_retries
+        self._priority = priority
         self.plan_type: PlanTypePreference = plan_type
         self.scaling_mode = scaling_mode
         self._lineage: LineageContext | None = None
@@ -184,6 +188,7 @@ class LazyFrameRemote:
             context=self.context,
             plan_type=self.plan_type,
             n_retries=self._n_retries,
+            priority=self._priority,
             min_workers=min_workers,
             max_workers=max_workers,
             labels=self._labels,
@@ -204,6 +209,7 @@ class LazyFrameRemote:
             context=self.context,
             plan_type=self.plan_type,
             n_retries=self._n_retries,
+            priority=self._priority,
             labels=self._labels,
             engine=self._engine,
             lineage=self._lineage,
@@ -424,6 +430,44 @@ class LazyFrameRemote:
         Parquet SCAN [https://s3.eu-west-1.amazonaws.com/polars-cloud-xxxxxxx-xxxx-..]
         """
         return self._scaling_mode().await_and_scan(silent=silent)
+
+    def explain(
+        self,
+        *,
+        plan_stage: PlanType = "physical",
+        optimizations: QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
+        silent: bool | None = None,
+    ) -> str:
+        """Plan the query on the compute cluster without executing it.
+
+        The query is sent to the cluster and planned there, but no data is read
+        and no output is written. The rendered plan is returned as a string.
+
+        .. note::
+            This can only be called in 'direct' mode.
+
+        Parameters
+        ----------
+        plan_stage : {'physical', 'ir'}
+            Which plan to return.
+
+            * physical: The distributed physical plan/stages.
+            * ir: The optimized query plan. Stops before distributed planning,
+              so no physical plan is built.
+        optimizations
+            The optimization passes done during query optimization.
+        silent
+            Don't print to stdout while waiting for the plan.
+
+        Examples
+        --------
+        >>> print(query.remote(ctx).explain())  # doctest: +SKIP
+
+        >>> print(query.remote(ctx).explain(plan_stage="ir"))  # doctest: +SKIP
+        """
+        return self._scaling_mode().explain(
+            plan_stage=plan_stage, optimizations=optimizations, silent=silent
+        )
 
     def show(self, n: int = 10, *, silent: bool | None = None) -> DataFrame:
         """Start executing the query return the first `n` rows.
@@ -968,6 +1012,7 @@ class ExecuteRemote:
         n_retries: int,
         engine: Engine,
         labels: list[str] | None,
+        priority: int = 0,
         min_workers: int | None = None,
         max_workers: int | None = None,
         shuffle_compression: ShuffleCompression = "auto",
@@ -981,6 +1026,7 @@ class ExecuteRemote:
         self._engine: Engine = engine
         self._labels: None | list[str] = labels
         self._n_retries = n_retries
+        self._priority = priority
         self._min_workers = min_workers
         self._max_workers = max_workers
         self.plan_type: PlanTypePreference = plan_type
@@ -1090,6 +1136,62 @@ class ExecuteRemote:
         Parquet SCAN [https://s3.eu-west-1.amazonaws.com/polars-cloud-xxxxxxx-xxxx-..]
         """
         return self.execute(blocking=True, silent=silent).lazy()
+
+    def explain(
+        self,
+        *,
+        plan_stage: PlanType = "physical",
+        optimizations: QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
+        silent: bool | None = None,
+    ) -> str:
+        """Plan the query on the compute cluster without executing it.
+
+        The query is sent to the cluster and planned there, but no data is read
+        and no output is written. The rendered plan is returned as a string.
+
+        .. note::
+            This can only be called in 'direct' mode.
+
+        Parameters
+        ----------
+        plan_stage : {'physical', 'ir'}
+            Which plan to return.
+
+            * physical: The distributed physical plan/stages.
+            * ir: The optimized query plan. Stops before distributed planning,
+              so no physical plan is built.
+        optimizations
+            The optimization passes done during query optimization.
+        silent
+            Don't print to stdout while waiting for the plan.
+
+        Examples
+        --------
+        >>> print(query.remote(ctx).explain())  # doctest: +SKIP
+
+        >>> print(query.remote(ctx).explain(plan_stage="ir"))  # doctest: +SKIP
+        """
+        if plan_stage not in {"physical", "ir"}:
+            msg = (
+                f"`plan_stage` must be one of {{'physical', 'ir'}}, got {plan_stage!r}"
+            )
+            raise ValueError(msg)
+
+        # `plan_type="dot"` (the default) renders dot syntax with an empty
+        # physical plan, so `explain` has to ask for text. `ClientDst` is the
+        # destination `.collect()` uses; it keeps planning off the cluster's
+        # anonymous result location, which a `TmpDst` would require even though
+        # nothing is ever written.
+        query = self._spawn(
+            dst=ClientDst(),
+            optimizations=optimizations,
+            execute_until=plan_stage,
+            plan_type="plain",
+        )
+        # `spawn` rejects a non-direct connection before submitting, so this is
+        # always a `DirectQuery`.
+        query.await_result(silent=silent)
+        return query.plan(plan_type=plan_stage)
 
     def show(self, n: int = 10, *, silent: bool | None = None) -> DataFrame:
         """Start executing the query return the first `n` rows.
@@ -1663,6 +1765,8 @@ class ExecuteRemote:
         dst: ClientDst,
         optimizations: QueryOptFlags,
         sink_to_single_file: bool | None = False,
+        execute_until: ExecuteUntil = ...,
+        plan_type: PlanTypePreference | None = ...,
     ) -> DirectQuery: ...
 
     @overload
@@ -1672,6 +1776,8 @@ class ExecuteRemote:
         dst: Dst,
         optimizations: QueryOptFlags,
         sink_to_single_file: bool | None = False,
+        execute_until: ExecuteUntil = ...,
+        plan_type: PlanTypePreference | None = ...,
     ) -> DirectQuery | ProxyQuery: ...
 
     def _spawn(
@@ -1680,24 +1786,28 @@ class ExecuteRemote:
         dst: Dst,
         optimizations: QueryOptFlags,
         sink_to_single_file: bool | None = False,
+        execute_until: ExecuteUntil = "execute",
+        plan_type: PlanTypePreference | None = None,
     ) -> DirectQuery | ProxyQuery:
         return spawn(
             lf=self.lf,
             dst=dst,
             context=self.context,
             engine=self._engine,
-            plan_type=self.plan_type,
+            plan_type=self.plan_type if plan_type is None else plan_type,
             labels=self._labels,
             shuffle_compression=self._shuffle_compression,
             shuffle_format=self._shuffle_format,
             shuffle_compression_level=self._shuffle_compression_level,
             n_retries=self._n_retries,
+            priority=self._priority,
             min_workers=self._min_workers,
             max_workers=self._max_workers,
             distributed=self._distributed_settings,
             sink_to_single_file=sink_to_single_file,
             optimizations=optimizations,
             lineage=self._lineage,
+            execute_until=execute_until,
         )
 
 
@@ -1707,6 +1817,7 @@ def _lf_remote(
     *,
     plan_type: PlanTypePreference = "dot",
     n_retries: int = 0,
+    priority: int = 0,
     engine: Engine = "auto",
     scaling_mode: ScalingMode = "auto",
 ) -> LazyFrameRemote:
@@ -1715,6 +1826,7 @@ def _lf_remote(
         context=context,
         plan_type=plan_type,
         n_retries=n_retries,
+        priority=priority,
         engine=engine,
         scaling_mode=scaling_mode,
     )
@@ -1722,4 +1834,9 @@ def _lf_remote(
 
 # Overwrite the remote method, so that we are sure we already expose
 # the latest arguments.
+#
+# Arguments added here that polars' own `LazyFrame.remote` does not declare yet
+# work at runtime, but type checkers resolve against polars' signature and reject
+# them. `priority` is in that state: it needs the same parameter (and its
+# docstring entry) added to `LazyFrame.remote` upstream.
 pl.LazyFrame.remote = _lf_remote  # type: ignore[method-assign, assignment]

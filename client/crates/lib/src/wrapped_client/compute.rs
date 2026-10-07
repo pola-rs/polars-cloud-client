@@ -5,9 +5,9 @@ use std::collections::HashMap;
 use client_core::{ApiError, RUNTIME, VERSIONS};
 use polars_axum_models::{
     ComputeClusterNodeInfoModel, ComputeClusterPublicInfoModel, ComputeModel, ComputeStatusModel,
-    ComputeTokenModel, DBCPUArchitectureModel, DBClusterModeModel, GetClusterFilterArgs,
-    InstanceSpecsModel, LogLevelModel, ManifestModel, ManifestQueryArgs,
-    RegisterComputeClusterManifestArgs, StartComputeClusterArgs, StartComputeClusterManifestArgs,
+    DBCPUArchitectureModel, DBClusterModeModel, GetClusterFilterArgs, InstanceSpecsModel,
+    LogLevelModel, ManifestModel, ManifestQueryArgs, RegisterComputeClusterManifestArgs,
+    StartComputeClusterArgs, StartComputeClusterManifestArgs,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::{Python, pymethods};
@@ -67,19 +67,6 @@ impl WrappedAPIClient {
         })
     }
 
-    pub fn get_compute_cluster_token(
-        &self,
-        py: Python,
-        workspace_id: Uuid,
-        compute_id: Uuid,
-    ) -> Result<ComputeTokenModel, ApiError> {
-        py.enter_rust(|| {
-            RUNTIME.block_on(
-                self.client
-                    .get_compute_cluster_token(workspace_id, compute_id),
-            )?
-        })
-    }
     pub fn get_compute_cluster_nodes(
         &self,
         py: Python,

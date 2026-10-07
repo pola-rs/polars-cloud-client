@@ -1,6 +1,7 @@
 #![allow(clippy::result_large_err)]
 
 use std::net::SocketAddr;
+use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -8,14 +9,15 @@ use std::time::{Duration, Instant};
 use anyhow::anyhow;
 use client_core::constants::SERVICE_NAME;
 use client_core::error::ApiResult;
-use client_core::{ApiError, RUNTIME};
+use client_core::{ApiError, ControlPlaneClient, PolarsCloudConfig, RUNTIME};
 use pc_observatory_models::QueryDetailModel;
+use pc_observatory_models::stages::StageGraphVisualizationData;
 use polars_axum_models::QueryStatusCodeModel;
 use polars_backend_client::client::user_agent;
 use protos_client_compute::client::client::SubmitQueryRequest;
 use protos_client_compute::client::{
-    ClientServiceClient, GetComputeVersionsRequest, GetQueryPlansRequest, GetQueryResultResponse,
-    PlanSelection, QueryStatus,
+    ClientQueryPlans, ClientServiceClient, GetComputeVersionsRequest, GetQueryPlansRequest,
+    GetQueryResultResponse, PlanSelection, QueryStatus,
 };
 use protos_client_compute::proto::polars_cloud::compute_plane::client::v1::{
     self as proto, GetQueryStatusRequest,
@@ -27,11 +29,10 @@ use protos_common::tonic::transport::{Certificate, Channel, ClientTlsConfig, Uri
 use protos_common::tonic::{self, Code, Request};
 use protos_common::{
     ComputeVersions, MAX_MESSAGE_LENGTH_UNLIMITED, PlanFormat, QueryIdentifier, QueryInfo,
-    QueryPlans,
 };
 use pyo3::exceptions::{PyRuntimeError, PyTimeoutError, PyValueError};
 use pyo3::prelude::*;
-use reqwest::header::{AUTHORIZATION, HeaderName};
+use reqwest::header::{AUTHORIZATION, HeaderName, HeaderValue};
 use reqwest_otel::TracingMiddleware;
 use tokio_rustls::rustls;
 use tokio_rustls::rustls::client::danger::{
@@ -42,13 +43,13 @@ use tokio_rustls::rustls::{DigitallySignedStruct, SignatureScheme};
 use tonic::Status;
 use tower::ServiceBuilder;
 use tower::util::BoxCloneSyncService;
+use tower_http::auth::{AsyncAuthorizeRequest, AsyncRequireAuthorizationLayer};
 use tower_http::set_header::HeaderMetadata;
 use tower_http::set_header::request::SetMultipleRequestHeadersLayer;
 use tracing::Instrument;
 use utils::{Backoff, Exponential, retry};
 use uuid::Uuid;
 
-use crate::VERSIONS;
 use crate::entry::EnterRustExt;
 use crate::flight::{Flight, FlightResult};
 use crate::query_settings::{PyLineageContext, PyQuerySettings};
@@ -56,6 +57,7 @@ use crate::serde_types::{
     DomainName, ParsedHeaders, ParsedUri, QueryDetailPy, QueryInfoPy, query_result_to_py,
     query_status_to_code,
 };
+use crate::{CTRL_PLN_CLIENT_GLOBAL, VERSIONS};
 
 type SchedulerChannel =
     BoxCloneSyncService<http::Request<Body>, http::Response<Body>, tonic::transport::Error>;
@@ -74,7 +76,10 @@ struct SchedulerGrpcClient {
     inner: SchedulerGRPCClient,
 }
 
-fn connect_scheduler(options: &ClientOptions) -> ApiResult<SchedulerChannel> {
+fn connect_scheduler(
+    options: &ClientOptions,
+    token_provider: Option<TokenProvider>,
+) -> ApiResult<SchedulerChannel> {
     let channel = RUNTIME.block_on(async { create_channel(options).await })??;
 
     let version_layers = version_header_layers();
@@ -90,8 +95,37 @@ fn connect_scheduler(options: &ClientOptions) -> ApiResult<SchedulerChannel> {
                     .unwrap_or_default()
                     .to_header_metadata(),
             ))
+            .option_layer(token_provider.map(|token_provider| {
+                AsyncRequireAuthorizationLayer::new(Authorize(token_provider))
+            }))
             .service(channel),
     ))
+}
+
+#[derive(Clone)]
+struct Authorize(TokenProvider);
+
+impl<B: Send + 'static> AsyncAuthorizeRequest<B> for Authorize {
+    type RequestBody = B;
+    type ResponseBody = Body;
+    type Future =
+        Pin<Box<dyn Future<Output = Result<http::Request<B>, http::Response<Body>>> + Send>>;
+
+    fn authorize(&mut self, mut req: http::Request<B>) -> Self::Future {
+        let token_provider = self.0.clone();
+
+        Box::pin(async move {
+            if req.headers().contains_key(AUTHORIZATION) {
+                return Ok(req);
+            }
+            let header = token_provider
+                .bearer_header()
+                .await
+                .map_err(|error| Status::unauthenticated(error.to_string()).into_http())?;
+            req.headers_mut().insert(AUTHORIZATION, header);
+            Ok(req)
+        })
+    }
 }
 
 impl SchedulerGrpcClient {
@@ -104,6 +138,26 @@ impl SchedulerGrpcClient {
     }
 }
 
+type TokenFuture = Pin<Box<dyn Future<Output = ApiResult<String>> + Send>>;
+
+#[derive(Clone)]
+pub struct TokenProvider(Arc<dyn Fn() -> TokenFuture + Send + Sync>);
+
+impl TokenProvider {
+    fn control_plane() -> Self {
+        Self(Arc::new(|| {
+            Box::pin(CTRL_PLN_CLIENT_GLOBAL.get_access_token())
+        }))
+    }
+
+    async fn bearer_header(&self) -> ApiResult<HeaderValue> {
+        let token = self.0().await?;
+        format!("Bearer {token}")
+            .parse()
+            .map_err(|_| ApiError::Other(anyhow!("Access token is not a valid header value")))
+    }
+}
+
 #[pyclass(from_py_object)]
 #[derive(Clone)]
 pub struct SchedulerClient {
@@ -112,8 +166,30 @@ pub struct SchedulerClient {
     flight_client: Flight<SchedulerChannel>,
 }
 
+struct AuthorizeMiddleware(TokenProvider);
+
+#[async_trait::async_trait]
+impl reqwest_middleware::Middleware for AuthorizeMiddleware {
+    async fn handle(
+        &self,
+        mut req: reqwest::Request,
+        extensions: &mut http::Extensions,
+        next: reqwest_middleware::Next<'_>,
+    ) -> reqwest_middleware::Result<reqwest::Response> {
+        if !req.headers().contains_key(AUTHORIZATION) {
+            let header = self
+                .0
+                .bearer_header()
+                .await
+                .map_err(|e| reqwest_middleware::Error::Middleware(anyhow!(e.to_string())))?;
+            req.headers_mut().insert(AUTHORIZATION, header);
+        }
+        next.run(req, extensions).await
+    }
+}
+
 #[pyclass(from_py_object, eq, eq_int)]
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PlanFormatPy {
     Dot,
     Explain,
@@ -121,6 +197,7 @@ pub enum PlanFormatPy {
 
 #[pyclass(skip_from_py_object, get_all)]
 pub struct QueryPlansPy {
+    /// The format `ir_plan` is rendered in.
     pub format: PlanFormatPy,
     pub ir_plan: Option<String>,
     pub phys_plan: Option<String>,
@@ -140,7 +217,10 @@ struct ObservatoryRestClient {
 }
 
 impl ObservatoryRestClient {
-    fn build(options: &ClientOptions) -> Result<Self, ApiError> {
+    fn build(
+        options: &ClientOptions,
+        token_provider: Option<TokenProvider>,
+    ) -> Result<Self, ApiError> {
         let mut builder = reqwest::ClientBuilder::new();
 
         if let Some(tls_options) = &options.tls_options {
@@ -180,10 +260,14 @@ impl ObservatoryRestClient {
             builder = builder.default_headers(request_headers.clone().into());
         }
 
+        let mut client = reqwest_middleware::ClientBuilder::new(builder.build()?)
+            .with(TracingMiddleware::new().propagate());
+        if let Some(token_provider) = token_provider {
+            client = client.with(AuthorizeMiddleware(token_provider));
+        }
+
         Ok(Self {
-            inner: reqwest_middleware::ClientBuilder::new(builder.build()?)
-                .with(TracingMiddleware::new().propagate())
-                .build(),
+            inner: client.build(),
             base_url: url.to_string().trim_end_matches('/').to_string(),
         })
     }
@@ -206,51 +290,63 @@ impl ObservatoryRestClient {
     }
 }
 
+impl SchedulerClient {
+    fn build(
+        scheduler: ClientOptions,
+        observatory: ClientOptions,
+        token_provider: Option<TokenProvider>,
+    ) -> ApiResult<SchedulerClient> {
+        let observatory_client_rest =
+            ObservatoryRestClient::build(&observatory, token_provider.clone())?;
+        let scheduler_channel = connect_scheduler(&scheduler, token_provider)?;
+        let scheduler_client = SchedulerGrpcClient::new(scheduler_channel.clone());
+        let flight_client = Flight::new(scheduler_channel);
+
+        Ok(SchedulerClient {
+            scheduler_client,
+            observatory_client_rest,
+            flight_client,
+        })
+    }
+}
+
 #[pymethods]
 impl SchedulerClient {
     #[new]
     #[tracing::instrument(name = "SchedulerClient::new", skip_all)]
     pub fn new(scheduler: ClientOptions, observatory: ClientOptions) -> ApiResult<SchedulerClient> {
-        let observatory_client_rest = ObservatoryRestClient::build(&observatory)?;
-        let scheduler_channel = connect_scheduler(&scheduler)?;
-        let scheduler_client = SchedulerGrpcClient::new(scheduler_channel.clone());
-        let flight = Flight::new(scheduler_channel);
-
-        Ok(SchedulerClient {
-            scheduler_client,
-            observatory_client_rest,
-            flight_client: flight,
-        })
+        Self::build(scheduler, observatory, Some(TokenProvider::control_plane()))
     }
 
-    pub fn cancel_direct_query(
-        &self,
-        py: Python,
-        query_id: Uuid,
-        token: Option<String>,
-    ) -> ApiResult<()> {
+    /// Never contacts the control plane for an access token, so the client sends only the headers
+    /// `ClientOptions::extra_headers` carries. Use this against a cluster that authenticates
+    /// requests some other way; requests still reach it with whatever credentials those headers
+    /// hold.
+    #[staticmethod]
+    #[tracing::instrument(name = "SchedulerClient::without_default_auth", skip_all)]
+    pub fn without_default_auth(
+        scheduler: ClientOptions,
+        observatory: ClientOptions,
+    ) -> ApiResult<SchedulerClient> {
+        Self::build(scheduler, observatory, None)
+    }
+
+    pub fn cancel_direct_query(&self, py: Python, query_id: Uuid) -> ApiResult<()> {
         let _ = py.enter_rust(|| {
             RUNTIME.block_on(async move {
                 let query_id = QueryIdentifier::from(query_id);
-                let mut req = Request::new(query_id.into());
-                req = insert_auth_token(req, token);
+                let req = Request::new(query_id.into());
                 self.scheduler_client.inner.clone().cancel_query(req).await
             })
         })?;
         Ok(())
     }
 
-    pub fn delete_direct_query_result(
-        &self,
-        py: Python,
-        query_id: Uuid,
-        token: Option<String>,
-    ) -> ApiResult<()> {
+    pub fn delete_direct_query_result(&self, py: Python, query_id: Uuid) -> ApiResult<()> {
         let _ = py.enter_rust(|| {
             RUNTIME.block_on(async move {
                 let query_id = QueryIdentifier::from(query_id);
-                let mut req = Request::new(query_id.into());
-                req = insert_auth_token(req, token);
+                let req = Request::new(query_id.into());
                 self.scheduler_client
                     .inner
                     .clone()
@@ -265,14 +361,12 @@ impl SchedulerClient {
         &self,
         py: Python,
         query_id: Uuid,
-        token: Option<String>,
     ) -> ApiResult<QueryStatusCodeModel> {
         let result = py.enter_rust(|| {
             let query_id = QueryIdentifier::from(query_id);
 
             RUNTIME.block_on(async move {
-                let mut req = Request::new(query_id.into());
-                req = insert_auth_token(req, token);
+                let req = Request::new(query_id.into());
                 let result = self
                     .scheduler_client
                     .inner
@@ -294,12 +388,11 @@ impl SchedulerClient {
         })
     }
 
-    #[tracing::instrument(name = "await_query_result", skip(self, py, token_factory), fields(%query_id))]
+    #[tracing::instrument(name = "await_query_result", skip(self, py), fields(%query_id))]
     pub fn get_direct_query_result(
         &self,
         py: Python<'_>,
         query_id: Uuid,
-        token_factory: Py<PyAny>,
         timeout_ms: u64,
     ) -> ApiResult<QueryInfoPy> {
         py.detach(|| {
@@ -314,12 +407,7 @@ impl SchedulerClient {
                         )));
                     }
 
-                    let token = Python::attach(|py| -> PyResult<Option<String>> {
-                        token_factory.bind(py).call0()?.extract()
-                    })?;
-
                     let mut req = Request::new(query_id.into());
-                    req = insert_auth_token(req, token);
                     req.set_timeout(remaining);
 
                     let mut client = self.scheduler_client.inner.clone();
@@ -368,18 +456,13 @@ impl SchedulerClient {
         )
     }
 
-    pub fn scan_flight(
-        &self,
-        py: Python<'_>,
-        query_id: Uuid,
-        token: Option<String>,
-    ) -> ApiResult<Option<FlightResult>> {
+    pub fn scan_flight(&self, py: Python<'_>, query_id: Uuid) -> ApiResult<Option<FlightResult>> {
         py.enter_rust(|| {
             let query_id = QueryIdentifier::from(query_id);
             RUNTIME.block_on(async {
-                let req = insert_auth_token(Request::new(GetQueryStatusRequest{
+                let req = Request::new(GetQueryStatusRequest{
                     query_id: Some(query_id.into()),
-                }), token);
+                });
                 let mut status =self.scheduler_client
                     .inner.clone()
                     .get_query_status(req)
@@ -400,14 +483,13 @@ impl SchedulerClient {
         })?
     }
 
-    #[pyo3(signature = (plan, settings, token, username=None, labels=None, execution_id=None, lineage_context=None))]
+    #[pyo3(signature = (plan, settings, username=None, labels=None, execution_id=None, lineage_context=None))]
     #[expect(clippy::too_many_arguments)]
     pub fn do_query(
         &self,
         py: Python<'_>,
         plan: Vec<u8>,
         settings: PyQuerySettings,
-        token: Option<String>,
         username: Option<String>,
         labels: Option<Vec<String>>,
         execution_id: Option<String>,
@@ -426,14 +508,13 @@ impl SchedulerClient {
 
             RUNTIME.block_on(async move {
                 let mut req = Request::new(request.into());
-                if let Some(username) = username {
+                if let Some(username) = username.or_else(PolarsCloudConfig::resolve_username) {
                     let shortened_username: String = username.chars().take(64).collect();
                     let metadata = MetadataValue::from_str(&shortened_username)
                         .map_err(|_e| PyValueError::new_err("Invalid username"))?;
                     let metadatakey = MetadataKey::from_str("x-polars-user").unwrap();
                     let _ = req.metadata_mut().insert(metadatakey, metadata);
                 }
-                req = insert_auth_token(req, token);
                 let result = self
                     .scheduler_client
                     .inner
@@ -446,21 +527,12 @@ impl SchedulerClient {
         .map(|response| QueryIdentifier::from(response).inner)
     }
 
-    pub fn get_query_details(
-        &self,
-        py: Python<'_>,
-        query_id: Uuid,
-        token: Option<String>,
-    ) -> ApiResult<QueryDetailPy> {
+    pub fn get_query_details(&self, py: Python<'_>, query_id: Uuid) -> ApiResult<QueryDetailPy> {
         py.enter_rust(|| {
             RUNTIME.block_on(async move {
-                let mut req = self.observatory_client_rest.get(&format!("{query_id}"));
-
-                if let Some(token) = token {
-                    req = req.bearer_auth(token);
-                }
-
-                let response = req
+                let response = self
+                    .observatory_client_rest
+                    .get(&format!("{query_id}"))
                     .send()
                     .await
                     .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
@@ -481,33 +553,34 @@ impl SchedulerClient {
         })?
     }
 
-    #[pyo3(signature = (query_id, token,  phys = false, ir = false))]
-    #[tracing::instrument(name = "get_query_plans", skip(self, py, token), fields(%query_id))]
+    #[pyo3(signature = (query_id, phys = None, ir = false))]
+    #[tracing::instrument(name = "get_query_plans", skip(self, query_id, py), fields(%query_id))]
     pub fn get_direct_query_plan(
         &self,
         py: Python<'_>,
         query_id: Uuid,
-        token: Option<String>,
-        phys: bool,
+        phys: Option<PlanFormatPy>,
         ir: bool,
     ) -> ApiResult<QueryPlansPy> {
-        let query_plans: QueryPlans = py
+        let query_plans: ClientQueryPlans = py
             .enter_rust(|| {
-                let plans = PlanSelection { ir, phys };
+                let plans = PlanSelection {
+                    ir,
+                    phys: phys.is_some(),
+                };
                 RUNTIME.block_on(async move {
                     let mut client = self.scheduler_client.inner.clone();
                     retry!(
                         Exponential::new(Duration::from_millis(50))
                             .maximum(Duration::from_millis(250)),
                         async {
-                            let mut req = Request::new(
+                            let req = Request::new(
                                 GetQueryPlansRequest {
                                     query_id: query_id.into(),
                                     plan_selection: Some(plans),
                                 }
                                 .into(),
                             );
-                            req = insert_auth_token(req, token.clone());
                             match client.get_query_plans(req).await {
                                 Ok(r) => utils::OperationResult::Ok(r),
                                 Err(s) if s.code() == Code::Unavailable => {
@@ -519,36 +592,48 @@ impl SchedulerClient {
                         tokio::time::sleep
                     )
                     .await
+                    .map_err(ApiError::from)
                 })
             })??
             .into_inner()
             .into();
 
-        Ok(QueryPlansPy {
-            format: match query_plans.format() {
-                PlanFormat::Unspecified => {
-                    return Err(ApiError::PyErr(PyRuntimeError::new_err(
-                        "Cluster returned unrecognized query plan format",
-                    )));
-                },
-                PlanFormat::Dot => PlanFormatPy::Dot,
-                PlanFormat::Explain => PlanFormatPy::Explain,
+        let format = match query_plans.format() {
+            PlanFormat::Unspecified => {
+                return Err(ApiError::PyErr(PyRuntimeError::new_err(
+                    "Cluster returned unrecognized query plan format",
+                )));
             },
+            PlanFormat::Dot => PlanFormatPy::Dot,
+            PlanFormat::Explain => PlanFormatPy::Explain,
+        };
+
+        let phys_plan = match (phys, query_plans.stage_graph) {
+            (Some(phys), Some(stage_graph)) => {
+                let stage_graph: StageGraphVisualizationData = rmp_serde::from_slice(&stage_graph)
+                    .map_err(|e| {
+                        PyRuntimeError::new_err(format!("failed to read the stage graph: {e}"))
+                    })?;
+                Some(match phys {
+                    PlanFormatPy::Dot => stage_graph.display_dot().to_string(),
+                    PlanFormatPy::Explain => stage_graph.explain().to_string(),
+                })
+            },
+            _ => None,
+        };
+
+        Ok(QueryPlansPy {
+            format,
             ir_plan: query_plans.ir_plan,
-            phys_plan: query_plans.phys_plan,
+            phys_plan,
         })
     }
 
-    pub fn get_compute_versions(
-        &self,
-        py: Python<'_>,
-        token: Option<String>,
-    ) -> ApiResult<ComputeVersionsPy> {
+    pub fn get_compute_versions(&self, py: Python<'_>) -> ApiResult<ComputeVersionsPy> {
         let versions: ComputeVersions = py
             .enter_rust(|| {
                 RUNTIME.block_on(async move {
-                    let mut req = Request::new(GetComputeVersionsRequest {}.into());
-                    req = insert_auth_token(req, token);
+                    let req = Request::new(GetComputeVersionsRequest {}.into());
                     self.scheduler_client
                         .inner
                         .clone()
@@ -565,16 +650,6 @@ impl SchedulerClient {
             polars_rust_revision: versions.polars_rust_revision,
         })
     }
-}
-
-pub(super) fn insert_auth_token<T>(mut req: Request<T>, token: Option<String>) -> Request<T> {
-    if let Some(token) = token {
-        req.metadata_mut().insert(
-            AUTHORIZATION.as_str(),
-            format!("Bearer {}", token).parse().unwrap(),
-        );
-    }
-    req
 }
 
 #[pyclass(from_py_object)]
@@ -767,7 +842,8 @@ mod tests {
     #[test]
     fn base_url_unchanged_without_authority() {
         let client =
-            ObservatoryRestClient::build(&options("https://1.2.3.4:8080", None).unwrap()).unwrap();
+            ObservatoryRestClient::build(&options("https://1.2.3.4:8080", None).unwrap(), None)
+                .unwrap();
         assert_eq!(client.base_url, "https://1.2.3.4:8080");
     }
 
@@ -775,6 +851,7 @@ mod tests {
     fn base_url_host_replaced_with_authority() {
         let client = ObservatoryRestClient::build(
             &options("https://1.2.3.4:8080", Some("pola.rs".to_string())).unwrap(),
+            None,
         )
         .unwrap();
         assert_eq!(client.base_url, "https://pola.rs:8080");
@@ -788,6 +865,7 @@ mod tests {
                 Some("myservice.pola.rs".to_string()),
             )
             .unwrap(),
+            None,
         )
         .unwrap_err();
         assert!(matches!(err, ApiError::PyErr(_)));
@@ -824,6 +902,7 @@ mod tests {
 
         let client = ObservatoryRestClient::build(
             &options(&format!("http://127.0.0.1:{port}"), Some(host.clone())).unwrap(),
+            None,
         )
         .unwrap();
 

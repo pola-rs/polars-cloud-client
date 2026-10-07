@@ -1,7 +1,6 @@
+mod dot;
 mod fmt;
-mod plans;
 use pc_observatory_types::StageNumber;
-pub use plans::QueryPlans;
 #[cfg(feature = "server")]
 use schemars::JsonSchema;
 

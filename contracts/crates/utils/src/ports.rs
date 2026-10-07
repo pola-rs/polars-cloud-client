@@ -1,0 +1,2 @@
+pub const SCHEDULER_CLIENT_PORT: u16 = 5051;
+pub const OBSERVATORY_REST_PORT: u16 = 3001;

@@ -41,6 +41,8 @@ pub struct QueryModel {
     pub request_time: DateTime<Utc>,
     pub start_time: Option<DateTime<Utc>>,
     pub end_time: Option<DateTime<Utc>>,
+    /// Scheduling priority. Higher values are started first.
+    pub priority: i64,
 }
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize, PartialEq)]
@@ -97,6 +99,17 @@ pub struct QueryDetailModel {
     pub output_location: Option<String>,
     pub output_files: Option<i64>,
     pub output_rows: Option<i64>,
+}
+
+impl QueryDetailModel {
+    pub fn redact(self) -> Self {
+        Self {
+            user: UserModel {
+                name: String::new(),
+            },
+            ..self
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

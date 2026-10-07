@@ -3,7 +3,9 @@ use std::collections::HashSet;
 use polars_descriptions::{IrNodeDescription, IrPropsDescription};
 
 use crate::Edge;
-use crate::convert::{python_predicate, sink_from_dest, to_pred_skip, to_sort_columns};
+use crate::convert::{
+    python_predicate, sink_from_dest, to_pred_skip, to_sort_column, to_sort_columns,
+};
 use crate::ir::models::{AggKind, IRNodeProperties, Predicate};
 use crate::ir::{IRNodeInfo, IRVisualizationData};
 
@@ -60,13 +62,6 @@ fn to_ir_props(props: IrPropsDescription) -> IRNodeProperties {
             keep_strategy,
             slice,
         },
-        IrPropsDescription::ExtContext {
-            num_contexts,
-            schema_names,
-        } => IRNodeProperties::ExtContext {
-            num_contexts,
-            schema_names,
-        },
         IrPropsDescription::Filter { predicate } => IRNodeProperties::Filter {
             predicate: Predicate(predicate),
         },
@@ -87,7 +82,7 @@ fn to_ir_props(props: IrPropsDescription) -> IRNodeProperties {
             schema_names,
             strict,
         } => IRNodeProperties::HConcat {
-            num_inputs,
+            num_inputs: Some(num_inputs),
             schema_names,
             strict,
         },
@@ -98,11 +93,14 @@ fn to_ir_props(props: IrPropsDescription) -> IRNodeProperties {
             exprs,
             should_broadcast,
         },
-        IrPropsDescription::Invalid | IrPropsDescription::Other => IRNodeProperties::Invalid,
+        IrPropsDescription::Invalid
+        | IrPropsDescription::Other
+        | IrPropsDescription::Resolver { .. } => IRNodeProperties::Invalid,
         IrPropsDescription::Join {
             how,
             left_on,
             right_on,
+            fused_predicate,
             nulls_equal,
             coalesce,
             maintain_order,
@@ -113,6 +111,7 @@ fn to_ir_props(props: IrPropsDescription) -> IRNodeProperties {
             how,
             left_on,
             right_on,
+            fused_predicate: fused_predicate.map(Predicate),
             nulls_equal,
             coalesce,
             maintain_order,
@@ -175,8 +174,8 @@ fn to_ir_props(props: IrPropsDescription) -> IRNodeProperties {
                 location,
             }
         },
-        IrPropsDescription::SinkMultiple { num_inputs } => {
-            IRNodeProperties::SinkMultiple { num_inputs }
+        IrPropsDescription::SinkMultiple { num_inputs } => IRNodeProperties::SinkMultiple {
+            num_inputs: Some(num_inputs),
         },
         IrPropsDescription::Slice { offset, len } => IRNodeProperties::Slice { offset, len },
         IrPropsDescription::Sort {
@@ -292,6 +291,8 @@ fn to_ir_props(props: IrPropsDescription) -> IRNodeProperties {
             schema_names,
             is_pure,
             validate_schema,
+            explain_name,
+            explain_detail,
         } => IRNodeProperties::PythonScan {
             scan_source_type,
             n_rows,
@@ -300,6 +301,8 @@ fn to_ir_props(props: IrPropsDescription) -> IRNodeProperties {
             schema_names,
             is_pure,
             validate_schema,
+            explain_name,
+            explain_detail,
         },
         IrPropsDescription::UnoptimizedDispatch {
             num_inputs,
@@ -307,6 +310,19 @@ fn to_ir_props(props: IrPropsDescription) -> IRNodeProperties {
         } => IRNodeProperties::UnoptimizedDispatch {
             num_inputs: Some(num_inputs),
             operation,
+        },
+        IrPropsDescription::Window {
+            partition_by,
+            order_by,
+            exprs,
+            maintain_order,
+            ordered_eval,
+        } => IRNodeProperties::Window {
+            partition_by,
+            order_by: order_by.map(to_sort_column),
+            exprs,
+            maintain_order,
+            ordered_eval,
         },
     }
 }

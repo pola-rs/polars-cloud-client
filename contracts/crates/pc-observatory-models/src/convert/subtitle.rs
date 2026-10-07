@@ -9,6 +9,7 @@ pub(super) fn ir_subtitle(props: &IRNodeProperties) -> Option<String> {
         P::Select { exprs } => truncate_join(exprs),
         P::GroupBy { keys, .. } | P::RollingGroupBy { keys, .. } => truncate_join(keys),
         P::DynamicGroupBy { group_by, .. } => truncate_join(group_by),
+        P::Window { partition_by, .. } => truncate_join(partition_by),
         P::Sort { sort_columns, .. } => truncate_join(sort_columns.iter().map(|c| &c.expr)),
         P::Join {
             left_on, right_on, ..

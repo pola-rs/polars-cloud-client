@@ -31,16 +31,16 @@ from polars.exceptions import (  # noqa: F401
 from polars.lazyframe.opt_flags import DEFAULT_QUERY_OPT_FLAGS
 
 import polars_cloud.polars_cloud as pcr
-from polars_cloud import config as pc_cfg
 from polars_cloud import constants
 from polars_cloud._tracing import traced
 from polars_cloud._utils import run_coroutine
+from polars_cloud.constants import FRONTEND_DOMAIN
 from polars_cloud.context import (
     ClusterContext,
     ComputeContext,
 )
 from polars_cloud.context import cache as compute_cache
-from polars_cloud.query._utils import get_token, prepare_query
+from polars_cloud.query._utils import prepare_query
 from polars_cloud.query.query_in_progress import DirectQuery, ProxyQuery
 from polars_cloud.query.query_result import decode_error
 
@@ -58,6 +58,7 @@ if TYPE_CHECKING:
 
     from polars_cloud._typing import (
         Engine,
+        ExecuteUntil,
         PlanTypePreference,
         ShuffleCompression,
         ShuffleFormat,
@@ -150,6 +151,7 @@ def spawn_many(
     shuffle_format: ShuffleFormat = "auto",
     distributed: DistributionSettings | None | bool = None,
     n_retries: int = 0,
+    priority: int = 0,
     min_workers: int | None = None,
     max_workers: int | None = None,
     lineage: LineageContext | None = None,
@@ -178,7 +180,7 @@ def spawn_many(
         Setting the engine to GPU requires the compute cluster to have access to GPUs.
         If it does not, the query will fail.
     plan_type: {"dot", "plain"}
-        Which output format is preferred.
+        Which output format the logical plan is preferred in.
     labels
         Labels to add to the query (will be implicitly created)
     shuffle_compression : {'auto', 'lz4', 'zstd', 'uncompressed'}
@@ -195,6 +197,10 @@ def spawn_many(
         and available machines.
     n_retries
         How often failed tasks should be retried.
+    priority
+        Scheduling priority of the query. Queries with a higher priority are
+        started first; queries of equal priority are started in the order they
+        were submitted in. Does not interrupt queries that are already running.
     min_workers : int | None
         The minimum number of workers that have to be available to start
         query execution. The cluster will wait until this many workers are
@@ -243,6 +249,7 @@ def spawn_many(
             shuffle_compression=shuffle_compression,
             shuffle_format=shuffle_format,
             n_retries=n_retries,
+            priority=priority,
             min_workers=min_workers,
             max_workers=max_workers,
             distributed=distributed,
@@ -266,6 +273,7 @@ def spawn_many_blocking(
     shuffle_format: ShuffleFormat = "auto",
     distributed: DistributionSettings | None | bool = None,
     n_retries: int = 0,
+    priority: int = 0,
     min_workers: int | None = None,
     max_workers: int | None = None,
     lineage: LineageContext | None = None,
@@ -294,7 +302,7 @@ def spawn_many_blocking(
         Setting the engine to GPU requires the compute cluster to have access to GPUs.
         If it does not, the query will fail.
     plan_type: {"dot", "plain"}
-        Which output format is preferred.
+        Which output format the logical plan is preferred in.
     labels
         Labels to add to the query (will be implicitly created)
     shuffle_compression : {'auto', 'lz4', 'zstd', 'uncompressed'}
@@ -311,6 +319,10 @@ def spawn_many_blocking(
         and available machines.
     n_retries
         How often failed tasks should be retried.
+    priority
+        Scheduling priority of the query. Queries with a higher priority are
+        started first; queries of equal priority are started in the order they
+        were submitted in. Does not interrupt queries that are already running.
     min_workers : int | None
         The minimum number of workers that have to be available to start
         query execution. The cluster will wait until this many workers are
@@ -359,6 +371,7 @@ def spawn_many_blocking(
             shuffle_compression=shuffle_compression,
             shuffle_format=shuffle_format,
             n_retries=n_retries,
+            priority=priority,
             min_workers=min_workers,
             max_workers=max_workers,
             distributed=distributed,
@@ -385,11 +398,13 @@ def spawn(
     shuffle_compression_level: int | None = None,
     distributed: DistributionSettings | None | bool = None,
     n_retries: int = 0,
+    priority: int = 0,
     min_workers: int | None = None,
     max_workers: int | None = None,
     sink_to_single_file: bool | None = None,
     optimizations: pl.QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
     lineage: LineageContext | None = None,
+    execute_until: ExecuteUntil = "execute",
 ) -> ProxyQuery | DirectQuery:
     """Spawn a remote query and await it asynchronously.
 
@@ -414,7 +429,7 @@ def spawn(
         Setting the engine to GPU requires the compute cluster to have access to GPUs.
         If it does not, the query will fail.
     plan_type: {"dot", "plain"}
-        Which output format is preferred.
+        Which output format the logical plan is preferred in.
     labels
         Labels to add to the query (will be implicitly created)
     shuffle_compression : {'auto', 'lz4', 'zstd', 'uncompressed'}
@@ -433,6 +448,10 @@ def spawn(
         and available machines.
     n_retries
         How often failed tasks should be retried.
+    priority
+        Scheduling priority of the query. Queries with a higher priority are
+        started first; queries of equal priority are started in the order they
+        were submitted in. Does not interrupt queries that are already running.
     min_workers : int | None
         The minimum number of workers that have to be available to start
         query execution. The cluster will wait until this many workers are
@@ -468,6 +487,14 @@ def spawn(
         .. warning::
             This functionality is considered **unstable**. It may be changed
             at any point without it being considered a breaking change.
+    execute_until : {'execute', 'ir', 'physical'}
+        How far the compute cluster should run the query.
+
+        * execute: Run the whole query. The default.
+        * ir: Stop once the query is optimized, before distributed planning.
+        * physical: Stop once the physical plan is built, without executing it.
+
+        Anything other than `'execute'` plans the query but writes no output.
 
     Examples
     --------
@@ -529,11 +556,13 @@ def spawn(
         shuffle_format=shuffle_format,
         shuffle_compression_level=shuffle_compression_level,
         n_retries=n_retries,
+        priority=priority,
         min_workers=min_workers,
         max_workers=max_workers,
         distributed_settings=distributed,
         sink_to_single_file=sink_to_single_file,
         optimizations=optimizations,
+        execute_until=execute_until,
     )
 
     lineage_context = (
@@ -548,16 +577,25 @@ def spawn(
         else None
     )
 
-    if isinstance(dst, ClientDst) and not isinstance(context, ClusterContext):
-        msg = "Streaming query results to the client (e.g. `.collect()` or `.collect_batches()` is only supported on `ClusterContext`"
-        raise TypeError(msg)
-    if isinstance(context, ClusterContext) or (
+    is_direct = isinstance(context, ClusterContext) or (
         isinstance(context, ComputeContext) and context.connection_mode == "direct"
-    ):
+    )
+
+    if isinstance(dst, ClientDst):
+        if execute_until == "execute":
+            if not isinstance(context, ClusterContext):
+                msg = "Streaming query results to the client (e.g. `.collect()` or `.collect_batches()` is only supported on `ClusterContext`"
+                raise TypeError(msg)
+        # A query that is only planned never streams results back, so it does
+        # not need a `ClusterContext` -- just a direct connection, so that the
+        # plans can be read from the cluster afterwards.
+        elif not is_direct:
+            msg = "planning a query without executing it requires a direct connection to the cluster"
+            raise TypeError(msg)
+
+    if is_direct:
         client: pcr.SchedulerClient = context._get_direct_client()  # type: ignore[assignment]
-        token = get_token(context)
         try:
-            username = pc_cfg.Config.get(pc_cfg._USER_NAME)
             execution_id: str | None = None
             try:
                 if _get_ipython is not None:
@@ -570,8 +608,6 @@ def spawn(
             q_id = client.do_query(
                 plan=plan,
                 settings=settings,
-                token=token,
-                username=username,
                 labels=labels,
                 execution_id=execution_id,
                 lineage_context=lineage_context,
@@ -580,7 +616,7 @@ def spawn(
             raise decode_error(str(e)) from None
 
         if isinstance(context, ComputeContext):
-            msg = f"View your query metrics on: https://cloud.pola.rs/portal/{context.workspace.id}/{context._compute_id}/queries/{q_id}"
+            msg = f"View your query metrics on: https://{FRONTEND_DOMAIN}/portal/{context.workspace.id}/{context._compute_id}/queries/{q_id}"
             logger.debug(msg)
         return DirectQuery(q_id, client, context)
     # Check if we are using the cloud compute context
@@ -589,7 +625,7 @@ def spawn(
         q_id = constants.API_CLIENT.submit_query(
             context._compute_id, plan, settings, labels, lineage_context
         )
-        msg = f"View your query metrics on: https://cloud.pola.rs/portal/{context.workspace.id}/{context._compute_id}/queries/{q_id}"
+        msg = f"View your query metrics on: https://{FRONTEND_DOMAIN}/portal/{context.workspace.id}/{context._compute_id}/queries/{q_id}"
         logger.debug(msg)
         return ProxyQuery(q_id, workspace_id=context.workspace.id)
     else:
@@ -609,6 +645,7 @@ def spawn_blocking(
     shuffle_compression: ShuffleCompression = "auto",
     distributed: DistributionSettings | None | bool = None,
     n_retries: int = 0,
+    priority: int = 0,
     sink_to_single_file: bool | None = None,
     optimizations: pl.QueryOptFlags = DEFAULT_QUERY_OPT_FLAGS,
     lineage: LineageContext | None = None,
@@ -636,7 +673,7 @@ def spawn_blocking(
         Setting the engine to GPU requires the compute cluster to have access to GPUs.
         If it does not, the query will fail.
     plan_type: {"dot", "plain"}
-        Which output format is preferred.
+        Which output format the logical plan is preferred in.
     labels
         Labels to add to the query (will be implicitly created)
     shuffle_compression : {'auto', 'lz4', 'zstd', 'uncompressed'}
@@ -651,6 +688,10 @@ def spawn_blocking(
         and available machines.
     n_retries
         How often failed tasks should be retried.
+    priority
+        Scheduling priority of the query. Queries with a higher priority are
+        started first; queries of equal priority are started in the order they
+        were submitted in. Does not interrupt queries that are already running.
     sink_to_single_file
         Perform the sink into a single file.
 
@@ -689,6 +730,7 @@ def spawn_blocking(
         shuffle_compression=shuffle_compression,
         distributed=distributed,
         n_retries=n_retries,
+        priority=priority,
         sink_to_single_file=sink_to_single_file,
         optimizations=optimizations,
         lineage=lineage,

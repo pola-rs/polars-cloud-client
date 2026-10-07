@@ -13,6 +13,9 @@ use uuid::Uuid;
 
 use crate::{DefaultSortDirection, EntityOrdering, csv_vec_opt};
 
+pub const MAX_CUSTOM_METRICS_PER_NODE: usize = 100;
+pub const MAX_CUSTOM_METRIC_KEY_CHARS: usize = 100;
+
 #[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all, eq, eq_int))]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -45,6 +48,9 @@ pub struct QueryModel {
     pub query_type: Option<QueryTypeModel>,
     /// The engine used for the query
     pub engine: Option<QueryEngineModel>,
+    /// How far the query was asked to run. Anything other than
+    /// `Execute` means the query was planned but never executed.
+    pub execute_until: Option<QueryExecuteUntilModel>,
     /// The status of the query
     pub status_code: QueryStatusCodeModel,
     /// The time the status code was updated
@@ -126,6 +132,19 @@ pub enum QueryTypeModel {
 pub enum QueryEngineModel {
     InMemory,
     Streaming,
+}
+
+/// How far through the pipeline a query was asked to run.
+///
+/// Anything other than `Execute` means the query was planned but deliberately
+/// never executed, so it has plans and produced no output.
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object, eq, eq_int))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[derive(Clone, Copy, PartialEq, Deserialize, Serialize, Debug)]
+pub enum QueryExecuteUntilModel {
+    OptimizeIr,
+    Plan,
+    Execute,
 }
 
 #[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
@@ -237,6 +256,8 @@ pub struct QueryWithStateTimingModel {
     #[serde(flatten)]
     pub state_timing: QueryStateTimingModel,
     pub label_ids: Option<Vec<Uuid>>,
+    /// Number of live, unexpired share links
+    pub active_share_count: i64,
 }
 
 impl EntityOrdering for QueryWithStateTimingModel {
@@ -317,7 +338,31 @@ pub struct QueryPhysNodeMetricsModel {
     pub io_total_bytes_received: u64,
     pub io_total_bytes_sent: u64,
     pub total_time_ns: u64,
+    #[serde(default)]
+    #[cfg_attr(feature = "server", garde(length(max = MAX_CUSTOM_METRICS_PER_NODE), dive))]
+    pub custom: Vec<QueryCustomMetricModel>,
     pub done: bool,
+}
+
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+pub enum QueryMetricUnitModel {
+    Unit,
+    Bytes,
+    DurationNs,
+}
+
+#[cfg_attr(
+    feature = "server",
+    derive(Validate, JsonSchema),
+    garde(allow_unvalidated)
+)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub struct QueryCustomMetricModel {
+    #[cfg_attr(feature = "server", garde(length(chars, max = MAX_CUSTOM_METRIC_KEY_CHARS)))]
+    pub key: String,
+    pub unit: QueryMetricUnitModel,
+    pub value: i64,
 }
 
 #[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
