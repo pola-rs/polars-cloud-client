@@ -1,19 +1,16 @@
+use std::fmt;
 use std::fmt::Formatter;
-use std::path::{Path, PathBuf};
-use std::{fmt, fs};
 
 use pyo3::pyclass;
 
-use crate::AuthError;
-use crate::constants::{
-    ACCESS_TOKEN_ENV, ACCESS_TOKEN_FILENAME, CONFIG_DIR, REFRESH_TOKEN_FILENAME,
-};
+use crate::constants::ACCESS_TOKEN_ENV;
 use crate::utils::{
-    get_access_token_for_service_account, get_auth_header_from_access_token_env,
-    is_token_expired_with_buffer, token_as_header, use_refresh_token,
+    get_access_token_for_service_account, is_token_expired_with_buffer, token_as_header,
+    use_refresh_token,
 };
+use crate::{AuthError, PolarsCloudConfig};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum AuthToken {
     AccessTokenNoRefresh(String),
     EnvVar(String),
@@ -92,15 +89,9 @@ impl AuthToken {
         }
     }
 
-    pub(crate) async fn new_from_env_or_disk(
-        token_path: Option<PathBuf>,
+    pub(crate) async fn new_from_service_account_or_disk(
         connection_pool: reqwest_middleware::ClientWithMiddleware,
     ) -> Result<Self, AuthError> {
-        // Check if we can find a valid token from the env vars
-        if let Some(token) = get_auth_header_from_access_token_env()? {
-            return Ok(AuthToken::EnvVar(token));
-        }
-
         // Check if we can find env var client_id / secret
         if let (Some(client_id), Some(client_secret)) = (
             std::env::var("POLARS_CLOUD_CLIENT_ID").ok(),
@@ -117,12 +108,13 @@ impl AuthToken {
         }
 
         // Look for a valid access token on disk, refresh if necessary
-        let mut token = Self::read_tokens_from_disk(token_path.as_deref())?;
+        let mut token = Self::read_tokens_from_config()?;
         if let Some(new_token) = token.check_and_refresh(connection_pool).await? {
             token = new_token;
         }
         Ok(token)
     }
+
     pub async fn check_and_refresh(
         &self,
         connection_pool: reqwest_middleware::ClientWithMiddleware,
@@ -177,25 +169,25 @@ impl AuthToken {
             },
         }
     }
-    pub fn to_auth_header(&self) -> String {
-        let token = match &self {
-            AuthToken::AccessTokenNoRefresh(token) => token,
-            AuthToken::EnvVar(token) => token,
-            AuthToken::ServiceAccount { token, .. } => token,
-            AuthToken::AccessToken { token, .. } => token,
-        };
-        token_as_header(token)
+
+    pub fn access_token(&self) -> &str {
+        match self {
+            AuthToken::AccessTokenNoRefresh(token)
+            | AuthToken::EnvVar(token)
+            | AuthToken::ServiceAccount { token, .. }
+            | AuthToken::AccessToken { token, .. } => token,
+        }
     }
 
-    fn read_tokens_from_disk(path: Option<&Path>) -> Result<AuthToken, AuthError> {
-        let token = fs::read_to_string(
-            path.unwrap_or(CONFIG_DIR.as_path())
-                .join(ACCESS_TOKEN_FILENAME),
-        )?;
-        let refresh_token = fs::read_to_string(
-            path.unwrap_or(CONFIG_DIR.as_path())
-                .join(REFRESH_TOKEN_FILENAME),
-        )?;
+    pub fn to_auth_header(&self) -> String {
+        token_as_header(self.access_token())
+    }
+
+    fn read_tokens_from_config() -> Result<AuthToken, AuthError> {
+        let auth = PolarsCloudConfig::load_auth();
+        let (Some(token), Some(refresh_token)) = (auth.access_token, auth.refresh_token) else {
+            return Err(AuthError::new("Authentication token was not found."));
+        };
         Ok(AuthToken::AccessToken {
             token,
             refresh_token,

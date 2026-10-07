@@ -1,3 +1,12 @@
+//! User-facing representation of the logical (IR) plan.
+//! This must remain deserializable from old plans stored as JSON in the database:
+//! - Existing struct fields *may* be removed.
+//! - Existing struct fields *may* be renamed if an alias is provided: `#[serde(alias = "OldName")]`
+//! - New struct fields *may* be added, but *must* be optional OR *must* provide a default value.
+//! - Existing enum variants *must not* be removed.
+//! - Existing enum variants *may* be renamed if an alias is provided: `#[serde(alias = "OldName")]`
+//! - New enum variants *may* be added.
+
 #[cfg(feature = "server")]
 use schemars::JsonSchema;
 
@@ -82,7 +91,7 @@ pub enum IRNodeProperties {
         slice: Option<(i64, usize)>,
     },
     HConcat {
-        num_inputs: usize,
+        num_inputs: Option<usize>,
         schema_names: Vec<String>,
         strict: bool,
     },
@@ -96,6 +105,7 @@ pub enum IRNodeProperties {
         how: String,
         left_on: Vec<String>,
         right_on: Vec<String>,
+        fused_predicate: Option<Predicate>,
         nulls_equal: bool,
         coalesce: String,
         maintain_order: String,
@@ -140,7 +150,7 @@ pub enum IRNodeProperties {
         location: Option<String>,
     },
     SinkMultiple {
-        num_inputs: usize,
+        num_inputs: Option<usize>,
     },
     Slice {
         offset: i64,
@@ -218,6 +228,9 @@ pub enum IRNodeProperties {
         schema_names: Vec<String>,
         is_pure: bool,
         validate_schema: bool,
+        /// Display name supplied by the IO plugin.
+        explain_name: Option<String>,
+        explain_detail: Option<String>,
     },
 
     // New TaskPlan specific variants
@@ -235,6 +248,8 @@ pub enum IRNodeProperties {
         shuffle_number: u32,
         partitioning: PartitioningModel,
         collect_samples_col: Option<String>,
+        #[serde(default)]
+        add_order_tag: bool,
     },
     Sink2 {
         sink_type: String,
@@ -253,6 +268,13 @@ pub enum IRNodeProperties {
         operation: String,
     },
     RemoveOverlap,
+    Window {
+        partition_by: Vec<String>,
+        order_by: Option<SortColumn>,
+        exprs: Vec<String>,
+        maintain_order: bool,
+        ordered_eval: bool,
+    },
 }
 
 #[derive(

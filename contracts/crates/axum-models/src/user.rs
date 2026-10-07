@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use deprecation_macro::deprecated_since_client;
 #[cfg(feature = "server")]
 use garde::Validate;
@@ -39,4 +40,13 @@ pub struct UserBodyArgs {
     pub newsletter_updates: Option<bool>,
     #[cfg_attr(feature = "server", garde(skip))]
     pub personal_emails: Option<bool>,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct UserCredentialModel {
+    pub id: String,
+    pub credential_type: String,
+    pub label: Option<String>,
+    pub created_at: Option<DateTime<Utc>>,
 }

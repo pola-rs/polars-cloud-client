@@ -30,7 +30,7 @@ impl QueryCloudObserver {
         py.detach(|| {
             tracing::debug!(%workspace_id, "initializing new QueryCloudObserver");
 
-            let client = CloudApiClient::connect(workspace_id);
+            let client = CloudApiClient::new(workspace_id);
 
             let (sender, receiver) = mpsc::channel(8);
 

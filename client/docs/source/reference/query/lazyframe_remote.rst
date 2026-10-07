@@ -13,6 +13,7 @@ This namespace becomes available by calling `LazyFrame.remote(...)`.
    LazyFrameRemote.await_and_scan
    LazyFrameRemote.distributed
    LazyFrameRemote.execute
+   LazyFrameRemote.explain
    LazyFrameRemote.labels
    LazyFrameRemote.sink_batches
    LazyFrameRemote.sink_parquet

@@ -7,6 +7,15 @@ use version_number::VersionNumber;
 
 use crate::PythonVersion;
 
+/// Infrastructure a self-registering cluster runs on.
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub enum OnPremDeploymentModel {
+    Kubernetes,
+    Ray,
+    BareMetal,
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[cfg_attr(feature = "server", derive(JsonSchema, Validate))]
 #[serde(deny_unknown_fields)]
@@ -24,4 +33,7 @@ pub struct RegisterComputeClusterArgs {
     pub compute_plane_version: semver::Version,
     #[cfg_attr(feature = "server", garde(skip))]
     pub cluster_id: String,
+    /// Missing for binaries that predate it, which count as `BareMetal`.
+    #[cfg_attr(feature = "server", garde(skip))]
+    pub deployment: Option<OnPremDeploymentModel>,
 }

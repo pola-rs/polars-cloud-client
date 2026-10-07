@@ -6,10 +6,10 @@ use async_trait::async_trait;
 #[cfg(any(test, feature = "test-utils"))]
 use mockall::automock;
 use polars_axum_models::{
-    ComputeClusterNodeInfoModel, ComputeClusterPublicInfoModel, ComputeModel, ComputeTokenModel,
-    DeleteWorkspaceModel, GetClusterFilterArgs, GetQueryArgs, ManifestModel, ManifestQueryArgs,
-    OrganizationCreateArgs, OrganizationModel, QueryFailedArgs, QueryModel, QueryStartedArgs,
-    QueryUpdateArgs, QueryWithStateTimingAndResultModel, RegisterComputeClusterManifestArgs,
+    ComputeClusterNodeInfoModel, ComputeClusterPublicInfoModel, ComputeModel, DeleteWorkspaceModel,
+    GetClusterFilterArgs, GetQueryArgs, ManifestModel, ManifestQueryArgs, OrganizationCreateArgs,
+    OrganizationModel, QueryFailedArgs, QueryModel, QueryStartedArgs, QueryUpdateArgs,
+    QueryWithStateTimingAndResultModel, RegisterComputeClusterManifestArgs,
     StartComputeClusterArgs, StartComputeClusterManifestArgs, UserModel, WorkSpaceArgs,
     WorkSpaceTokenBodyArgs, WorkspaceAPITokenModel, WorkspaceApiTokenWithNameModel,
     WorkspaceAwsConnectionModel, WorkspaceAwsStackModel, WorkspaceClusterDefaultsModel,
@@ -32,8 +32,9 @@ pub trait ControlPlaneClient: Send + Sync {
         client_secret: Option<String>,
         interactive: bool,
     ) -> Result<(), ApiError>;
-    fn clear_authentication(&self);
+    async fn clear_authentication(&self);
     async fn get_auth_header(&self) -> Result<String, ApiError>;
+    async fn get_access_token(&self) -> Result<String, ApiError>;
 
     // --- Organization ---
     async fn get_organization(&self, organization_id: Uuid) -> Result<OrganizationModel, ApiError>;
@@ -116,11 +117,6 @@ pub trait ControlPlaneClient: Send + Sync {
         workspace_id: Uuid,
         compute_id: Uuid,
     ) -> Result<ComputeClusterPublicInfoModel, ApiError>;
-    async fn get_compute_cluster_token(
-        &self,
-        workspace_id: Uuid,
-        compute_id: Uuid,
-    ) -> Result<ComputeTokenModel, ApiError>;
     async fn get_compute_cluster_nodes(
         &self,
         workspace_id: Uuid,

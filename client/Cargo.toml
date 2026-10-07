@@ -1,14 +1,14 @@
 [workspace]
 resolver = "2"
-members = ["crates/*"]
-default-members = ["crates/*"]
+members = ["crates/[!.]*"]
+default-members = ["crates/[!.]*"]
 
 [profile.opt-dev]
 inherits = "dev"
 opt-level = 1
 
 [workspace.package]
-version = "0.11.3"
+version = "0.12.0"
 edition = "2024"
 homepage = "https://www.pola.rs/"
 license = "MIT"
@@ -59,10 +59,11 @@ tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "signal", "i
 tokio-rustls = { version = "0.26.4" }
 tokio-stream = { version = "0.1.19" }
 tokio-util = { version = "0.7.19" }
+toml = "0.8"
 tonic = { version = "0.14.6" }
 tower = { version = "0.5.3" }
 tower-grpc-retry = { path = "../contracts/crates/tower-grpc-retry" }
-tower-http = { version = "0.7.0", features = ["set-header"] }
+tower-http = { version = "0.7.0", features = ["auth", "set-header"] }
 tower-otel = { path = "../contracts/crates/tower-otel" }
 tracing = { version = "0.1" }
 tracing-opentelemetry = "0.33"

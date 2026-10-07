@@ -2,9 +2,9 @@ use std::num::NonZeroU32;
 use std::time::Duration;
 
 use protos_client_compute::client::{
-    DistributedOpts, Engine, GraphFormat, LineageContext, NumWorkers, Planner, QuerySettings,
-    QueryType, ShuffleCompression, ShuffleCompressionAlgo, ShuffleFormat, ShuffleOpts,
-    SingleWorkerOps,
+    DistributedOpts, Engine, ExecuteUntil, GraphFormat, LineageContext, NumWorkers, Planner,
+    QuerySettings, QueryType, ShuffleCompression, ShuffleCompressionAlgo, ShuffleFormat,
+    ShuffleOpts, SingleWorkerOps,
 };
 use protos_client_compute::proto::polars_cloud::compute_plane::client::v1::query_settings::{
     FlightSinkOptions, SinkOptions,
@@ -180,18 +180,41 @@ impl From<PySinkOptions> for SinkOptions {
     }
 }
 
+/// How far through the query pipeline the cluster should run.
+#[pyclass(from_py_object)]
+#[derive(Debug, Clone, Default)]
+pub enum PyExecuteUntil {
+    OptimizeIr,
+    Plan,
+    #[default]
+    Execute,
+}
+
+impl From<PyExecuteUntil> for ExecuteUntil {
+    fn from(value: PyExecuteUntil) -> Self {
+        match value {
+            PyExecuteUntil::OptimizeIr => Self::OptimizeIr,
+            PyExecuteUntil::Plan => Self::Plan,
+            PyExecuteUntil::Execute => Self::Execute,
+        }
+    }
+}
+
 #[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyQuerySettings {
     pub engine: PyEngine,
     pub query_type: PyQueryType,
-    /// Whether the query plain should be in dot or plain text.
+    /// Whether the logical plan should be in dot or plain text.
     pub plan_dot: bool,
     /// Number of retries on failed tasks
     pub n_retries: u32,
     pub n_workers: Option<PyNumWorkers>,
     pub optimization_flags: Option<u32>,
     pub sink_options: Option<PySinkOptions>,
+    /// Scheduling priority. Higher values are started first.
+    pub priority: i32,
+    pub execute_until: PyExecuteUntil,
 }
 
 impl From<PyQuerySettings> for QuerySettings {
@@ -210,6 +233,8 @@ impl From<PyQuerySettings> for QuerySettings {
                 .map(|PyNumWorkers { min, max }| NumWorkers { min, max }),
             optimization_flags: value.optimization_flags,
             sink_options: value.sink_options.map(Into::into),
+            priority: value.priority,
+            execute_until: value.execute_until.into(),
         }
     }
 }

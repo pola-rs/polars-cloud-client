@@ -1,4 +1,3 @@
-use std::fs;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
@@ -9,11 +8,8 @@ use pyo3::{PyResult, Python, pyfunction};
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::constants::{
-    ACCESS_TOKEN_ENV, ACCESS_TOKEN_FILENAME, AUTH_DOMAIN, CONFIG_DIR, LOGIN_CLIENT_ID,
-    REFRESH_TOKEN_FILENAME,
-};
-use crate::{AuthError, TOKEN_EXPIRATION_BUFFER, VERSIONS};
+use crate::constants::{ACCESS_TOKEN_ENV, LOGIN_CLIENT_ID};
+use crate::{AuthError, PolarsCloudConfig, TOKEN_EXPIRATION_BUFFER, VERSIONS};
 
 #[derive(Deserialize)]
 pub struct Tokens {
@@ -35,10 +31,10 @@ pub fn get_auth_header_from_access_token_env() -> Result<Option<String>, AuthErr
 }
 
 pub fn write_tokens(access_token: &str, refresh_token: &str) -> Result<(), AuthError> {
-    fs::create_dir_all(CONFIG_DIR.as_path())?;
-    fs::write(CONFIG_DIR.join(ACCESS_TOKEN_FILENAME), access_token)?;
-    fs::write(CONFIG_DIR.join(REFRESH_TOKEN_FILENAME), refresh_token)?;
-    Ok(())
+    let mut config = PolarsCloudConfig::global_mut();
+    config.auth.access_token = Some(access_token.to_owned());
+    config.auth.refresh_token = Some(refresh_token.to_owned());
+    config.flush()
 }
 
 pub async fn get_access_token_for_service_account(
@@ -48,7 +44,7 @@ pub async fn get_access_token_for_service_account(
 ) -> Result<String, AuthError> {
     let url = format!(
         "https://{}/realms/Polars/protocol/openid-connect/token",
-        *AUTH_DOMAIN
+        PolarsCloudConfig::resolve_auth_domain()
     );
 
     let data = json!({
@@ -81,7 +77,7 @@ pub async fn use_refresh_token(
 
     let url = format!(
         "https://{}/realms/Polars/protocol/openid-connect/token",
-        *AUTH_DOMAIN
+        PolarsCloudConfig::resolve_auth_domain()
     );
 
     let data = json!({

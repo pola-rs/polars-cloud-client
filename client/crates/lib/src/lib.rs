@@ -16,16 +16,16 @@ use client_core::{
     ComputeContextSpecs, EncodedPolarsError, NotFoundError, RUNTIME, VERSIONS, get_versions,
 };
 use polars_axum_models::{
-    AwsConnectionStatusModel, ClusterDeploymentModel, ComputeClusterNodeInfoModel,
-    ComputeClusterPublicInfoModel, ComputeModel, ComputeStatusModel, ComputeTokenModel,
+    AwsConnectionStatusModel, ClusterDeploymentModel, ComputeClusterEndpointModel,
+    ComputeClusterNodeInfoModel, ComputeClusterPublicInfoModel, ComputeModel, ComputeStatusModel,
     DBCPUArchitectureModel, DBClusterModeModel, DeleteWorkspaceModel, FileTypeModel, LogLevelModel,
     ManifestModel, OrganizationModel, OrganizationSubscriptionStateModel, OrganizationTierModel,
-    QueryEngineModel, QueryModel, QueryStateTimingModel, QueryStatusCodeModel, QueryTypeModel,
-    QueryWithStateTimingAndResultModel, ResultModel, StatusModel, TerminationModel,
-    TerminationReasonModel, UserModel, WorkspaceAPITokenModel, WorkspaceApiTokenWithNameModel,
-    WorkspaceAwsConnectionModel, WorkspaceAwsStackModel, WorkspaceClusterDefaultsModel,
-    WorkspaceDeploymentModel, WorkspaceModel, WorkspaceSetupUrlModel, WorkspaceStateModel,
-    WorkspaceWithUrlModel,
+    QueryEngineModel, QueryExecuteUntilModel, QueryModel, QueryStateTimingModel,
+    QueryStatusCodeModel, QueryTypeModel, QueryWithStateTimingAndResultModel, ResultModel,
+    StatusModel, TerminationModel, TerminationReasonModel, UserModel, WorkspaceAPITokenModel,
+    WorkspaceApiTokenWithNameModel, WorkspaceAwsConnectionModel, WorkspaceAwsStackModel,
+    WorkspaceClusterDefaultsModel, WorkspaceDeploymentModel, WorkspaceModel,
+    WorkspaceSetupUrlModel, WorkspaceStateModel, WorkspaceWithUrlModel,
 };
 use pyo3::exceptions::PySystemExit;
 use pyo3::prelude::*;
@@ -64,12 +64,12 @@ fn polars_cloud(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<AwsConnectionStatusModel>()?;
     m.add_class::<ClientOptions>()?;
     m.add_class::<ClusterDeploymentModel>()?;
+    m.add_class::<ComputeClusterEndpointModel>()?;
     m.add_class::<ComputeClusterNodeInfoModel>()?;
     m.add_class::<ComputeClusterPublicInfoModel>()?;
     m.add_class::<ComputeContextSpecs>()?;
     m.add_class::<ComputeModel>()?;
     m.add_class::<ComputeStatusModel>()?;
-    m.add_class::<ComputeTokenModel>()?;
     m.add_class::<ComputeVersionsPy>()?;
     m.add_class::<DBCPUArchitectureModel>()?;
     m.add_class::<DBClusterModeModel>()?;
@@ -91,6 +91,7 @@ fn polars_cloud(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<QueryCloudObserver>()?;
     m.add_class::<QueryDetailPy>()?;
     m.add_class::<QueryEngineModel>()?;
+    m.add_class::<QueryExecuteUntilModel>()?;
     m.add_class::<QueryInfoPy>()?;
     m.add_class::<QueryMetricPoller>()?;
     m.add_class::<QueryModel>()?;

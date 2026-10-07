@@ -367,6 +367,10 @@ impl ApiClient {
     ) -> Result<Paginated<ComputeModel>> {
         self.get(&format!("/api/v1/workspace/{workspace_id}/compute"))
             .parameter_vec_opt("status", filters.status)
+            .parameter_opt(
+                "current_user_only",
+                filters.current_user_only.then_some(true),
+            )
             .pagination(&pagination)
             .await?
             .json()
@@ -890,6 +894,48 @@ impl ApiClient {
             .json::<Paginated<QueryCountModel>>()
             .await?
             .result)
+    }
+
+    pub async fn create_query_share(
+        &self,
+        workspace_id: Uuid,
+        query_id: Uuid,
+        params: &CreateQueryShareArgs,
+    ) -> Result<QueryShareModel> {
+        self.post(&format!(
+            "/api/v1/workspace/{workspace_id}/query/{query_id}/share"
+        ))
+        .json(params)
+        .await?
+        .json()
+        .await
+    }
+
+    pub async fn get_query_shares(
+        &self,
+        workspace_id: Uuid,
+        query_id: Uuid,
+    ) -> Result<Vec<QueryShareModel>> {
+        self.get(&format!(
+            "/api/v1/workspace/{workspace_id}/query/{query_id}/share"
+        ))
+        .await?
+        .json()
+        .await
+    }
+
+    pub async fn delete_query_share(
+        &self,
+        workspace_id: Uuid,
+        query_id: Uuid,
+        share_id: Uuid,
+    ) -> Result<()> {
+        self.delete(&format!(
+            "/api/v1/workspace/{workspace_id}/query/{query_id}/share/{share_id}"
+        ))
+        .await?
+        .empty()
+        .await
     }
 
     pub async fn cancel_query(&self, workspace_id: Uuid, query_id: Uuid) -> Result<()> {

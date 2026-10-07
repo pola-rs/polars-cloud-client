@@ -6,7 +6,7 @@ use futures_core::stream::BoxStream;
 use futures_util::StreamExt;
 use prost::Message;
 use prost_types::FieldMask;
-use protos_common::{ComputeVersions, QueryIdentifier, QueryPlans, QueryResult, map_methods};
+use protos_common::{ComputeVersions, QueryIdentifier, QueryResult, map_methods};
 use serde::{Deserialize, Serialize};
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
@@ -23,6 +23,7 @@ pub use proto::client_service_client::ClientServiceClient;
 pub use proto::client_service_server::ClientServiceServer;
 pub use proto::{ClientService as ClientServiceProto, StageStatistics};
 pub type QueryStatus = proto::QueryStatus;
+pub type ClientQueryPlans = proto::ClientQueryPlans;
 
 #[trait_variant::make(Send)]
 pub trait ClientService {
@@ -58,7 +59,7 @@ pub trait ClientService {
     async fn get_query_plans(
         &self,
         request: Request<GetQueryPlansRequest>,
-    ) -> Result<Response<QueryPlans>, Self::Error>;
+    ) -> Result<Response<ClientQueryPlans>, Self::Error>;
 
     async fn get_compute_versions(
         &self,
@@ -182,6 +183,8 @@ impl From<QuerySettings> for proto::QuerySettings {
                 })
             }),
             sink_options: value.sink_options,
+            priority: value.priority,
+            execute_until: proto::ExecuteUntil::from(value.execute_until).into(),
         }
     }
 }
@@ -205,6 +208,8 @@ impl From<proto::QuerySettings> for QuerySettings {
                 },
             }),
             sink_options: value.sink_options,
+            priority: value.priority,
+            execute_until: value.execute_until().into(),
         }
     }
 }
@@ -508,6 +513,40 @@ impl From<proto::GraphFormat> for GraphFormat {
     }
 }
 
+/// How far through the query pipeline to run before stopping.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ExecuteUntil {
+    /// Stop after the optimized IR is produced, skipping distributed planning.
+    OptimizeIr,
+    /// Stop after the physical/stage plan is built, but do not execute it.
+    Plan,
+    /// Run the whole pipeline.
+    #[default]
+    Execute,
+}
+
+impl From<ExecuteUntil> for proto::ExecuteUntil {
+    fn from(value: ExecuteUntil) -> Self {
+        match value {
+            ExecuteUntil::OptimizeIr => Self::OptimizeIr,
+            ExecuteUntil::Plan => Self::Plan,
+            ExecuteUntil::Execute => Self::Execute,
+        }
+    }
+}
+
+impl From<proto::ExecuteUntil> for ExecuteUntil {
+    fn from(value: proto::ExecuteUntil) -> Self {
+        match value {
+            // Clients that predate this field leave it unset; they expect
+            // their query to run.
+            proto::ExecuteUntil::Unspecified | proto::ExecuteUntil::Execute => Self::Execute,
+            proto::ExecuteUntil::OptimizeIr => Self::OptimizeIr,
+            proto::ExecuteUntil::Plan => Self::Plan,
+        }
+    }
+}
+
 #[derive(Default, Debug, Clone, Copy)]
 pub struct NumWorkers {
     pub min: Option<NonZeroU32>,
@@ -523,6 +562,10 @@ pub struct QuerySettings {
     pub query_type: QueryType,
     pub optimization_flags: Option<u32>,
     pub sink_options: Option<SinkOptions>,
+    /// Scheduling priority. Higher values are started first; queries of equal
+    /// priority keep submission order.
+    pub priority: i32,
+    pub execute_until: ExecuteUntil,
 }
 
 impl QuerySettings {
@@ -625,6 +668,11 @@ pub struct GetQueryResultResponse {
 pub struct ComputeQueryInfo {
     pub head: Option<Result<Bytes, String>>,
     pub stage_statistics: Option<BTreeMap<u32, StageStatistics>>,
+    /// How far the query actually ran. Anything other than
+    /// [`ExecuteUntil::Execute`] means it was planned and deliberately not
+    /// executed, so an absent [`QueryOutput`] means nothing was written rather
+    /// than that the query failed.
+    pub execute_until: ExecuteUntil,
 }
 
 impl From<proto::GetQueryResultResponse> for GetQueryResultResponse {
@@ -654,12 +702,13 @@ impl From<GetQueryResultResponse> for proto::GetQueryResultResponse {
 }
 
 impl From<proto::ComputeQueryInfo> for ComputeQueryInfo {
-    fn from(
-        proto::ComputeQueryInfo {
+    fn from(value: proto::ComputeQueryInfo) -> Self {
+        let execute_until = value.execute_until().into();
+        let proto::ComputeQueryInfo {
             head,
             stage_statistics,
-        }: proto::ComputeQueryInfo,
-    ) -> Self {
+            ..
+        } = value;
         Self {
             head: head.map(|head| match head {
                 proto::compute_query_info::Head::Data(bytes) => Ok(bytes),
@@ -667,6 +716,7 @@ impl From<proto::ComputeQueryInfo> for ComputeQueryInfo {
             }),
             stage_statistics: stage_statistics
                 .map(|proto::QueryStageStatistics { stage_statistics }| stage_statistics),
+            execute_until,
         }
     }
 }
@@ -676,6 +726,7 @@ impl From<ComputeQueryInfo> for proto::ComputeQueryInfo {
         ComputeQueryInfo {
             head,
             stage_statistics,
+            execute_until,
         }: ComputeQueryInfo,
     ) -> Self {
         Self {
@@ -686,6 +737,7 @@ impl From<ComputeQueryInfo> for proto::ComputeQueryInfo {
                 Ok(head) => proto::compute_query_info::Head::Data(head),
                 Err(e) => proto::compute_query_info::Head::Error(e),
             }),
+            execute_until: proto::ExecuteUntil::from(execute_until).into(),
         }
     }
 }
@@ -779,14 +831,14 @@ impl From<GetQueryPlansRequest> for proto::GetQueryPlansRequest {
     }
 }
 
-impl From<proto::GetQueryPlansResponse> for QueryPlans {
+impl From<proto::GetQueryPlansResponse> for ClientQueryPlans {
     fn from(proto::GetQueryPlansResponse { plans }: proto::GetQueryPlansResponse) -> Self {
-        plans.unwrap()
+        plans.unwrap_or_default()
     }
 }
 
-impl From<QueryPlans> for proto::GetQueryPlansResponse {
-    fn from(value: QueryPlans) -> Self {
+impl From<ClientQueryPlans> for proto::GetQueryPlansResponse {
+    fn from(value: ClientQueryPlans) -> Self {
         Self { plans: Some(value) }
     }
 }

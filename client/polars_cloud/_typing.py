@@ -19,6 +19,9 @@ Planner: TypeAlias = Literal["auto", "naive", "miso"]
 
 Json: TypeAlias = dict[str, Any]
 PlanType: TypeAlias = Literal["physical", "ir"]
+# The plan stages double as the points the cluster can stop at. `PlanType` is
+# the same set polars spells `PlanStage` in `show_graph(plan_stage=...)`.
+ExecuteUntil: TypeAlias = Literal["execute", "physical", "ir"]
 ConnectionMode: TypeAlias = Literal["direct", "proxy"]
 CPUArchitecture: TypeAlias = Literal["x86_64", "arm64"]
 LogLevel: TypeAlias = Literal["info", "debug", "trace"]

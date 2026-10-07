@@ -7,14 +7,18 @@ use tower::Layer;
 use tower_otel::{OtelLayer, OtelService};
 
 use crate::VERSIONS;
-use crate::constants::{API_ADDR, SERVICE_NAME};
+use crate::constants::SERVICE_NAME;
 
 pub type ControlPlaneGRPCClient = ClientServiceClient<
     InterceptedService<OtelService<Channel>, fn(Request<()>) -> tonic::Result<Request<()>>>,
 >;
 
-pub fn get_control_plane_client() -> ControlPlaneGRPCClient {
-    let endpoint: Endpoint = API_ADDR.parse().unwrap();
+/// `api_addr` must come from [`crate::PolarsCloudConfig::resolve_api_addr`], which only returns
+/// addresses that parse as an endpoint.
+pub fn get_control_plane_client(api_addr: &str) -> ControlPlaneGRPCClient {
+    let endpoint: Endpoint = api_addr
+        .parse()
+        .expect("resolve_api_addr only returns addresses that parse as an endpoint");
 
     let channel = endpoint
         .user_agent(user_agent(
@@ -24,9 +28,9 @@ pub fn get_control_plane_client() -> ControlPlaneGRPCClient {
                 .as_ref()
                 .map(|(_, versions)| versions),
         ))
-        .unwrap()
+        .unwrap_or_else(|e| panic!("invalid Polars Cloud API address {api_addr:?} ({e})"))
         .tls_config(ClientTlsConfig::new().with_native_roots())
-        .unwrap()
+        .unwrap_or_else(|e| panic!("could not configure TLS for {api_addr:?} ({e})"))
         .connect_lazy();
 
     ClientServiceClient::with_interceptor(

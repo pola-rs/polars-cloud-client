@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fmt::Display;
 
 use chrono::{DateTime, FixedOffset, Utc};
+use deprecation_macro::deprecated_since_client;
 #[cfg(feature = "server")]
 use garde::Validate;
 #[cfg(feature = "pyo3")]
@@ -159,12 +160,24 @@ pub struct StartComputeClusterArgs {
 }
 
 #[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
+#[derive(Clone, Deserialize, Serialize, Debug)]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct ComputeClusterEndpointModel {
+    pub address: String,
+    pub tls_server_name: Option<String>,
+}
+
+#[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
 #[derive(Deserialize, Serialize, Debug)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
+#[deprecated_since_client]
 pub struct ComputeClusterPublicInfoModel {
     pub cluster_id: Uuid,
+    #[deprecated_since_client("0.12.0")]
     pub public_address: String,
     pub public_server_key: String,
+    pub scheduler: ComputeClusterEndpointModel,
+    pub observatory: ComputeClusterEndpointModel,
 }
 
 #[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
@@ -289,9 +302,15 @@ impl DBClusterModeModel {
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 #[cfg_attr(feature = "pyo3", pyclass(from_py_object, eq, eq_int))]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[deprecated_since_client]
 pub enum ClusterDeploymentModel {
     Aws,
+    #[deprecated_since_client("0.12.0")]
     OnPrem,
+    Serverless,
+    Kubernetes,
+    Ray,
+    BareMetal,
 }
 
 #[derive(Deserialize, Default, Serialize, Debug)]
@@ -301,9 +320,10 @@ pub struct GetClusterFilterArgs {
     #[serde(default)]
     #[serde(deserialize_with = "csv_vec_opt")]
     pub status: Option<Vec<ComputeStatusModel>>,
-    /// Filters out any clusters that do not run on the given deployment.
+    /// Filters out any clusters that do not run on one of the given deployments.
     #[serde(default)]
-    pub deployment_type: Option<ClusterDeploymentModel>,
+    #[serde(deserialize_with = "csv_vec_opt")]
+    pub deployment_type: Option<Vec<ClusterDeploymentModel>>,
     #[serde(default)]
     pub current_user_only: bool,
 }

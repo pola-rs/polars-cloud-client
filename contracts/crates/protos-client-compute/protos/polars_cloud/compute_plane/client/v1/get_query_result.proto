@@ -5,6 +5,7 @@ package polars_cloud.compute_plane.client.v1;
 import "polars_cloud/common/query_id.proto";
 import "polars_cloud/common/query_result.proto";
 import "polars_cloud/compute_plane/client/v1/get_query_status.proto";
+import "polars_cloud/compute_plane/client/v1/submit_query.proto";
 
 message GetQueryResultRequest {
   polars_cloud.common.QueryId query_id = 1;
@@ -24,6 +25,10 @@ message ComputeQueryInfo {
     string error = 2;
   }
   optional QueryStageStatistics stage_statistics = 3;
+  // How far the query actually ran. Anything other than EXECUTE means it was
+  // planned and deliberately not executed, so an absent `QueryOutput` on the
+  // result says nothing was written rather than that the query failed.
+  ExecuteUntil execute_until = 4;
 }
 
 message GetQueryResultResponse {

@@ -7,7 +7,6 @@ import polars as pl
 from polars._utils.cloud import prepare_cloud_plan
 from polars.exceptions import ComputeError, InvalidOperationError
 
-from polars_cloud.context import ComputeContext
 from polars_cloud.polars_cloud import PyNumWorkers
 from polars_cloud.query.dst import (
     CallbackDst,
@@ -29,13 +28,10 @@ if TYPE_CHECKING:
 
     from polars_cloud._typing import (
         Engine,
+        ExecuteUntil,
         PlanTypePreference,
         ShuffleCompression,
         ShuffleFormat,
-    )
-    from polars_cloud.context import (
-        ClientContext,
-        ClusterContext,
     )
     from polars_cloud.polars_cloud import PyQuerySettings
     from polars_cloud.query.dst import Dst
@@ -67,6 +63,8 @@ def prepare_query(
     max_workers: int | None = None,
     sink_to_single_file: bool | None = None,
     optimizations: QueryOptFlags,
+    priority: int = 0,
+    execute_until: ExecuteUntil = "execute",
 ) -> tuple[bytes, PyQuerySettings]:
     """Parse query inputs as a serialized plan and settings object."""
     if pl.get_index_type() == pl.UInt32:
@@ -261,17 +259,8 @@ If you want to:
         optimization_flags=optimization_flags,
         flight_ttl=flight_ttl,
         flight_maintain_order=flight_maintain_order,
+        priority=priority,
+        execute_until=execute_until,
     )
 
     return plan, settings
-
-
-def get_token(context: ClusterContext | ComputeContext | ClientContext) -> str | None:
-    if isinstance(context, ComputeContext):
-        assert context.connection_mode == "direct", (
-            "expected compute context in direct mode"
-        )
-        token = context._get_token()
-    else:
-        token = None
-    return token

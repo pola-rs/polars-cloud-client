@@ -40,6 +40,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_WORKSPACE_ID_ENV = "POLARS_CLOUD_DEFAULT_WORKSPACE_ID"
+
 _DEPRECATED_STATUS_HINT = (
     "Workspace status and deployment have been deprecated and will be removed in"
     " future versions to support multiple infrastructure providers. Use"
@@ -95,7 +97,7 @@ class Workspace:
 
         self.load()
 
-        if name is not None and name != self._name:
+        if name is not None and name.lower() != self.name.lower():
             msg = f"The provided workspace name {name!r} and id {id!r} do not match. The ID is of an workspace named {self._name!r}."
             raise WorkspaceResolveError(msg)
 
@@ -245,10 +247,13 @@ class Workspace:
 
     def _load_by_name(self) -> None:
         """Load the workspace by name."""
-        workspaces = constants.API_CLIENT.get_workspaces(self._name)
+        assert self._name is not None
 
-        # The API endpoint is a substring search, but we only want the exact name
-        matches = [ws for ws in workspaces if ws.name == self._name]
+        name = self._name.lower()
+        workspaces = constants.API_CLIENT.get_workspaces(name)
+
+        # The API endpoint is a substring search, but we match the (lowercase) ws-name
+        matches = [ws for ws in workspaces if ws.name.lower() == name]
 
         if len(matches) == 0:
             msg = f"Workspace {self._name!r} does not exist"
@@ -258,12 +263,7 @@ class Workspace:
         else:
             if self._organization is not None:
                 matches = [
-                    ws
-                    for ws in matches
-                    if (
-                        ws.organization_id == self._organization.id
-                        and ws.name == self._name
-                    )
+                    ws for ws in matches if ws.organization_id == self._organization.id
                 ]
                 if len(matches) == 0:
                     msg = f"The workspace {self._name!r} is not part of the {self._organization.name} organization"
@@ -286,22 +286,30 @@ class Workspace:
         self._update_from_api_model(workspace_details)
 
     def _load_by_default(self) -> None:
-        """Load the workspace by the default of the user."""
-        user: pcr.UserModel = constants.API_CLIENT.get_user()
-        if user.default_workspace_id is None:
+        """Load the workspace by the resolved default.
+
+        Resolution precedence: the ``POLARS_CLOUD_DEFAULT_WORKSPACE_ID``
+        environment variable, then the local config file, then the user's
+        server-side default.
+        """
+        workspace_id = constants.API_CLIENT.resolve_default_workspace_id()
+        if workspace_id is None:
             msg = (
                 "No (default) workspace specified."
-                "\n\nHint: Either directly specify the workspace or set your default workspace in the dashboard."
+                "\n\nHint: Either directly specify the workspace, set one with"
+                " `pc.Workspace('name').set_default()`, set the"
+                f" `{_DEFAULT_WORKSPACE_ID_ENV}` environment variable, or set your default"
+                " workspace in the dashboard."
             )
             raise WorkspaceResolveError(msg)
-        self._id = user.default_workspace_id
+        self._id = workspace_id
 
         try:
             self._load_by_id()
         except pcr.NotFoundError as exc:
             msg = (
                 "The workspace you had set as default either does not exist anymore or you do not have access anymore."
-                "\n\nHint: Set a new default workspace in the dashboard."
+                "\n\nHint: Set a new default workspace with `pc.Workspace('name').set_default()` or in the dashboard."
             )
             raise WorkspaceResolveError(msg) from exc
 

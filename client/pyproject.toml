@@ -28,12 +28,10 @@ classifiers = [
 ]
 dependencies = [
   # uncomment if we want a specific commit
-  # "polars[rt64, cloudpickle]@git+https://github.com/pola-rs/polars.git@2bd55b18dd649aeb1e8f186931255d968f4dd4f0#subdirectory=py-polars",
-  # "polars-runtime-64@git+https://github.com/pola-rs/polars.git@2bd55b18dd649aeb1e8f186931255d968f4dd4f0#subdirectory=py-polars/runtime/polars-runtime-64",
-  # "polars-runtime-32@git+https://github.com/pola-rs/polars.git@2bd55b18dd649aeb1e8f186931255d968f4dd4f0#subdirectory=py-polars/runtime/polars-runtime-32",
-  "polars[rt64,cloudpickle] == 1.44.2",
-  # 'polars @ file:///home/jesse/dev/oss/polars/py-polars',
-  # 'polars @ file:///home/ritchie46/code/polars/py-polars',
+  # "polars[rt64, cloudpickle]@git+https://github.com/pola-rs/polars.git@22a147de3d2bb2e44b97338a2510816c7105c9f2#subdirectory=py-polars",
+  # "polars-runtime-64@git+https://github.com/pola-rs/polars.git@22a147de3d2bb2e44b97338a2510816c7105c9f2#subdirectory=py-polars/runtime/polars-runtime-64",
+  # "polars-runtime-32@git+https://github.com/pola-rs/polars.git@22a147de3d2bb2e44b97338a2510816c7105c9f2#subdirectory=py-polars/runtime/polars-runtime-32",
+  "polars[rt64,cloudpickle] == 2.0.0",
   # 4.5 is the first release with `deprecated`.
   'typing-extensions >= 4.5; python_version <= "3.12"',
 ]

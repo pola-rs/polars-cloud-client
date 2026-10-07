@@ -150,11 +150,16 @@ impl Display for IRDisplay<'_> {
                     how,
                     left_on,
                     right_on,
+                    fused_predicate,
                     ..
                 } => {
                     let left_on = expr_list(left_on);
                     let right_on = expr_list(right_on);
-                    writeln!(f, "{how} JOIN:")?;
+                    write!(f, "{how} JOIN")?;
+                    if let Some(fused_predicate) = fused_predicate {
+                        write!(f, " ON {fused_predicate}")?;
+                    }
+                    writeln!(f, ":")?;
                     write_with_inputs!(
                         f,
                         "LEFT PLAN ON: {left_on}",
@@ -404,18 +409,43 @@ impl Display for IRDisplay<'_> {
                 IRNodeProperties::ShuffleWrite {
                     shuffle_number,
                     partitioning,
+                    add_order_tag,
                     ..
                 } => {
-                    write!(
-                        f,
-                        "SHUFFLE WRITE ({shuffle_number}) [partitioning: {partitioning}]"
-                    )?;
+                    write!(f, "SHUFFLE WRITE ({shuffle_number}) [")?;
+                    if *add_order_tag {
+                        write!(f, "add_order_tag: true, ")?;
+                    }
+                    write!(f, "partitioning: {partitioning}]")?;
                 },
                 IRNodeProperties::UnoptimizedDispatch { operation, .. } => {
                     write!(f, "UNOPTIMIZED DISPATCH TO {operation}")?;
                 },
                 IRNodeProperties::RemoveOverlap => {
                     write!(f, "REMOVE PARTITION OVERLAP")?;
+                },
+                IRNodeProperties::Window {
+                    partition_by,
+                    order_by,
+                    exprs,
+                    maintain_order,
+                    ordered_eval,
+                } => {
+                    write!(
+                        f,
+                        "WINDOW[maintain_order: {maintain_order}, ordered_eval: {ordered_eval}] \
+                         PARTITION BY {partition_by:?}"
+                    )?;
+                    if let Some(order_by) = order_by {
+                        write!(f, " ORDER BY {:?}", order_by.expr)?;
+                        if order_by.descending {
+                            write!(f, " DESC")?;
+                        }
+                        if order_by.nulls_last {
+                            write!(f, " NULLS LAST")?;
+                        }
+                    }
+                    write!(f, ":\n {}", expr_list(exprs))?;
                 },
             }
             stack.add_sources(idx, level + 1);

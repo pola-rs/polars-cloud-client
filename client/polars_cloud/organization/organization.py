@@ -51,7 +51,7 @@ class Organization:
 
         self.load()
 
-        if name is not None and name != self._name:
+        if name is not None and name.lower() != self.name.lower():
             msg = f"The provided organization name {name!r} and id {id!r} do not match. The ID is of an organization named {self._name!r}."
             raise OrganizationResolveError(msg)
 
@@ -131,10 +131,13 @@ class Organization:
 
     def _load_by_name(self) -> None:
         """Load the workspace by name."""
-        organizations = constants.API_CLIENT.get_organizations(self._name)
+        assert self._name is not None
 
-        # The API endpoint is a substring search, but we only want the exact name
-        matches = [org for org in organizations if org.name == self._name]
+        name = self._name.lower()
+        organizations = constants.API_CLIENT.get_organizations(name)
+
+        # The API endpoint is a substring search, but we match the (lowercase) org-name
+        matches = [org for org in organizations if org.name.lower() == name]
 
         if len(matches) == 0:
             msg = f"Organization {self._name!r} does not exist"
@@ -149,7 +152,7 @@ class Organization:
             )
             raise OrganizationResolveError(msg)
         else:
-            self._id = matches[0].id
+            self._update_from_api_model(matches[0])
 
     def _load_by_id(self) -> None:
         """Load the workspace by id."""

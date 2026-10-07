@@ -15,13 +15,15 @@ use crate::phys::models::PhysNodeProperties;
 use crate::phys::warning::PhysNodeWarning;
 
 pub(crate) fn to_sort_columns(by: Vec<SortColumnDescription>) -> Vec<SortColumn> {
-    by.into_iter()
-        .map(|c| SortColumn {
-            expr: c.expr,
-            descending: c.descending,
-            nulls_last: c.nulls_last,
-        })
-        .collect()
+    by.into_iter().map(to_sort_column).collect()
+}
+
+pub(crate) fn to_sort_column(c: SortColumnDescription) -> SortColumn {
+    SortColumn {
+        expr: c.expr,
+        descending: c.descending,
+        nulls_last: c.nulls_last,
+    }
 }
 
 pub(crate) fn to_pred_skip(p: PredicateFileSkipDescription) -> PredicateFileSkip {

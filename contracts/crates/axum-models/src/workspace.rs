@@ -142,10 +142,14 @@ pub struct WorkspaceModel {
 
 #[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all))]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
-#[derive(Clone, Deserialize, Serialize, Debug)]
+#[derive(Clone, Deserialize, Serialize, Debug, PartialEq)]
 pub struct WorkspaceProvidersModel {
     /// Whether the workspace has a live AWS connection
     pub aws: bool,
-    /// Whether an on-prem compute cluster has ever been registered for this workspace
-    pub on_prem: bool,
+    /// Whether a Kubernetes compute cluster has ever been registered for this workspace
+    pub kubernetes: bool,
+    /// Whether a Ray compute cluster has ever been registered for this workspace
+    pub ray: bool,
+    /// Whether a bare-metal compute cluster has ever been registered for this workspace
+    pub bare_metal: bool,
 }

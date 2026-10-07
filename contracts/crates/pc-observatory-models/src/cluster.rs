@@ -10,8 +10,18 @@ use serde::Serialize;
 pub enum ClusterModeModel {
     AWS,
     Kubernetes,
+    Ray,
     BareMetal,
     ObservatoryReadOnly,
+}
+
+#[derive(Clone, Copy, PartialEq, Serialize, Debug)]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub enum LicenseTypeModel {
+    Cloud,
+    OnPrem,
+    Offline,
+    OfflineLicenseServer,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -29,6 +39,7 @@ pub struct ClusterModel {
     pub region: Option<String>,
     pub mode: ClusterModeModel,
     pub scratchpad_config: Option<ScratchpadConfigModel>,
+    pub license_type: Option<LicenseTypeModel>,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]

@@ -1,4 +1,3 @@
-from collections.abc import Callable
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import TYPE_CHECKING, Any, final
@@ -21,13 +20,13 @@ __all__ = [
     "AwsConnectionStatusModel",
     "ClientOptions",
     "ClusterDeploymentModel",
+    "ComputeClusterEndpointModel",
     "ComputeClusterMisspecified",
     "ComputeClusterNodeInfoModel",
     "ComputeClusterPublicInfoModel",
     "ComputeContextSpecs",
     "ComputeModel",
     "ComputeStatusModel",
-    "ComputeTokenModel",
     "ComputeVersionsPy",
     "DBCPUArchitectureModel",
     "DBClusterModeModel",
@@ -50,6 +49,7 @@ __all__ = [
     "QueryCloudObserver",
     "QueryDetailPy",
     "QueryEngineModel",
+    "QueryExecuteUntilModel",
     "QueryInfoPy",
     "QueryMetricPoller",
     "QueryModel",
@@ -113,6 +113,8 @@ def serialize_query_settings(
     optimization_flags: int | None,
     flight_ttl: timedelta | None,
     flight_maintain_order: bool | None,
+    priority: int,
+    execute_until: str = "execute",
 ) -> PyQuerySettings: ...
 
 @final
@@ -133,14 +135,6 @@ def py_is_token_expired(
 def polars_version() -> str: ...
 def python_version() -> str: ...
 def cli_main() -> None: ...
-
-@final
-class ComputeTokenModel:
-    id: UUID
-    """Compute id"""
-
-    token: str
-    """Compute Token"""
 
 @final
 class WorkspaceStateModel(Enum):
@@ -290,6 +284,9 @@ class QueryModel:
     engine: QueryEngineModel | None
     """The engine used for the query."""
 
+    execute_until: QueryExecuteUntilModel | None
+    """How far the query was asked to run."""
+
     status_code: QueryStatusCodeModel
     """The status code of the query."""
 
@@ -331,6 +328,12 @@ class QueryTypeModel(Enum):
 class QueryEngineModel(Enum):
     InMemory = 0
     Streaming = 1
+
+@final
+class QueryExecuteUntilModel(Enum):
+    OptimizeIr = 0
+    Plan = 1
+    Execute = 2
 
 @final
 class FileTypeModel(Enum):
@@ -417,7 +420,13 @@ class ClusterDeploymentModel(Enum):
     """Where a compute cluster's compute runs."""
 
     Aws = 0
+    #: .. deprecated:: 0.12.0
+    #:    Replaced by `Kubernetes`, `Ray` and `BareMetal`.
     OnPrem = 1
+    Serverless = 2
+    Kubernetes = 3
+    Ray = 4
+    BareMetal = 5
 
 @final
 class DBCPUArchitectureModel(Enum):
@@ -595,10 +604,17 @@ class LogLevelModel(Enum):
     Trace = 2
 
 @final
+class ComputeClusterEndpointModel:
+    address: str
+    tls_server_name: str | None
+
+@final
 class ComputeClusterPublicInfoModel:
     cluster_id: UUID
     public_address: str
     public_server_key: str
+    scheduler: ComputeClusterEndpointModel
+    observatory: ComputeClusterEndpointModel
 
 @final
 class ComputeStatusModel(Enum):
@@ -856,6 +872,34 @@ class ApiClient:
     def clear_authentication(self) -> None: ...
     def get_auth_header(self) -> str: ...
 
+    # Config methods
+    def set_default_workspace(
+        self,
+        workspace_name: str | None = None,
+        workspace_id: UUID | None = None,
+        organization_name: str | None = None,
+        organization_id: UUID | None = None,
+    ) -> UUID: ...
+    def set_default_organization(
+        self,
+        organization_name: str | None = None,
+        organization_id: UUID | None = None,
+    ) -> UUID: ...
+    def resolve_default_workspace_id(
+        self,
+        workspace_name: str | None = None,
+        workspace_id: UUID | None = None,
+        organization_name: str | None = None,
+        organization_id: UUID | None = None,
+    ) -> UUID | None: ...
+    def reload_config(self) -> None: ...
+    def get_default_workspace_id(self) -> UUID | None: ...
+    def get_default_organization_id(self) -> UUID | None: ...
+    def clear_default_workspace(self) -> None: ...
+    def clear_default_organization(self) -> None: ...
+    def set_username(self, username: str | None = None) -> None: ...
+    def get_username(self) -> str | None: ...
+
     # Workspace methods
     def create_workspace(self, name: str, organization_id: UUID) -> WorkspaceModel: ...
     def delete_workspace(self, workspace_id: UUID) -> None: ...
@@ -960,9 +1004,6 @@ class ApiClient:
     def get_compute_clusters(
         self, workspace_id: UUID, *, status: list[ComputeStatusModel] | None = None
     ) -> list[ComputeModel]: ...
-    def get_compute_cluster_token(
-        self, workspace_id: UUID, compute_id: UUID
-    ) -> ComputeTokenModel: ...
     def get_compute_cluster_nodes(
         self, workspace_id: UUID, compute_id: UUID
     ) -> list[ComputeClusterNodeInfoModel]: ...
@@ -1040,33 +1081,34 @@ class SchedulerClient:
         scheduler: ClientOptions,
         observatory: ClientOptions,
     ) -> SchedulerClient: ...
-    def cancel_direct_query(self, query_id: UUID, token: str | None) -> None: ...
-    def delete_direct_query_result(self, query_id: UUID, token: str | None) -> None: ...
-    def get_direct_query_status(
-        self, query_id: UUID, token: str | None
-    ) -> QueryStatusCodeModel: ...
+    @staticmethod
+    def without_default_auth(
+        scheduler: ClientOptions, observatory: ClientOptions
+    ) -> SchedulerClient: ...
+    def cancel_direct_query(self, query_id: UUID) -> None: ...
+    def delete_direct_query_result(self, query_id: UUID) -> None: ...
+    def get_direct_query_status(self, query_id: UUID) -> QueryStatusCodeModel: ...
     def get_direct_query_result(
-        self,
-        query_id: UUID,
-        token_factory: Callable[[], str | None],
-        timeout_ms: int,
+        self, query_id: UUID, timeout_ms: int
     ) -> QueryInfoPy: ...
     def do_query(
         self,
         plan: bytes,
         settings: PyQuerySettings,
-        token: str | None,
         username: str | None = None,
         labels: list[str] | None = None,
         execution_id: str | None = None,
         lineage_context: PyLineageContext | None = None,
     ) -> UUID: ...
     def get_direct_query_plan(
-        self, query_id: UUID, token: str | None, phys: bool = False, ir: bool = False
+        self,
+        query_id: UUID,
+        phys: PlanFormatPy | None = None,
+        ir: bool = False,
     ) -> QueryPlansPy: ...
-    def get_compute_versions(self, token: str | None) -> ComputeVersionsPy: ...
-    def get_query_details(self, query_id: UUID, token: str | None) -> QueryDetailPy: ...
-    def scan_flight(self, query_id: UUID, token: str | None) -> FlightResult | None: ...
+    def get_compute_versions(self) -> ComputeVersionsPy: ...
+    def get_query_details(self, query_id: UUID) -> QueryDetailPy: ...
+    def scan_flight(self, query_id: UUID) -> FlightResult | None: ...
 
 @final
 class PlanFormatPy(Enum):

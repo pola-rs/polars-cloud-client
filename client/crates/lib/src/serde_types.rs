@@ -25,7 +25,7 @@ use tonic::codegen::http::uri::Authority;
 use tower_http::set_header::HeaderMetadata;
 
 use crate::query_settings::{
-    PyEngine, PyNumWorkers, PyPlanner, PyQuerySettings, PyQueryType, PyShuffleOpts,
+    PyEngine, PyExecuteUntil, PyNumWorkers, PyPlanner, PyQuerySettings, PyQueryType, PyShuffleOpts,
     PySingleWorkerOps, PySinkOptions,
 };
 
@@ -82,7 +82,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for DistributedSettings {
 #[allow(clippy::needless_lifetimes)]
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature=(*, engine, plan_dot, shuffle_opts, n_retries, n_workers, distributed_settings, optimization_flags, flight_ttl, flight_maintain_order))]
+#[pyo3(signature=(*, engine, plan_dot, shuffle_opts, n_retries, n_workers, distributed_settings, optimization_flags, flight_ttl, flight_maintain_order, priority, execute_until="execute"))]
 pub fn serialize_query_settings(
     engine: &str,
     plan_dot: bool,
@@ -93,6 +93,8 @@ pub fn serialize_query_settings(
     optimization_flags: Option<u32>,
     flight_ttl: Option<Duration>,
     flight_maintain_order: Option<bool>,
+    priority: i32,
+    execute_until: &str,
 ) -> PyResult<PyQuerySettings> {
     let query_type = match distributed_settings {
         None => PyQueryType::Single(),
@@ -119,6 +121,18 @@ pub fn serialize_query_settings(
             return Err(PyValueError::new_err(msg));
         },
     };
+    // Named for the plan stage the caller wants, so the client-facing
+    // `plan_stage` vocabulary maps straight through.
+    let execute_until = match execute_until {
+        "execute" => PyExecuteUntil::Execute,
+        "ir" => PyExecuteUntil::OptimizeIr,
+        "physical" => PyExecuteUntil::Plan,
+        v => {
+            let msg = format!("expected one of {{'execute', 'ir', 'physical'}}, got {v}");
+            return Err(PyValueError::new_err(msg));
+        },
+    };
+
     let sink_options = if flight_ttl.is_some() || flight_maintain_order.is_some() {
         Some(PySinkOptions::Flight {
             ttl: flight_ttl,
@@ -136,6 +150,8 @@ pub fn serialize_query_settings(
         optimization_flags,
         n_workers,
         sink_options,
+        priority,
+        execute_until,
     };
 
     Ok(settings)
