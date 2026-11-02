@@ -4,7 +4,7 @@ import asyncio
 import time
 import typing
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, overload
 
 import polars as pl
 
@@ -291,6 +291,39 @@ class DirectQuery(InProgressQueryRemote):
 
     def delete_result(self) -> None:
         self._client.delete_direct_query_result(self._query_id)
+
+    @overload
+    def graph(
+        self,
+        plan_type: PlanType = ...,
+        *,
+        show: bool = ...,
+        output_path: str | Path | None = ...,
+        raw_output: Literal[False] = False,
+        figsize: tuple[float, float] = ...,
+    ) -> None: ...
+
+    @overload
+    def graph(
+        self,
+        plan_type: PlanType = ...,
+        *,
+        show: bool = ...,
+        output_path: str | Path | None = ...,
+        raw_output: Literal[True],
+        figsize: tuple[float, float] = ...,
+    ) -> str: ...
+
+    @overload
+    def graph(
+        self,
+        plan_type: PlanType = ...,
+        *,
+        show: bool = ...,
+        output_path: str | Path | None = ...,
+        raw_output: bool,
+        figsize: tuple[float, float] = ...,
+    ) -> str | None: ...
 
     def graph(
         self,

@@ -5,7 +5,7 @@ import json
 import keyword
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING, Literal, overload
 
 import polars as pl
 
@@ -309,6 +309,39 @@ class QueryResult:
 
     def raise_err(self) -> None:
         raise_query_errors(self.finished_task_info.errors)
+
+    @overload
+    def graph(
+        self,
+        plan_type: PlanType = ...,
+        *,
+        show: bool = ...,
+        output_path: str | Path | None = ...,
+        raw_output: Literal[False] = False,
+        figsize: tuple[float, float] = ...,
+    ) -> None: ...
+
+    @overload
+    def graph(
+        self,
+        plan_type: PlanType = ...,
+        *,
+        show: bool = ...,
+        output_path: str | Path | None = ...,
+        raw_output: Literal[True],
+        figsize: tuple[float, float] = ...,
+    ) -> str: ...
+
+    @overload
+    def graph(
+        self,
+        plan_type: PlanType = ...,
+        *,
+        show: bool = ...,
+        output_path: str | Path | None = ...,
+        raw_output: bool,
+        figsize: tuple[float, float] = ...,
+    ) -> str | None: ...
 
     def graph(
         self,

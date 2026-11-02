@@ -339,7 +339,11 @@ class LazyFrameRemote:
 
     @overload
     def execute(
-        self, *, optimizations: QueryOptFlags = ..., silent: bool | None = ...
+        self,
+        *,
+        blocking: Literal[True] = True,
+        optimizations: QueryOptFlags = ...,
+        silent: bool | None = ...,
     ) -> QueryResult: ...
 
     @overload
@@ -350,15 +354,6 @@ class LazyFrameRemote:
         optimizations: QueryOptFlags = ...,
         silent: bool | None = ...,
     ) -> DirectQuery | ProxyQuery: ...
-
-    @overload
-    def execute(
-        self,
-        *,
-        blocking: Literal[True],
-        optimizations: QueryOptFlags = ...,
-        silent: bool | None = ...,
-    ) -> QueryResult: ...
 
     @overload
     def execute(
@@ -1039,7 +1034,11 @@ class ExecuteRemote:
 
     @overload
     def execute(
-        self, *, optimizations: QueryOptFlags = ..., silent: bool | None = ...
+        self,
+        *,
+        blocking: Literal[True] = True,
+        optimizations: QueryOptFlags = ...,
+        silent: bool | None = ...,
     ) -> QueryResult: ...
 
     @overload
@@ -1050,15 +1049,6 @@ class ExecuteRemote:
         optimizations: QueryOptFlags = ...,
         silent: bool | None = ...,
     ) -> DirectQuery | ProxyQuery: ...
-
-    @overload
-    def execute(
-        self,
-        *,
-        blocking: Literal[True],
-        optimizations: QueryOptFlags = ...,
-        silent: bool | None = ...,
-    ) -> QueryResult: ...
 
     @overload
     def execute(
