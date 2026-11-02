@@ -157,7 +157,7 @@ class ParquetDst(Dst):
 class CsvDst(Dst):
     def __init__(
         self,
-        uri: str | PartitionBy,
+        uri: str | Path | PartitionBy,
         *,
         include_bom: bool = False,
         include_header: bool = True,
@@ -277,7 +277,7 @@ class CsvDst(Dst):
                 This functionality is considered **unstable**. It may be changed
                 at any point without it being considered a breaking change.
         """
-        self.uri: str | PartitionBy = uri
+        self.uri: str | Path | PartitionBy = uri
         self.include_bom: bool = include_bom
         self.include_header: bool = include_header
         self.separator: str = separator
@@ -302,7 +302,7 @@ class CsvDst(Dst):
 class IpcDst(Dst):
     def __init__(
         self,
-        uri: str | PartitionBy,
+        uri: str | Path | PartitionBy,
         *,
         compression: IpcCompression | None = "zstd",
         compat_level: CompatLevel | None = None,

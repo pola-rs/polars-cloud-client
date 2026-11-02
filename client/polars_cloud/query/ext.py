@@ -25,6 +25,7 @@ from polars_cloud.query.query import DistributionSettings, spawn
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from datetime import timedelta
+    from pathlib import Path
     from typing import Literal
 
     import pyiceberg.catalog
@@ -497,7 +498,7 @@ class LazyFrameRemote:
 
     def sink_parquet(
         self,
-        uri: str | PartitionBy,
+        uri: str | Path | PartitionBy,
         *,
         compression: ParquetCompression = "zstd",
         compression_level: int | None = None,
@@ -639,7 +640,7 @@ class LazyFrameRemote:
 
     def sink_csv(
         self,
-        uri: str | PartitionBy,
+        uri: str | Path | PartitionBy,
         *,
         include_bom: bool = False,
         include_header: bool = True,
@@ -799,7 +800,7 @@ class LazyFrameRemote:
 
     def sink_ipc(
         self,
-        uri: str | PartitionBy,
+        uri: str | Path | PartitionBy,
         *,
         compression: IpcCompression | None = "zstd",
         compat_level: CompatLevel | None = None,
@@ -1218,7 +1219,7 @@ class ExecuteRemote:
 
     def sink_parquet(
         self,
-        uri: str | PartitionBy,
+        uri: str | Path | PartitionBy,
         *,
         compression: ParquetCompression = "zstd",
         compression_level: int | None = None,
@@ -1362,7 +1363,7 @@ class ExecuteRemote:
 
     def sink_csv(
         self,
-        uri: str | PartitionBy,
+        uri: str | Path | PartitionBy,
         *,
         include_bom: bool = False,
         include_header: bool = True,
@@ -1529,7 +1530,7 @@ class ExecuteRemote:
 
     def sink_ipc(
         self,
-        uri: str | PartitionBy,
+        uri: str | Path | PartitionBy,
         *,
         compression: IpcCompression | None = "zstd",
         compat_level: CompatLevel | None = None,
