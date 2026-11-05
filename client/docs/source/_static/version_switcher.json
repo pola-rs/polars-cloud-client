@@ -2,7 +2,7 @@
   {
     "name": "stable",
     "version": "stable",
-    "url": "https://docs.cloud.pola.rs/api/python/stable/",
+    "url": "/api/python/stable/",
     "preferred": true
   }
 ]

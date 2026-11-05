@@ -99,7 +99,7 @@ pub async fn connect(
     if is_connected(client, workspace.id).await? {
         println!(
             "Workspace '{}' is already connected to AWS.\n\
-             Run `pc workspace aws disconnect -w {}` first if you want to reconnect it.",
+             Run `nanook workspace aws disconnect -w {}` first if you want to reconnect it.",
             workspace.name, workspace.name
         );
         return Ok(());
@@ -186,7 +186,7 @@ pub async fn verify(
     let Some(connection) = workspace_aws::connection(client, workspace.id).await? else {
         return Err(anyhow!(
             "Workspace '{name}' has no AWS account connected.\n\
-             Run `pc workspace aws connect -w {name}` to connect one."
+             Run `nanook workspace aws connect -w {name}` to connect one."
         )
         .into());
     };
@@ -209,7 +209,7 @@ pub async fn verify(
         .into()),
         Deleted => Err(anyhow!(
             "The AWS connection for workspace '{name}' was removed.\n\
-             Run `pc workspace aws connect -w {name}` to connect an account again."
+             Run `nanook workspace aws connect -w {name}` to connect an account again."
         )
         .into()),
     }
@@ -224,7 +224,7 @@ pub async fn ensure_deletable(client: &Client, workspace_id: Uuid) -> ApiResult<
     if status == Some(AwsConnectionStatusModel::Pending) {
         return Err(anyhow!(
             "This workspace is still setting up its AWS connection. Wait for it to finish, then \
-             run `pc workspace aws disconnect` before deleting the workspace."
+             run `nanook workspace aws disconnect` before deleting the workspace."
         )
         .into());
     }
@@ -239,7 +239,7 @@ pub fn explain_delete_conflict(error: ApiError) -> ApiError {
     }
 
     anyhow!(
-        "{error}\n\nRun `pc workspace aws disconnect` and delete the returned CloudFormation \
+        "{error}\n\nRun `nanook workspace aws disconnect` and delete the returned CloudFormation \
          stack in AWS first, then delete the workspace."
     )
     .into()
@@ -447,7 +447,7 @@ mod tests {
         assert!(
             rewritten
                 .to_string()
-                .contains("pc workspace aws disconnect")
+                .contains("nanook workspace aws disconnect")
         );
         // The server's own wording survives alongside the hint.
         assert!(rewritten.to_string().contains("400"));

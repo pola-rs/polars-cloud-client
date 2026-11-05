@@ -4,7 +4,7 @@ Workspace
 
 This section contains workspace related objects and functions.
 
-.. currentmodule:: polars_cloud
+.. currentmodule:: polars_nanook
 
 .. toctree::
    :maxdepth: 2

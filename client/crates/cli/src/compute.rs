@@ -25,7 +25,7 @@ pub async fn get_all_clusters(client: &Client, workspace_id: Uuid) -> ApiResult<
     client.get_compute_clusters(workspace_id, params).await
 }
 
-/// The workspaces `pc compute list` reports on: one when named, otherwise every workspace in the
+/// The workspaces `nanook compute list` reports on: one when named, otherwise every workspace in the
 /// organization, otherwise every workspace you have access to.
 async fn workspaces_to_list(
     client: &Client,
@@ -75,7 +75,9 @@ pub async fn print_compute_clusters(
     }
 
     if !any {
-        println!("No compute clusters found. Run `pc compute start -w <workspace>` to start one.");
+        println!(
+            "No compute clusters found. Run `nanook compute start -w <workspace>` to start one."
+        );
         return Ok(());
     }
 
@@ -96,7 +98,9 @@ pub async fn stop_compute_cluster(
         .stop_compute_cluster(workspace.id, cluster_id)
         .await?;
 
-    println!("Stopping cluster {cluster_id}. Run `pc compute list` to check when it has stopped.");
+    println!(
+        "Stopping cluster {cluster_id}. Run `nanook compute list` to check when it has stopped."
+    );
 
     Ok(())
 }
@@ -123,8 +127,15 @@ pub async fn print_compute_cluster_details(
             .unwrap_or("None".into()),
     ]);
     table.add_row(vec!["Cluster size", &cluster.cluster_size.to_string()]);
+    table.add_row(vec!["Connection mode", &format!("{:?}", cluster.mode)]);
     table.add_row(vec!["Workspace", &workspace.name]);
-    table.add_row(vec!["Polars version", &cluster.polars_version.to_string()]);
+    table.add_row(vec![
+        "Polars version",
+        &cluster
+            .polars_version
+            .map(|x| x.to_string())
+            .unwrap_or("None".into()),
+    ]);
     table.add_row(vec!["Requested at", &cluster.request_time.to_string()]);
 
     println!("{table}");
@@ -144,6 +155,7 @@ pub async fn start_compute_cluster(
     cluster_size: u32,
     env_vars: HashMap<String, String>,
     wait: bool,
+    mode: DBClusterModeModel,
 ) -> ApiResult<()> {
     let workspace = get_workspace_by_name(client, organization_name, workspace_name).await?;
 
@@ -190,13 +202,14 @@ pub async fn start_compute_cluster(
                 storage,
                 big_instance_storage: None,
                 cluster_size,
-                mode: DBClusterModeModel::Proxy,
+                mode,
                 python_version,
                 polars_version,
                 labels: None,
                 log_level: None,
                 idle_timeout_mins: None,
                 requirements_txt: None,
+                provider: None,
                 settings: None,
                 env_vars,
             },
@@ -223,7 +236,7 @@ pub async fn start_compute_cluster(
         println!("Cluster {} is ready.", cluster.id);
     } else {
         println!(
-            "Starting cluster {}. Run `pc compute list` to check when it is ready.",
+            "Starting cluster {}. Run `nanook compute list` to check when it is ready.",
             cluster.id
         );
     }

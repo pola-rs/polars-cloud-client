@@ -1,23 +1,51 @@
 use chrono::prelude::*;
 #[cfg(feature = "server")]
+use garde::Validate;
+#[cfg(feature = "server")]
 use regex::Regex;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
-#[cfg_attr(feature = "server", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "server", derive(schemars::JsonSchema, Validate))]
 pub struct TimeWindow {
+    #[cfg_attr(feature = "server", garde(custom(is_before(&self.end))))]
     pub start: DateTime<FixedOffset>,
+    #[cfg_attr(feature = "server", garde(skip))]
     pub end: DateTime<FixedOffset>,
 }
 
+#[cfg(feature = "server")]
+fn is_before(
+    end: &DateTime<FixedOffset>,
+) -> impl FnOnce(&DateTime<FixedOffset>, &()) -> garde::Result + '_ {
+    move |start, _ctx| {
+        if start < end {
+            Ok(())
+        } else {
+            Err(garde::Error::new("start must be before end"))
+        }
+    }
+}
+
 #[derive(Deserialize, Debug)]
-#[cfg_attr(feature = "server", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "server", derive(schemars::JsonSchema, Validate))]
 pub struct MetricWindow {
     #[serde(flatten)]
+    #[cfg_attr(feature = "server", garde(dive))]
     pub window: TimeWindow,
     #[serde(with = "duration_seconds")]
     #[cfg_attr(feature = "server", schemars(with = "u64"))]
+    #[cfg_attr(feature = "server", garde(custom(is_at_least_five_minutes)))]
     pub interval: chrono::Duration,
+}
+
+#[cfg(feature = "server")]
+fn is_at_least_five_minutes(interval: &chrono::Duration, _ctx: &()) -> garde::Result {
+    if *interval >= chrono::Duration::minutes(5) {
+        Ok(())
+    } else {
+        Err(garde::Error::new("interval must be at least 5 minutes"))
+    }
 }
 
 pub mod duration_seconds {

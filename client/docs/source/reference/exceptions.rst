@@ -2,7 +2,7 @@
 Exceptions
 ==========
 
-.. currentmodule:: polars_cloud.exceptions
+.. currentmodule:: polars_nanook.exceptions
 
 .. autosummary::
     :toctree: api/

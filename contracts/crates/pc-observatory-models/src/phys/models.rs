@@ -12,11 +12,31 @@ use std::num::NonZeroUsize;
 
 #[cfg(feature = "server")]
 use schemars::JsonSchema;
+use uuid::Uuid;
 
 use crate::ir::models::PredicateFileSkip;
 use crate::phys::warning::PhysNodeWarning;
 use crate::serde_compat::string_or_vec;
 use crate::{Edge, SortColumn};
+
+/// Split a shuffle storage path into a worker-invariant display path and the
+/// shuffle id.
+///
+/// Returns `None` for paths that are not shuffle storage, e.g. a user sink
+/// target or a plain file scan.
+pub fn shuffle_path_parts(path: &str) -> Option<(String, u32)> {
+    let (before, after) = path.split_once("/shuffle=")?;
+
+    // Require a real query id rather than any `query=` text, so a user sink
+    // target that happens to contain these segments is not mistaken for shuffle
+    // storage.
+    let query_id = before.rsplit_once("query=")?.1;
+    Uuid::parse_str(query_id).ok()?;
+
+    let number = after.split('/').next()?;
+    let shuffle_id = number.parse::<u32>().ok()?;
+    Some((format!("query={query_id}/shuffle={number}"), shuffle_id))
+}
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
@@ -52,6 +72,9 @@ pub struct PhysNodeInfo {
     pub id: u64,
     // Type node used for lookup purposes in frontend
     pub type_id: String,
+    // None in plans from workers that predate this field.
+    #[serde(default)]
+    pub origin_node_id: Option<u64>,
     pub title: Option<String>,
     pub subtitle: Option<String>,
     pub properties: PhysNodeProperties,

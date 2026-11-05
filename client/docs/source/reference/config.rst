@@ -1,7 +1,7 @@
 ======
 Config
 ======
-.. currentmodule:: polars_cloud
+.. currentmodule:: polars_nanook
 
 Config options
 --------------
@@ -44,7 +44,7 @@ explicitly calling one or more of the available "set\_" methods on it...
 
 .. code-block:: python
 
-    with pc.Config() as cfg:
+    with pn.Config() as cfg:
         cfg.set_single_node(True)
         do_various_things()
 
@@ -55,7 +55,7 @@ explicitly calling one or more of the available "set\_" methods on it...
 
 .. code-block:: python
 
-    with pc.Config(single_node=True):
+    with pn.Config(single_node=True):
         do_various_things()
 
 Use as a decorator
@@ -66,7 +66,7 @@ to temporarily set options for the duration of the function call:
 
 .. code-block:: python
 
-    cfg_single_node = pc.Config(single_node=True, apply_on_context_enter=True)
+    cfg_single_node = pn.Config(single_node=True, apply_on_context_enter=True)
 
     @cfg_single_node
     def run_remote_lazyframe(lf: pl.LazyFrame) -> None:

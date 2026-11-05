@@ -2,7 +2,7 @@
 Destination 
 ============
 
-.. currentmodule:: polars_cloud
+.. currentmodule:: polars_nanook
 
 .. toctree::
    :maxdepth: 2

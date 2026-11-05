@@ -4,10 +4,10 @@ use std::collections::HashMap;
 
 use client_core::{ApiError, RUNTIME, VERSIONS};
 use polars_axum_models::{
-    ComputeClusterNodeInfoModel, ComputeClusterPublicInfoModel, ComputeModel, ComputeStatusModel,
-    DBCPUArchitectureModel, DBClusterModeModel, GetClusterFilterArgs, InstanceSpecsModel,
-    LogLevelModel, ManifestModel, ManifestQueryArgs, RegisterComputeClusterManifestArgs,
-    StartComputeClusterArgs, StartComputeClusterManifestArgs,
+    ComputeClusterNodeInfoModel, ComputeClusterPublicInfoModel, ComputeModel, ComputeProviderModel,
+    ComputeStatusModel, DBCPUArchitectureModel, DBClusterModeModel, GetClusterFilterArgs,
+    InstanceSpecsModel, LogLevelModel, ManifestModel, ManifestQueryArgs,
+    RegisterComputeClusterManifestArgs, StartComputeClusterArgs, StartComputeClusterManifestArgs,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::{Python, pymethods};
@@ -82,7 +82,7 @@ impl WrappedAPIClient {
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature=(workspace_id, name, cluster_size, mode, cpus, ram_gb, cpu_architectures, instance_type, storage, big_instance_type, big_instance_multiplier,  big_instance_storage, requirements_txt, env_vars, labels, log_level, idle_timeout_mins))]
+    #[pyo3(signature=(workspace_id, name, cluster_size, mode, cpus, ram_gb, cpu_architectures, instance_type, storage, big_instance_type, big_instance_multiplier,  big_instance_storage, requirements_txt, env_vars, labels, log_level, idle_timeout_mins, provider))]
     pub fn register_compute_cluster_manifest(
         &self,
         py: Python,
@@ -103,6 +103,7 @@ impl WrappedAPIClient {
         labels: Option<Vec<String>>,
         log_level: LogLevelModel,
         idle_timeout_mins: Option<u32>,
+        provider: Option<ComputeProviderModel>,
     ) -> Result<ManifestModel, ApiError> {
         py.enter_rust(|| {
             if (big_instance_type.is_some() || big_instance_multiplier.is_some())
@@ -145,6 +146,7 @@ impl WrappedAPIClient {
                 python_version,
                 polars_version,
                 idle_timeout_mins,
+                provider,
                 settings: None
             };
 
@@ -194,7 +196,7 @@ impl WrappedAPIClient {
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature=(workspace_id, cluster_size, mode, cpus, ram_gb, cpu_architectures, instance_type, storage, big_instance_type, big_instance_multiplier,  big_instance_storage, requirements_txt, env_vars, labels, log_level, idle_timeout_mins))]
+    #[pyo3(signature=(workspace_id, cluster_size, mode, cpus, ram_gb, cpu_architectures, instance_type, storage, big_instance_type, big_instance_multiplier,  big_instance_storage, requirements_txt, env_vars, labels, log_level, idle_timeout_mins, provider))]
     pub fn start_compute(
         &self,
         py: Python<'_>,
@@ -214,6 +216,7 @@ impl WrappedAPIClient {
         labels: Option<Vec<String>>,
         log_level: Option<LogLevelModel>,
         idle_timeout_mins: Option<u32>,
+        provider: Option<ComputeProviderModel>,
     ) -> Result<ComputeModel, ApiError> {
         py.enter_rust(|| {
             if (big_instance_type.is_some() || big_instance_multiplier.is_some())
@@ -257,6 +260,7 @@ impl WrappedAPIClient {
                 python_version,
                 polars_version,
                 idle_timeout_mins,
+                provider,
                 settings: None,
             };
 

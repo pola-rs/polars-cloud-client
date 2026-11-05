@@ -2,7 +2,7 @@
 IpcDst
 ============
 
-.. currentmodule:: polars_cloud
+.. currentmodule:: polars_nanook
 
 .. autoclass:: IpcDst
     :members:

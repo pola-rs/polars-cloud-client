@@ -3,9 +3,7 @@ use std::collections::HashSet;
 use polars_descriptions::{IrNodeDescription, IrPropsDescription};
 
 use crate::Edge;
-use crate::convert::{
-    python_predicate, sink_from_dest, to_pred_skip, to_sort_column, to_sort_columns,
-};
+use crate::convert::{python_predicate, sink_from_dest, to_pred_skip, to_sort_columns};
 use crate::ir::models::{AggKind, IRNodeProperties, Predicate};
 use crate::ir::{IRNodeInfo, IRVisualizationData};
 
@@ -29,6 +27,7 @@ pub fn description_to_ir_visualization(nodes: Vec<IrNodeDescription>) -> IRVisua
                 title: None,
                 subtitle,
                 properties,
+                origin_node_id: None,
             }
         })
         .collect();
@@ -95,7 +94,9 @@ fn to_ir_props(props: IrPropsDescription) -> IRNodeProperties {
         },
         IrPropsDescription::Invalid
         | IrPropsDescription::Other
-        | IrPropsDescription::Resolver { .. } => IRNodeProperties::Invalid,
+        | IrPropsDescription::Recursive { .. }
+        | IrPropsDescription::Resolver { .. }
+        | IrPropsDescription::WorkingTableScan { .. } => IRNodeProperties::Invalid,
         IrPropsDescription::Join {
             how,
             left_on,
@@ -319,7 +320,7 @@ fn to_ir_props(props: IrPropsDescription) -> IRNodeProperties {
             ordered_eval,
         } => IRNodeProperties::Window {
             partition_by,
-            order_by: order_by.map(to_sort_column),
+            order_by: to_sort_columns(order_by),
             exprs,
             maintain_order,
             ordered_eval,

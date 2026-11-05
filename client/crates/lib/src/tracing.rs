@@ -20,12 +20,12 @@ mod imp {
 
     static PROVIDER: OnceLock<Result<SdkTracerProvider, String>> = OnceLock::new();
 
-    const TRACER_NAME: &str = "polars-cloud-client";
+    const TRACER_NAME: &str = "polars-nanook-client";
 
     const ENDPOINT_VAR: &str = "OTLP_ENDPOINT";
 
     const DEFAULT_FILTER: &str =
-        "warn,polars_cloud=info,client_core=info,polars_backend_client=info";
+        "warn,polars_nanook=info,client_core=info,polars_backend_client=info";
 
     const FLUSH_TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -91,7 +91,7 @@ mod imp {
 
         let endpoint = std::env::var(ENDPOINT_VAR).ok().filter(|e| !e.is_empty());
         if let Err(e) = install(endpoint) {
-            eprintln!("polars_cloud: tracing disabled ({e})");
+            eprintln!("polars_nanook: tracing disabled ({e})");
         }
     }
 
@@ -120,7 +120,7 @@ mod imp {
         pub fn new(name: &str) -> Self {
             Self {
                 span: tracing::info_span!(
-                    "polars_cloud_operation",
+                    "client_operation",
                     "otel.name" = %name,
                     "otel.status_code" = tracing::field::Empty,
                     "error.type" = tracing::field::Empty,
@@ -159,7 +159,7 @@ mod imp {
     pub fn init_from_env() {
         if std::env::var_os("OTLP_ENDPOINT").is_some_and(|e| !e.is_empty()) {
             eprintln!(
-                "polars_cloud: OTLP_ENDPOINT is set but this build has tracing compiled out \
+                "polars_nanook: OTLP_ENDPOINT is set but this build has tracing compiled out \
                  (rebuild with `--features otlp`)"
             );
         }

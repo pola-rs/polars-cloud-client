@@ -8,7 +8,7 @@ use serde_json::json;
 use crate::constants::{LOGIN_AUDIENCE, LOGIN_CLIENT_ID};
 use crate::error::ApiError;
 use crate::utils::{Tokens, write_tokens};
-use crate::{AuthToken, PolarsCloudConfig};
+use crate::{AuthToken, ClientConfig};
 
 #[derive(Deserialize)]
 struct AuthResponse {
@@ -26,7 +26,7 @@ pub async fn login_new(
     let device: AuthResponse = connection_pool
         .post(format!(
             "https://{}/realms/Polars/protocol/openid-connect/auth/device",
-            PolarsCloudConfig::resolve_auth_domain()
+            ClientConfig::resolve_auth_domain()
         ))
         .form(&json!({"client_id": LOGIN_CLIENT_ID, "audience": LOGIN_AUDIENCE}))
         .send()
@@ -56,7 +56,7 @@ If your browser did not open automatically, please go to the following URL:
     // Get token with device code
     let url = format!(
         "https://{}/realms/Polars/protocol/openid-connect/token",
-        PolarsCloudConfig::resolve_auth_domain()
+        ClientConfig::resolve_auth_domain()
     );
 
     let data = json!({

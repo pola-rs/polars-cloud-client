@@ -2,7 +2,7 @@
 Workspace
 ============
 
-.. currentmodule:: polars_cloud
+.. currentmodule:: polars_nanook
 
 .. autoclass:: Workspace
     :members:

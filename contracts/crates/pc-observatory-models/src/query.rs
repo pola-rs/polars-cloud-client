@@ -10,7 +10,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::AggregatedPhysicalMetricFieldsModel;
+use crate::AggregatedPhysicalNodeMetricFieldsModel;
 use crate::ir::IRVisualizationData;
 use crate::phys::PhysicalPlanVisualizationData;
 use crate::stages::StageGraphVisualizationData;
@@ -144,7 +144,7 @@ pub struct StageModel {
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 pub struct PhysicalMetricsModel {
-    pub metrics: HashMap<PhysNodeId, AggregatedPhysicalMetricFieldsModel>,
+    pub metrics: HashMap<PhysNodeId, AggregatedPhysicalNodeMetricFieldsModel>,
     pub attempt_number: StageAttemptNumber,
 }
 
@@ -161,6 +161,22 @@ pub struct HostMetricsAggregatedModel {
     pub avg_cpu_percent: f64,
     pub peak_memory_percent: f64,
     pub avg_memory_percent: f64,
+    pub avg_network_bytes_per_s: NetworkBytesPerSecondModel,
+}
+
+/// Bytes per second the stage's nodes received and sent, over the time its tasks' queries had a
+/// read, or a send, in flight. A direction is `None` when no task did IO that way.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct NetworkBytesPerSecondModel {
+    pub rx: Option<f64>,
+    pub tx: Option<f64>,
+}
+
+impl NetworkBytesPerSecondModel {
+    pub fn new(rx: Option<f64>, tx: Option<f64>) -> Self {
+        Self { rx, tx }
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -177,6 +193,8 @@ pub struct StageDetailMetricsModel {
     pub total_node_time_ns: Option<DurationNs>,
     pub used_workers: Option<i64>,
     pub available_workers: Option<i64>,
+    /// The threads the stage's streaming queries ran with, summed over its workers.
+    pub total_threads: Option<i64>,
     pub host_metrics_aggregated: Option<HostMetricsAggregatedModel>,
 }
 
@@ -210,6 +228,19 @@ pub struct PartitionStatsModel {
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 pub struct NodeStageDurationModel {
+    /// The stage these tasks belong to. Optional for backwards compatibility: clusters deployed
+    /// before this field existed do not send it.
+    pub stage_number: Option<StageNumber>,
     pub node_id: NodeId,
+    /// Tasks of the stage's latest attempt this node ran. Optional for backwards compatibility:
+    /// clusters deployed before this field existed do not send it.
+    pub tasks: Option<i64>,
+    /// Summed duration of those tasks; `None` while any of them is still running.
     pub duration_ns: Option<i64>,
+    /// Duration of the node's longest task; `None` while any of them is still running.
+    pub max_task_ns: Option<i64>,
+    /// When the node's first task of the stage started.
+    pub start_time: Option<DateTime<Utc>>,
+    /// When the node's last task of the stage ended; `None` while any of them is still running.
+    pub end_time: Option<DateTime<Utc>>,
 }

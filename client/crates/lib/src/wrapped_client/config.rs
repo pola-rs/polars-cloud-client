@@ -1,6 +1,6 @@
 #![allow(clippy::result_large_err)]
 
-use client_core::{ApiError, OrganizationRef, PolarsCloudConfig, RUNTIME, WorkspaceRef};
+use client_core::{ApiError, ClientConfig, OrganizationRef, RUNTIME, WorkspaceRef};
 use pyo3::{Python, pymethods};
 use uuid::Uuid;
 
@@ -26,7 +26,7 @@ impl WrappedAPIClient {
             (name, id) => Some(OrganizationRef::from_name_or_id(name, id)?),
         };
         py.enter_rust(|| {
-            RUNTIME.block_on(PolarsCloudConfig::set_default_workspace(
+            RUNTIME.block_on(ClientConfig::set_default_workspace(
                 self.client.as_ref(),
                 workspace,
                 organization,
@@ -43,7 +43,7 @@ impl WrappedAPIClient {
     ) -> Result<Uuid, ApiError> {
         let organization = OrganizationRef::from_name_or_id(organization_name, organization_id)?;
         py.enter_rust(|| {
-            RUNTIME.block_on(PolarsCloudConfig::set_default_organization(
+            RUNTIME.block_on(ClientConfig::set_default_organization(
                 self.client.as_ref(),
                 organization,
             ))?
@@ -69,7 +69,7 @@ impl WrappedAPIClient {
         };
 
         py.enter_rust(|| {
-            RUNTIME.block_on(PolarsCloudConfig::resolve_default_workspace_id(
+            RUNTIME.block_on(ClientConfig::resolve_default_workspace_id(
                 self.client.as_ref(),
                 workspace,
                 organization,
@@ -80,31 +80,31 @@ impl WrappedAPIClient {
     /// Drop the cached config and read it from disk again. Mostly for tests, which write
     /// config files behind the running process's back.
     pub fn reload_config(&self) {
-        PolarsCloudConfig::reload();
+        ClientConfig::reload();
     }
 
     pub fn get_default_workspace_id(&self) -> Option<Uuid> {
-        PolarsCloudConfig::default_workspace_id()
+        ClientConfig::default_workspace_id()
     }
 
     pub fn get_default_organization_id(&self) -> Option<Uuid> {
-        PolarsCloudConfig::default_organization_id()
+        ClientConfig::default_organization_id()
     }
 
     pub fn clear_default_workspace(&self) -> Result<(), ApiError> {
-        PolarsCloudConfig::clear_default_workspace().map_err(Into::into)
+        ClientConfig::clear_default_workspace().map_err(Into::into)
     }
 
     pub fn clear_default_organization(&self) -> Result<(), ApiError> {
-        PolarsCloudConfig::clear_default_organization().map_err(Into::into)
+        ClientConfig::clear_default_organization().map_err(Into::into)
     }
 
     #[pyo3(signature = (username=None))]
     pub fn set_username(&self, username: Option<String>) -> Result<(), ApiError> {
-        PolarsCloudConfig::set_username(username).map_err(Into::into)
+        ClientConfig::set_username(username).map_err(Into::into)
     }
 
     pub fn get_username(&self) -> Option<String> {
-        PolarsCloudConfig::resolve_username()
+        ClientConfig::resolve_username()
     }
 }

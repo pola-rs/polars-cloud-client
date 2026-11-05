@@ -19,6 +19,20 @@ pub enum OnPremDeploymentModel {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[cfg_attr(feature = "server", derive(JsonSchema, Validate))]
 #[serde(deny_unknown_fields)]
+pub struct CreateOnPremComputeArgs {
+    /// Identifier for the cluster, shown alongside the compute
+    #[cfg_attr(feature = "server", garde(length(min = 1, max = 255)))]
+    pub cluster_id: String,
+    #[cfg_attr(feature = "server", garde(skip))]
+    pub deployment: OnPremDeploymentModel,
+    #[cfg_attr(feature = "server", garde(skip))]
+    pub labels: Option<Vec<String>>,
+}
+
+/// Legacy: sent by on-prem computes that register themselves with a service account
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[cfg_attr(feature = "server", derive(JsonSchema, Validate))]
+#[serde(deny_unknown_fields)]
 pub struct RegisterComputeClusterArgs {
     #[cfg_attr(feature = "server", garde(skip))]
     pub cluster_size: u32,

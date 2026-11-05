@@ -2,7 +2,7 @@
 CsvDst
 ============
 
-.. currentmodule:: polars_cloud
+.. currentmodule:: polars_nanook
 
 .. autoclass:: CsvDst
     :members:

@@ -1,4 +1,5 @@
 use std::cell::Cell;
+use std::hash::{BuildHasher, Hasher, RandomState};
 use std::time::{Duration, Instant};
 
 pub struct Exponential {
@@ -27,6 +28,68 @@ impl Exponential {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct Linear {
+    initial: Duration,
+    step: Duration,
+    maximum: Option<Duration>,
+    jitter: f64,
+}
+
+impl Linear {
+    pub fn new(initial: Duration, step: Duration) -> Self {
+        Self {
+            initial,
+            step,
+            maximum: None,
+            jitter: 0.0,
+        }
+    }
+
+    pub fn maximum(mut self, maximum: Duration) -> Self {
+        self.maximum = Some(maximum);
+        self
+    }
+
+    /// Randomly scales each duration by a factor in `[1 - fraction, 1 + fraction]`.
+    pub fn jitter(mut self, fraction: f64) -> Self {
+        self.jitter = fraction;
+        self
+    }
+
+    /// Delay before the zero-based `attempt`-th retry.
+    pub fn delay(&self, attempt: u32) -> Duration {
+        let base = self.clamp(
+            self.initial
+                .saturating_add(self.step.saturating_mul(attempt)),
+        );
+        let jitter_factor = 1.0 + self.jitter * (2.0 * random_unit_interval() - 1.0);
+        self.clamp(base.mul_f64(jitter_factor))
+    }
+
+    pub fn into_backoff(self) -> LinearBackoff {
+        LinearBackoff {
+            linear: self,
+            attempt: Cell::new(0),
+        }
+    }
+
+    fn clamp(&self, duration: Duration) -> Duration {
+        self.maximum
+            .map_or(duration, |maximum| duration.min(maximum))
+    }
+}
+
+pub struct LinearBackoff {
+    linear: Linear,
+    attempt: Cell<u32>,
+}
+
+fn random_unit_interval() -> f64 {
+    let bits = RandomState::new().build_hasher().finish();
+    (bits >> 11) as f64 / (1u64 << 53) as f64
+}
+
 pub struct Fixed(Duration);
 impl Fixed {
     pub fn new(duration: Duration) -> Self {
@@ -53,6 +116,14 @@ impl Backoff for Exponential {
             None => Some(duration),
             Some(maximum) => Some(duration.min(maximum)),
         }
+    }
+}
+
+impl Backoff for LinearBackoff {
+    fn next_duration(&self, _last_duration: Option<Duration>) -> Option<Duration> {
+        let attempt = self.attempt.get();
+        self.attempt.set(attempt.saturating_add(1));
+        Some(self.linear.delay(attempt))
     }
 }
 
@@ -146,4 +217,19 @@ macro_rules! retry {
             }
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn linear_grows_by_step_and_caps_at_maximum() {
+        let linear = Linear::new(Duration::from_millis(5), Duration::from_millis(5))
+            .maximum(Duration::from_millis(12));
+
+        let delays: Vec<_> = (0..4).map(|attempt| linear.delay(attempt)).collect();
+
+        assert_eq!(delays, [5, 10, 12, 12].map(Duration::from_millis));
+    }
 }

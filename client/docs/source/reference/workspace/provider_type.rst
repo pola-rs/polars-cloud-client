@@ -2,7 +2,7 @@
 Provider type
 ================
 
-.. currentmodule:: polars_cloud
+.. currentmodule:: polars_nanook
 
 .. autoclass:: ProviderType
     :members:

@@ -30,8 +30,8 @@ pub async fn get_organization_by_name(
     match matches.len() {
         0 => Err(anyhow!(
             "No organization with the name {name} was found.\n\n\
-             Hint: Run `pc organization list` to see the ones you have, or \
-             `pc organization setup --name {name}` to create this one."
+             Hint: Run `nanook organization list` to see the ones you have, or \
+             `nanook organization setup --name {name}` to create this one."
         )
         .into()),
         1 => Ok(matches.remove(0)),
@@ -65,7 +65,7 @@ pub async fn resolve_organization(
 
         return match organizations.len() {
             0 => Err(anyhow!(
-                "You have no organizations yet. Run `pc organization setup --name <name>` first."
+                "You have no organizations yet. Run `nanook organization setup --name <name>` first."
             )
             .into()),
             1 => {
@@ -110,7 +110,9 @@ pub async fn print_organizations(client: &Client) -> ApiResult<()> {
     let organizations = get_organizations(client, None).await?;
 
     if organizations.is_empty() {
-        println!("No organizations yet. Run `pc organization setup --name <name>` to create one.");
+        println!(
+            "No organizations yet. Run `nanook organization setup --name <name>` to create one."
+        );
         return Ok(());
     }
 
@@ -134,7 +136,7 @@ pub async fn print_organization_details(client: &Client, name: String) -> ApiRes
     table.add_row(vec!["Name", &organization.name]);
     table.add_row(vec!["ID", &organization.id.to_string()]);
     table.add_row(vec!["Description", &organization.description]);
-    table.add_row(vec!["Tier", &format!("{:?}", organization.tier)]);
+    table.add_row(vec!["Plan", &format!("{:?}", organization.plan)]);
     table.add_row(vec!["Created at", &organization.created_at.to_string()]);
 
     println!("{table}");

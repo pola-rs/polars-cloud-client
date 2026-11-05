@@ -2,8 +2,8 @@
 Python API reference
 ====================
 
-This page gives a high-level overview of all public Polars Cloud objects, functions and
-methods. All classes and functions exposed in the ``polars_cloud.*`` namespace are public.
+This page gives a high-level overview of all public Polars Nanook objects, functions and
+methods. All classes and functions exposed in the ``polars_nanook.*`` namespace are public.
 
 .. grid::
 

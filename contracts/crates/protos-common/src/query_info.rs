@@ -41,7 +41,6 @@ impl From<common::User> for User {
 #[derive(Default, Clone)]
 pub struct QueryInfo {
     pub labels: Vec<String>,
-    pub execution_id: Option<String>,
     pub lineage_context: Option<common::LineageContext>,
 }
 
@@ -67,7 +66,6 @@ impl From<QueryInfo> for common::QueryInfo {
                 .into_iter()
                 .map(|name| common::Label { name })
                 .collect(),
-            execution_id: value.execution_id,
             lineage_context: value.lineage_context,
         }
     }
@@ -77,7 +75,6 @@ impl From<common::QueryInfo> for QueryInfo {
     fn from(value: common::QueryInfo) -> Self {
         Self {
             labels: value.labels.into_iter().map(|label| label.name).collect(),
-            execution_id: value.execution_id,
             lineage_context: value.lineage_context,
         }
     }

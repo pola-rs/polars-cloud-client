@@ -51,7 +51,6 @@ impl WrappedAPIClient {
                 settings: settings.into(),
                 plan: plan.into(),
                 query_info: QueryInfo {
-                    execution_id: None,
                     labels: labels.unwrap_or_default(),
                     lineage_context: lineage_context.map(protos_common::LineageContext::from),
                 },

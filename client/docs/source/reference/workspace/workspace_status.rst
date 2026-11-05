@@ -2,7 +2,7 @@
 WorkspaceStatus
 ===============
 
-.. currentmodule:: polars_cloud
+.. currentmodule:: polars_nanook
 
 .. autoclass:: WorkspaceStatus
     :members:

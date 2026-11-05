@@ -1,9 +1,9 @@
 use chrono::{DateTime, Utc};
 use client_core::ApiError;
 use polars_axum_models::{
-    AwsConnectionStatusModel, OrganizationModel, OrganizationSubscriptionStateModel,
-    OrganizationTierModel, WorkspaceAwsConnectionModel, WorkspaceDeploymentModel, WorkspaceModel,
-    WorkspaceStateModel,
+    AwsConnectionStatusModel, OrganizationModel, OrganizationPlanModel,
+    OrganizationSubscriptionStateModel, OrganizationTierModel, WorkspaceAwsConnectionModel,
+    WorkspaceDeploymentModel, WorkspaceModel, WorkspaceStateModel,
 };
 use reqwest::StatusCode;
 use uuid::Uuid;
@@ -35,6 +35,7 @@ pub fn organization(name: &str) -> OrganizationModel {
         trial_started_at: None,
         trial_expires_at: None,
         tier: OrganizationTierModel::PayAsYouGo,
+        plan: OrganizationPlanModel::PayAsYouGo,
         created_at: DateTime::<Utc>::default(),
         updated_at: DateTime::<Utc>::default(),
         deleted_at: None,
@@ -44,7 +45,7 @@ pub fn organization(name: &str) -> OrganizationModel {
 pub fn status_error(status: StatusCode) -> ApiError {
     ApiError::StatusError {
         status,
-        url: "https://api.cloud.pola.rs/api/v1/workspace"
+        url: "https://api.nanook.pola.rs/api/v1/workspace"
             .parse()
             .unwrap(),
         body: String::new(),

@@ -1,21 +1,16 @@
 # Minimal makefile for Sphinx documentation
 
 SHELL=bash
-VENV=.venv
 
-ifeq ($(OS),Windows_NT)     # is Windows_NT on XP, 2000, 7, Vista, 10...
-    VENV_FOLDER := Scripts
-else
-    VENV_FOLDER := bin
-endif
-VENV_BIN=../../$(VENV)/$(VENV_FOLDER)
+# See ../Makefile
+export UV_PROJECT := $(abspath ../..)
 
 export BUILDING_SPHINX_DOCS = 1
 
 # You can set these variables from the command line, and also
 # from the environment for the first two.
 SPHINXOPTS    ?= -j auto -W
-SPHINXBUILD   ?= $(VENV_BIN)/sphinx-build
+SPHINXBUILD   ?= uv run sphinx-build
 SOURCEDIR     = source
 BUILDDIR      = build
 

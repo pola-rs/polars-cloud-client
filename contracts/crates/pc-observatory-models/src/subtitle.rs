@@ -13,7 +13,7 @@ pub fn truncate_elements_lazy<T>(
     for item in elements {
         let elem = to_string(item);
         if result.is_empty() {
-            if elem.len() + separator.len() + suffix.len() > MAX_SUBTITLE_LENGTH {
+            if elem.chars().count() + separator.len() + suffix.len() > MAX_SUBTITLE_LENGTH {
                 return truncate_subtitle(&elem);
             }
             result.push_str(&elem);
@@ -42,9 +42,9 @@ pub fn truncate_subtitle(subtitle: &str) -> Option<String> {
     if subtitle.is_empty() {
         return None;
     }
-    if subtitle.len() > MAX_SUBTITLE_LENGTH {
-        Some(format!("{}...", &subtitle[..MAX_SUBTITLE_LENGTH - 3]))
+    if let Some((n, _)) = subtitle.char_indices().nth(MAX_SUBTITLE_LENGTH - 3) {
+        Some(format!("{}...", &subtitle[..n]))
     } else {
-        Some(subtitle.to_string())
+        Some(subtitle.to_owned())
     }
 }

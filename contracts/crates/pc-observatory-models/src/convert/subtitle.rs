@@ -16,6 +16,9 @@ pub(super) fn ir_subtitle(props: &IRNodeProperties) -> Option<String> {
         }
         | P::IEJoin {
             left_on, right_on, ..
+        }
+        | P::RangeJoin {
+            left_on, right_on, ..
         } => join_subtitle(left_on, right_on),
         P::Filter { predicate } => truncate_join(&predicate.0),
         P::Distinct {

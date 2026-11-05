@@ -11,7 +11,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Organization created for a user on their first request.
+/// Organization created on a user's first request when [`default_organization_name`]
+/// can't use their first name.
 pub const DEFAULT_ORGANIZATION_NAME: &str = "My organization";
 /// Workspace created inside the default organization.
 pub const DEFAULT_WORKSPACE_NAME: &str = "My workspace";
@@ -19,12 +20,27 @@ pub const DEFAULT_WORKSPACE_NAME: &str = "My workspace";
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all))]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
+pub enum OrganizationPlanModel {
+    Developer,
+    PayAsYouGo,
+    Team,
+    Enterprise,
+    Legacy,
+}
+
+/// Superseded by [`OrganizationPlanModel`]. Kept only so that clients 0.11.x and 0.12.x, which
+/// deserialize [`OrganizationModel`] strictly and only know these two variants, can still
+/// parse our responses. Only their CLI reads the value.
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object, get_all))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[deprecated_since_client("0.13.0")]
 pub enum OrganizationTierModel {
     FreeTier,
     PayAsYouGo,
 }
 
-/// Superseded by [`OrganizationTierModel`]. Kept only so that clients up to 0.10.x, which
+/// Superseded by [`OrganizationPlanModel`]. Kept only so that clients up to 0.10.x, which
 /// deserialize [`OrganizationModel`] strictly, can still parse our responses. None of them
 /// read the value.
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -59,7 +75,9 @@ pub struct OrganizationModel {
     pub trial_started_at: Option<DateTime<Utc>>,
     #[deprecated_since_client("0.11.0")]
     pub trial_expires_at: Option<DateTime<Utc>>,
+    #[deprecated_since_client("0.13.0")]
     pub tier: OrganizationTierModel,
+    pub plan: OrganizationPlanModel,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
@@ -109,6 +127,19 @@ pub struct OrganizationCreateArgs {
     pub name: String,
 }
 
+/// Name of the organization created for a user on their first request:
+/// "<first name>'s organization", or [`DEFAULT_ORGANIZATION_NAME`] when there is no
+/// first name or the result isn't a name users could pick themselves.
+#[cfg(feature = "server")]
+pub fn default_organization_name(first_name: Option<&str>) -> String {
+    first_name
+        .map(|first_name| OrganizationCreateArgs {
+            name: format!("{}'s organization", first_name.trim()),
+        })
+        .filter(|args| args.validate().is_ok())
+        .map_or_else(|| DEFAULT_ORGANIZATION_NAME.to_string(), |args| args.name)
+}
+
 #[derive(Default, Debug, Deserialize)]
 #[cfg_attr(feature = "server", derive(Validate, JsonSchema))]
 pub struct OrganizationQueryArgs {
@@ -139,18 +170,21 @@ mod tests {
     use uuid::Uuid;
 
     #[cfg(feature = "server")]
-    use crate::organization::validate_organization_name;
     use crate::organization::{
-        OrganizationModel, OrganizationSubscriptionStateModel, OrganizationTierModel,
+        DEFAULT_ORGANIZATION_NAME, default_organization_name, validate_organization_name,
+    };
+    use crate::organization::{
+        OrganizationModel, OrganizationPlanModel, OrganizationSubscriptionStateModel,
+        OrganizationTierModel,
     };
 
-    /// `OrganizationModel` as clients up to 0.10.x declare it. Those clients derive
-    /// `Deserialize` without field defaults, so every field here -- including the pre-tier
+    /// `OrganizationModel` as clients up to 0.12.x declare it. Those clients derive
+    /// `Deserialize` without field defaults, so every field here -- including the pre-plan
     /// ones we no longer use ourselves -- has to stay on the wire or they cannot parse an
     /// organization at all.
     #[derive(Deserialize)]
     #[expect(dead_code)]
-    struct OrganizationModelUpTo0_10 {
+    struct OrganizationModelUpTo0_12 {
         id: Uuid,
         name: String,
         description: String,
@@ -159,6 +193,7 @@ mod tests {
         subscription_state: OrganizationSubscriptionStateModel,
         trial_started_at: Option<DateTime<Utc>>,
         trial_expires_at: Option<DateTime<Utc>>,
+        tier: OrganizationTierModel,
         created_at: DateTime<Utc>,
         updated_at: DateTime<Utc>,
         deleted_at: Option<DateTime<Utc>>,
@@ -175,14 +210,15 @@ mod tests {
             subscription_state: OrganizationSubscriptionStateModel::Trial,
             trial_started_at: None,
             trial_expires_at: None,
-            tier: OrganizationTierModel::FreeTier,
+            tier: OrganizationTierModel::PayAsYouGo,
+            plan: OrganizationPlanModel::Enterprise,
             created_at: Utc::now(),
             updated_at: Utc::now(),
             deleted_at: None,
         };
 
         let json = serde_json::to_string(&model).unwrap();
-        serde_json::from_str::<OrganizationModelUpTo0_10>(&json)
+        serde_json::from_str::<OrganizationModelUpTo0_12>(&json)
             .expect("older clients must still be able to deserialize an organization");
     }
 
@@ -205,5 +241,33 @@ mod tests {
         assert!(validate_organization_name("--willem--", &()).is_err());
         assert!(validate_organization_name("!$%", &()).is_err());
         assert!(validate_organization_name("ABC\u{202e}DEF", &()).is_err());
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn test_default_organization_name() {
+        assert_eq!(
+            default_organization_name(Some("Ritchie")),
+            "Ritchie's organization"
+        );
+        assert_eq!(default_organization_name(Some("Zoë")), "Zoë's organization");
+        assert_eq!(
+            default_organization_name(Some(" Ada ")),
+            "Ada's organization"
+        );
+
+        assert_eq!(default_organization_name(None), DEFAULT_ORGANIZATION_NAME);
+        assert_eq!(
+            default_organization_name(Some("")),
+            DEFAULT_ORGANIZATION_NAME
+        );
+        assert_eq!(
+            default_organization_name(Some("first_name")),
+            DEFAULT_ORGANIZATION_NAME
+        );
+        assert_eq!(
+            default_organization_name(Some("Bartholomew-Maximilian")),
+            DEFAULT_ORGANIZATION_NAME
+        );
     }
 }

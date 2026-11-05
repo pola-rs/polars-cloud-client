@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 
-use chrono::{DateTime, FixedOffset, Utc};
+use chrono::{DateTime, Utc};
 use deprecation_macro::deprecated_since_client;
 #[cfg(feature = "server")]
 use garde::Validate;
@@ -70,6 +70,7 @@ impl Display for PythonVersion {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[cfg_attr(feature = "server", derive(JsonSchema, Validate))]
 #[serde(deny_unknown_fields)]
+#[deprecated_since_client]
 pub struct RegisterComputeClusterManifestArgs {
     #[cfg_attr(feature = "server", garde(skip))]
     pub name: String,
@@ -100,6 +101,11 @@ pub struct RegisterComputeClusterManifestArgs {
     #[cfg_attr(feature = "server", garde(skip))]
     pub env_vars: HashMap<String, String>,
 
+    #[serde(default)]
+    #[deprecated_since_client("0.12.0")]
+    #[cfg_attr(feature = "server", garde(skip))]
+    pub provider: Option<ComputeProviderModel>,
+
     // Backwards compat: old clients send `settings: { client_public_key: "" }`
     // alongside `mode: "direct"`. Accept and discard.
     #[serde(default, skip_serializing)]
@@ -123,6 +129,7 @@ pub struct StartComputeClusterManifestArgs {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[cfg_attr(feature = "server", derive(JsonSchema, Validate))]
 #[serde(deny_unknown_fields)]
+#[deprecated_since_client]
 pub struct StartComputeClusterArgs {
     #[serde(flatten)]
     #[cfg_attr(feature = "server", garde(dive))]
@@ -150,6 +157,11 @@ pub struct StartComputeClusterArgs {
     #[serde(default)]
     #[cfg_attr(feature = "server", garde(skip))]
     pub env_vars: HashMap<String, String>,
+
+    #[serde(default)]
+    #[deprecated_since_client("0.12.0")]
+    #[cfg_attr(feature = "server", garde(skip))]
+    pub provider: Option<ComputeProviderModel>,
 
     // Backwards compat: old clients send `settings: { client_public_key: "" }`
     // alongside `mode: "direct"`. Accept and discard.
@@ -202,30 +214,6 @@ impl EntityOrdering for ComputeClusterNodeInfoModel {
     fn order_fields() -> &'static [&'static str] {
         &["cpus", "memory_mb", "storage_mb"]
     }
-}
-
-#[derive(Debug, Default, Deserialize, Serialize)]
-#[cfg_attr(feature = "server", derive(JsonSchema))]
-pub struct AwsMetricModel {
-    pub timestamps: Vec<i64>,
-    pub values: Vec<f64>,
-}
-
-#[derive(Debug, Default, Deserialize, Serialize)]
-#[cfg_attr(feature = "server", derive(JsonSchema))]
-pub struct AwsMetricsModel {
-    pub cpu_usage_percent: AwsMetricModel,
-    pub memory_usage: AwsMetricModel,
-    pub memory_usage_percent: AwsMetricModel,
-    pub disk_usage: AwsMetricModel,
-    pub disk_usage_percent: AwsMetricModel,
-}
-
-#[derive(Deserialize, Debug)]
-#[cfg_attr(feature = "server", derive(schemars::JsonSchema))]
-pub struct TimeWindowOpt {
-    pub start: Option<DateTime<FixedOffset>>,
-    pub end: Option<DateTime<FixedOffset>>,
 }
 
 #[cfg_attr(feature = "pyo3", pyclass(from_py_object, eq, eq_int))]
@@ -298,6 +286,45 @@ impl DBClusterModeModel {
     }
 }
 
+/// Where a new cluster is provisioned.
+#[cfg_attr(feature = "pyo3", pyclass(from_py_object, eq, eq_int))]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum ComputeProviderModel {
+    Aws,
+    Serverless,
+}
+
+impl std::str::FromStr for ComputeProviderModel {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "aws" => Ok(Self::Aws),
+            "serverless" => Ok(Self::Serverless),
+            s => Err(format!(
+                "Invalid ComputeProvider: '{s}'. Expected 'aws' or 'serverless'"
+            )),
+        }
+    }
+}
+
+#[cfg_attr(feature = "pyo3", pyo3::pymethods)]
+#[cfg(feature = "pyo3")]
+impl ComputeProviderModel {
+    #[staticmethod]
+    fn from_str(s: &str) -> PyResult<Self> {
+        s.parse().map_err(PyValueError::new_err)
+    }
+
+    fn as_str(&self) -> &str {
+        match self {
+            ComputeProviderModel::Aws => "aws",
+            ComputeProviderModel::Serverless => "serverless",
+        }
+    }
+}
+
 /// Where a cluster's compute runs.
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 #[cfg_attr(feature = "pyo3", pyclass(from_py_object, eq, eq_int))]
@@ -313,8 +340,27 @@ pub enum ClusterDeploymentModel {
     BareMetal,
 }
 
+#[cfg_attr(feature = "pyo3", pyo3::pymethods)]
+#[cfg(feature = "pyo3")]
+impl ClusterDeploymentModel {
+    fn provider(&self) -> Option<ComputeProviderModel> {
+        match self {
+            ClusterDeploymentModel::Aws => Some(ComputeProviderModel::Aws),
+            ClusterDeploymentModel::Serverless => Some(ComputeProviderModel::Serverless),
+            ClusterDeploymentModel::OnPrem
+            | ClusterDeploymentModel::Kubernetes
+            | ClusterDeploymentModel::Ray
+            | ClusterDeploymentModel::BareMetal => None,
+        }
+    }
+}
+
 #[derive(Deserialize, Default, Serialize, Debug)]
-#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[cfg_attr(
+    feature = "server",
+    derive(Validate, JsonSchema),
+    garde(allow_unvalidated)
+)]
 pub struct GetClusterFilterArgs {
     /// Filters out any clusters that are not in the given status.
     #[serde(default)]
@@ -328,10 +374,20 @@ pub struct GetClusterFilterArgs {
     pub current_user_only: bool,
 }
 
-#[cfg_attr(feature = "pyo3", pyclass(skip_from_py_object, get_all))]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ComputeTokenModel {
+    pub id: Uuid,
+    /// Legacy field
+    pub token: String,
+    /// The full token for the compute's `license.on_prem.token`
+    pub compute_token: String,
+}
+
+/// A short-lived token for connecting to a compute cluster directly
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ComputeTokenLegacyModel {
     pub id: Uuid,
     pub token: String,
 }
@@ -361,8 +417,8 @@ pub struct ComputeModel {
     pub request_time: DateTime<Utc>,
     pub mode: DBClusterModeModel,
     pub deployment_type: ClusterDeploymentModel,
-    #[cfg_attr(feature = "server", schemars(with = "String"))]
-    pub polars_version: VersionNumber,
+    #[cfg_attr(feature = "server", schemars(with = "Option<String>"))]
+    pub polars_version: Option<VersionNumber>,
     #[cfg_attr(feature = "server", schemars(with = "Option<String>"))]
     pub compute_plane_version: Option<semver::Version>,
     pub status: ComputeStatusModel,
@@ -495,8 +551,8 @@ impl ComputeModel {
     }
 
     #[getter]
-    pub fn polars_version(&self) -> pyo3::PyResult<String> {
-        Ok(self.polars_version.to_string())
+    pub fn polars_version(&self) -> pyo3::PyResult<Option<String>> {
+        Ok(self.polars_version.as_ref().map(ToString::to_string))
     }
 
     #[getter]
@@ -561,27 +617,6 @@ impl Display for ConnectionStatusModel {
             ConnectionStatusModel::Unconnected => write!(f, "Unconnected"),
         }
     }
-}
-
-#[derive(Deserialize, Serialize)]
-#[cfg_attr(feature = "server", derive(JsonSchema))]
-pub struct AwsLogEventModel {
-    pub timestamp: DateTime<Utc>,
-    pub message: String,
-}
-
-#[cfg(feature = "server")]
-#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub struct TokenPaginated<T: Serialize + schemars::JsonSchema> {
-    pub data: T,
-    pub next_token: Option<String>,
-}
-
-#[cfg(not(feature = "server"))]
-#[derive(Debug, Deserialize, Serialize)]
-pub struct TokenPaginated<T: Serialize> {
-    pub data: T,
-    pub next_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -16,7 +16,7 @@ use crate::constants::RUNTIME;
 use crate::error::ApiError;
 use crate::grpc::{ControlPlaneGRPCClient, get_control_plane_client};
 use crate::utils::get_auth_header_from_access_token_env;
-use crate::{AuthError, AuthToken, PolarsCloudConfig, VERSIONS, login_new};
+use crate::{AuthError, AuthToken, ClientConfig, VERSIONS, login_new};
 
 pub struct AutoRefreshApiControlPlaneClient {
     rest: ApiClient,
@@ -28,7 +28,7 @@ pub struct AutoRefreshApiControlPlaneClient {
 impl Default for AutoRefreshApiControlPlaneClient {
     fn default() -> Self {
         let versions = VERSIONS.get().unwrap().clone().unwrap();
-        let api_addr = PolarsCloudConfig::resolve_api_addr();
+        let api_addr = ClientConfig::resolve_api_addr();
         let rest =
             ApiClient::new_with_versions("PLACEHOLDER".to_string(), api_addr.clone(), versions.1);
         let grpc = get_control_plane_client(&api_addr);

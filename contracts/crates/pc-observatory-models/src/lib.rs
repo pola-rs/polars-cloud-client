@@ -13,6 +13,7 @@ pub mod cluster;
 pub mod convert;
 mod fmt;
 pub mod ir;
+pub mod logical_metrics;
 pub mod node;
 pub mod phys;
 pub mod physical;
@@ -22,6 +23,7 @@ mod stored;
 pub mod subtitle;
 
 pub use cluster::*;
+pub use logical_metrics::*;
 pub use node::*;
 pub use physical::*;
 pub use stored::StoredPlan;

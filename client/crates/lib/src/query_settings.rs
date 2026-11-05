@@ -1,10 +1,11 @@
+use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::time::Duration;
 
 use protos_client_compute::client::{
-    DistributedOpts, Engine, ExecuteUntil, GraphFormat, LineageContext, NumWorkers, Planner,
-    QuerySettings, QueryType, ShuffleCompression, ShuffleCompressionAlgo, ShuffleFormat,
-    ShuffleOpts, SingleWorkerOps,
+    DistributedOpts, Engine, ExecuteUntil, GraphFormat, LineageContext, NumWorkers, QuerySettings,
+    QueryType, ShuffleCompression, ShuffleCompressionAlgo, ShuffleFormat, ShuffleOpts,
+    SingleWorkerOps,
 };
 use protos_client_compute::proto::polars_cloud::compute_plane::client::v1::query_settings::{
     FlightSinkOptions, SinkOptions,
@@ -93,35 +94,15 @@ impl From<PySingleWorkerOps> for SingleWorkerOps {
 
 #[pyclass(from_py_object)]
 #[derive(Clone, Debug)]
-pub enum PyPlanner {
-    Auto,
-    Naive,
-    Miso,
-}
-
-impl From<PyPlanner> for Planner {
-    fn from(value: PyPlanner) -> Self {
-        match value {
-            PyPlanner::Auto => Self::Auto,
-            PyPlanner::Naive => Self::Naive,
-            PyPlanner::Miso => Self::Miso,
-        }
-    }
-}
-
-#[pyclass(from_py_object)]
-#[derive(Clone, Debug)]
 pub enum PyQueryType {
     Single(),
     Distributed {
         shuffle_opts: PyShuffleOpts,
-        pre_aggregation: bool,
         expression_lowering: Option<bool>,
-        sort_partitioned: bool,
         equi_join_broadcast_limit: u64,
         partitions_per_worker: Option<u32>,
         single_worker_ops: PySingleWorkerOps,
-        planner: PyPlanner,
+        dev_opts: HashMap<String, String>,
     },
 }
 
@@ -277,22 +258,18 @@ impl From<PyQueryType> for QueryType {
             PyQueryType::Single() => Self::Single,
             PyQueryType::Distributed {
                 shuffle_opts,
-                pre_aggregation,
                 expression_lowering,
-                sort_partitioned,
                 equi_join_broadcast_limit,
                 partitions_per_worker,
                 single_worker_ops,
-                planner,
+                dev_opts,
             } => Self::Distributed(DistributedOpts {
                 shuffle_opts: shuffle_opts.into(),
-                pre_aggregation,
                 expression_lowering,
-                sort_partitioned,
                 equi_join_broadcast_limit,
                 partitions_per_worker,
                 single_worker_ops: single_worker_ops.into(),
-                planner: planner.into(),
+                dev_opts,
             }),
         }
     }

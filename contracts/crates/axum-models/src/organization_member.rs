@@ -33,7 +33,11 @@ pub struct OrganizationUserModel {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[cfg_attr(
+    feature = "server",
+    derive(Validate, JsonSchema),
+    garde(allow_unvalidated)
+)]
 pub struct ListOrganizationMembersQueryArgs {
     pub include_service_accounts: Option<bool>,
     pub email: Option<String>,

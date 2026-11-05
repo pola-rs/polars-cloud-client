@@ -4,7 +4,7 @@ LazyFrameRemote
 
 This namespace becomes available by calling `LazyFrame.remote(...)`.
 
-.. currentmodule:: polars_cloud
+.. currentmodule:: polars_nanook
 
 .. autosummary::
    :toctree: api/
@@ -20,4 +20,5 @@ This namespace becomes available by calling `LazyFrame.remote(...)`.
    LazyFrameRemote.sink_csv
    LazyFrameRemote.sink_ipc
    LazyFrameRemote.show
+   LazyFrameRemote.show_graph
    LazyFrameRemote.with_lineage

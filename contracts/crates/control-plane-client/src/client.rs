@@ -2,7 +2,7 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use bytes::{BufMut, Bytes, BytesMut};
-use chrono::SecondsFormat;
+use chrono::{SecondsFormat, Utc};
 use http::header::AUTHORIZATION;
 use http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use polars_axum_models::*;
@@ -28,14 +28,14 @@ pub struct ApiClient {
 #[derive(Clone)]
 pub struct Versions {
     pub polars: HeaderValue,
-    pub polars_cloud: HeaderValue,
+    pub client: HeaderValue,
 }
 
 impl Versions {
-    pub fn new(polars_version: HeaderValue, polars_cloud_version: HeaderValue) -> Self {
+    pub fn new(polars_version: HeaderValue, client_version: HeaderValue) -> Self {
         Self {
             polars: polars_version,
-            polars_cloud: polars_cloud_version,
+            client: client_version,
         }
     }
 }
@@ -61,10 +61,10 @@ impl Default for ApiClientBuilder {
 }
 
 pub fn user_agent(versions: Option<&Versions>) -> HeaderValue {
-    let mut user_agent = BytesMut::from("polars-cloud");
+    let mut user_agent = BytesMut::from("polars-nanook");
     if let Some(versions) = versions {
         user_agent.put_u8(b'/');
-        user_agent.extend_from_slice(versions.polars_cloud.as_bytes());
+        user_agent.extend_from_slice(versions.client.as_bytes());
     }
     HeaderValue::from_maybe_shared(user_agent.freeze()).unwrap()
 }
@@ -75,14 +75,16 @@ impl ApiClientBuilder {
         self
     }
 
+    pub fn with_user_agent(mut self, user_agent: &'static str) -> Self {
+        self.builder = self.builder.user_agent(user_agent);
+        self
+    }
+
     pub fn with_versions(mut self, versions: Versions) -> Self {
         let mut headers = HeaderMap::new();
         let user_agent = user_agent(Some(&versions));
         self.builder = self.builder.user_agent(user_agent);
-        headers.insert(
-            HeaderName::from_static("x-client-version"),
-            versions.polars_cloud,
-        );
+        headers.insert(HeaderName::from_static("x-client-version"), versions.client);
         headers.insert(HeaderName::from_static("x-polars-version"), versions.polars);
         self.builder = self.builder.default_headers(headers);
         self
@@ -204,6 +206,20 @@ impl ApiClient {
             .await?
             .json()
             .await
+    }
+
+    pub async fn create_on_prem_compute(
+        &self,
+        workspace_id: Uuid,
+        params: CreateOnPremComputeArgs,
+    ) -> Result<ComputeTokenModel> {
+        self.post(&format!(
+            "/api/v1/workspace/on-prem/{workspace_id}/compute/create"
+        ))
+        .json(params)
+        .await?
+        .json()
+        .await
     }
 
     pub async fn create_workspace(&self, params: WorkSpaceArgs) -> Result<WorkspaceModel> {
@@ -442,7 +458,7 @@ impl ApiClient {
         &self,
         workspace_id: Uuid,
         compute_id: Uuid,
-    ) -> Result<ComputeTokenModel> {
+    ) -> Result<ComputeTokenLegacyModel> {
         self.get(&format!(
             "/api/v1/workspace/{workspace_id}/compute/{compute_id}/token"
         ))
@@ -460,19 +476,6 @@ impl ApiClient {
         .await
     }
 
-    pub async fn get_cluster_logs(
-        &self,
-        workspace_id: Uuid,
-        cluster_id: Uuid,
-    ) -> Result<TokenPaginated<Vec<AwsLogEventModel>>> {
-        self.get(&format!(
-            "/api/v1/workspace/{workspace_id}/compute/{cluster_id}/logs"
-        ))
-        .await?
-        .json()
-        .await
-    }
-
     pub async fn get_public_server_info(
         &self,
         workspace_id: Uuid,
@@ -480,19 +483,6 @@ impl ApiClient {
     ) -> Result<ComputeClusterPublicInfoModel> {
         self.get(&format!(
             "/api/v1/workspace/{workspace_id}/compute/{cluster_id}/public_info"
-        ))
-        .await?
-        .json()
-        .await
-    }
-
-    pub async fn get_cluster_metrics(
-        &self,
-        workspace_id: Uuid,
-        cluster_id: Uuid,
-    ) -> Result<TokenPaginated<AwsMetricsModel>> {
-        self.get(&format!(
-            "/api/v1/workspace/{workspace_id}/compute/{cluster_id}/metrics"
         ))
         .await?
         .json()
@@ -709,6 +699,83 @@ impl ApiClient {
         .await
     }
 
+    pub async fn get_organization_credits(
+        &self,
+        organization_id: Uuid,
+        history: &LedgerHistoryArgs,
+    ) -> Result<OrganizationCreditsModel> {
+        self.get(&format!(
+            "/api/v1/organization/{organization_id}/billing/credits"
+        ))
+        .parameter_opt(
+            "start",
+            history.start.map(|start| {
+                start
+                    .with_timezone(&Utc)
+                    .to_rfc3339_opts(SecondsFormat::Millis, true)
+            }),
+        )
+        .parameter_opt(
+            "end",
+            history.end.map(|end| {
+                end.with_timezone(&Utc)
+                    .to_rfc3339_opts(SecondsFormat::Millis, true)
+            }),
+        )
+        .await?
+        .json()
+        .await
+    }
+
+    pub async fn get_organization_plan(
+        &self,
+        organization_id: Uuid,
+    ) -> Result<OrganizationPlanDetailsModel> {
+        self.get(&format!(
+            "/api/v1/organization/{organization_id}/billing/plan"
+        ))
+        .await?
+        .json()
+        .await
+    }
+
+    pub async fn leave_legacy_plan(&self, organization_id: Uuid) -> Result<OrganizationPlanModel> {
+        self.post(&format!(
+            "/api/v1/organization/{organization_id}/billing/leave-legacy"
+        ))
+        .await?
+        .json()
+        .await
+    }
+
+    pub async fn get_organization_free_quota(
+        &self,
+        organization_id: Uuid,
+        history: &LedgerHistoryArgs,
+    ) -> Result<OrganizationFreeQuotaModel> {
+        self.get(&format!(
+            "/api/v1/organization/{organization_id}/billing/free-quota"
+        ))
+        .parameter_opt(
+            "start",
+            history.start.map(|start| {
+                start
+                    .with_timezone(&Utc)
+                    .to_rfc3339_opts(SecondsFormat::Millis, true)
+            }),
+        )
+        .parameter_opt(
+            "end",
+            history.end.map(|end| {
+                end.with_timezone(&Utc)
+                    .to_rfc3339_opts(SecondsFormat::Millis, true)
+            }),
+        )
+        .await?
+        .json()
+        .await
+    }
+
     pub async fn create_organization_invite(
         &self,
         organization_id: Uuid,
@@ -739,7 +806,7 @@ impl ApiClient {
         &self,
         organization_id: Uuid,
         invite_id: Uuid,
-    ) -> Result<OrganizationInviteModel> {
+    ) -> Result<OrganizationInviteDetailsModel> {
         self.get(&format!(
             "/api/v1/organization/{organization_id}/invite/{invite_id}"
         ))

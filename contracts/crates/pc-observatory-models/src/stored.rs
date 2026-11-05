@@ -19,14 +19,16 @@ where
 
 impl<'de, T> Deserialize<'de> for StoredPlan<T>
 where
-    T: Deserialize<'de>,
+    T: serde::de::DeserializeOwned,
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let value = serde_json::Value::deserialize(deserializer)?;
-        Ok(Self(T::deserialize(value)))
+        // Keep the plan as raw JSON text so it is parsed once into `T`, instead of into a
+        // `serde_json::Value` tree first.
+        let raw = Box::<serde_json::value::RawValue>::deserialize(deserializer)?;
+        Ok(Self(serde_json::from_str(raw.get())))
     }
 }
 

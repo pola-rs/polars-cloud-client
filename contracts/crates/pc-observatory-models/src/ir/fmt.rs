@@ -354,6 +354,20 @@ impl Display for IRDisplay<'_> {
                         "END IEJOIN"
                     );
                 },
+                IRNodeProperties::RangeJoin {
+                    left_on, right_on, ..
+                } => {
+                    // Polars explains a range join as `RANGE JOIN`, so match it.
+                    writeln!(f, "RANGE JOIN:")?;
+                    write_with_inputs!(
+                        f,
+                        "LEFT PLAN ON: {left_on:?}",
+                        (self.inputs[idx][0], level + 1),
+                        "RIGHT PLAN ON: {right_on:?}",
+                        (self.inputs[idx][1], level + 1),
+                        "END RANGE JOIN"
+                    );
+                },
                 IRNodeProperties::MergeSorted {
                     keys,
                     maintain_order,
@@ -409,20 +423,21 @@ impl Display for IRDisplay<'_> {
                 IRNodeProperties::ShuffleWrite {
                     shuffle_number,
                     partitioning,
-                    add_order_tag,
                     ..
                 } => {
-                    write!(f, "SHUFFLE WRITE ({shuffle_number}) [")?;
-                    if *add_order_tag {
-                        write!(f, "add_order_tag: true, ")?;
-                    }
-                    write!(f, "partitioning: {partitioning}]")?;
+                    write!(
+                        f,
+                        "SHUFFLE WRITE ({shuffle_number}) [partitioning: {partitioning}]"
+                    )?;
                 },
                 IRNodeProperties::UnoptimizedDispatch { operation, .. } => {
                     write!(f, "UNOPTIMIZED DISPATCH TO {operation}")?;
                 },
                 IRNodeProperties::RemoveOverlap => {
                     write!(f, "REMOVE PARTITION OVERLAP")?;
+                },
+                IRNodeProperties::AddOrderTag => {
+                    write!(f, "ADD ORDER TAG")?;
                 },
                 IRNodeProperties::Window {
                     partition_by,
@@ -436,12 +451,13 @@ impl Display for IRDisplay<'_> {
                         "WINDOW[maintain_order: {maintain_order}, ordered_eval: {ordered_eval}] \
                          PARTITION BY {partition_by:?}"
                     )?;
-                    if let Some(order_by) = order_by {
-                        write!(f, " ORDER BY {:?}", order_by.expr)?;
-                        if order_by.descending {
+                    for (i, col) in order_by.iter().enumerate() {
+                        let sep = if i == 0 { " ORDER BY" } else { "," };
+                        write!(f, "{sep} {:?}", col.expr)?;
+                        if col.descending {
                             write!(f, " DESC")?;
                         }
-                        if order_by.nulls_last {
+                        if col.nulls_last {
                             write!(f, " NULLS LAST")?;
                         }
                     }

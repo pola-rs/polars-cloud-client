@@ -2,5 +2,5 @@
 set_compute_context
 ===================
 
-.. currentmodule:: polars_cloud
+.. currentmodule:: polars_nanook
 .. autofunction:: set_compute_context

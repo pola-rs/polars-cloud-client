@@ -2,7 +2,7 @@
 Organization
 ==============
 
-.. currentmodule:: polars_cloud
+.. currentmodule:: polars_nanook
 
 .. autoclass:: Organization
     :members:

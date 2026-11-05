@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::num::NonZeroU32;
 
 use bytes::Bytes;
@@ -191,6 +191,7 @@ impl From<QuerySettings> for proto::QuerySettings {
 
 impl From<proto::QuerySettings> for QuerySettings {
     fn from(value: proto::QuerySettings) -> Self {
+        let execute_until = value.execute_until().into();
         Self {
             engine: value.engine().into(),
             preferred_graph_format: value.preferred_graph_format().into(),
@@ -209,7 +210,7 @@ impl From<proto::QuerySettings> for QuerySettings {
             }),
             sink_options: value.sink_options,
             priority: value.priority,
-            execute_until: value.execute_until().into(),
+            execute_until,
         }
     }
 }
@@ -309,71 +310,63 @@ impl From<proto::ShuffleOpts> for ShuffleOpts {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub enum QueryType {
     #[default]
     Single,
     Distributed(DistributedOpts),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct DistributedOpts {
     pub shuffle_opts: ShuffleOpts,
-    pub pre_aggregation: bool,
     pub expression_lowering: Option<bool>,
-    pub sort_partitioned: bool,
     pub equi_join_broadcast_limit: u64,
     pub partitions_per_worker: Option<u32>,
     pub single_worker_ops: SingleWorkerOps,
-    pub planner: Planner,
+    /// Unstable planner options, keyed by name, with JSON encoded values.
+    pub dev_opts: HashMap<String, String>,
 }
 
 impl From<DistributedOpts> for proto::DistributedOpts {
     fn from(value: DistributedOpts) -> Self {
         let DistributedOpts {
             shuffle_opts,
-            pre_aggregation,
             expression_lowering,
-            sort_partitioned,
             equi_join_broadcast_limit,
             partitions_per_worker,
             single_worker_ops,
-            planner,
+            dev_opts,
         } = value;
         Self {
             shuffle_opts: proto::ShuffleOpts::from(shuffle_opts).into(),
-            allow_pre_aggregation: pre_aggregation,
             allow_expression_lowering: expression_lowering,
-            allow_partitioned_sort: sort_partitioned,
             allow_equi_join_broadcast_limit: equi_join_broadcast_limit,
             partitions_per_worker,
             single_worker_ops: Some(proto::SingleWorkerOps::from(single_worker_ops).into()),
-            planner: Some(proto::Planner::from(planner).into()),
+            dev_opts,
         }
     }
 }
 
 impl From<proto::DistributedOpts> for DistributedOpts {
     fn from(value: proto::DistributedOpts) -> Self {
+        let single_worker_ops = value.single_worker_ops().into();
         let proto::DistributedOpts {
-            allow_pre_aggregation,
             allow_expression_lowering,
-            allow_partitioned_sort,
             allow_equi_join_broadcast_limit,
             shuffle_opts,
             partitions_per_worker,
             single_worker_ops: _,
-            planner: _,
+            dev_opts,
         } = value;
         Self {
             shuffle_opts: shuffle_opts.unwrap_or_default().into(),
-            pre_aggregation: allow_pre_aggregation,
             expression_lowering: allow_expression_lowering,
-            sort_partitioned: allow_partitioned_sort,
             equi_join_broadcast_limit: allow_equi_join_broadcast_limit,
             partitions_per_worker,
-            single_worker_ops: value.single_worker_ops().into(),
-            planner: value.planner().into(),
+            single_worker_ops,
+            dev_opts,
         }
     }
 }
@@ -403,35 +396,6 @@ impl From<proto::SingleWorkerOps> for SingleWorkerOps {
             proto::SingleWorkerOps::Allow => Self::Allow,
             proto::SingleWorkerOps::Forbid => Self::Forbid,
             proto::SingleWorkerOps::Unspecified => Self::Auto,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub enum Planner {
-    #[default]
-    Auto,
-    Naive,
-    Miso,
-}
-
-impl From<Planner> for proto::Planner {
-    fn from(value: Planner) -> Self {
-        match value {
-            Planner::Auto => Self::Auto,
-            Planner::Naive => Self::Naive,
-            Planner::Miso => Self::Miso,
-        }
-    }
-}
-
-impl From<proto::Planner> for Planner {
-    fn from(value: proto::Planner) -> Self {
-        match value {
-            proto::Planner::Auto => Self::Auto,
-            proto::Planner::Naive => Self::Naive,
-            proto::Planner::Miso => Self::Miso,
-            proto::Planner::Unspecified => Self::Auto,
         }
     }
 }

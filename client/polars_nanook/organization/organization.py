@@ -1,0 +1,204 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+from uuid import UUID
+
+from polars_nanook import constants
+from polars_nanook.exceptions import OrganizationResolveError
+
+if TYPE_CHECKING:
+    from typing import Self
+
+    import polars_nanook.polars_nanook as pcr
+
+
+class Organization:
+    """A Polars Nanook organization.
+
+    With this class you can list the organizations the user is a member of
+    or set up a new organization
+
+    Organization names are not unique. If several organizations you belong to
+    share a name, pass ``id`` instead of ``name``.
+
+    Parameters
+    ----------
+     name
+         The organization name.
+     id
+         The organization id.
+
+    Examples
+    --------
+    >>> pn.Organization("organization-name")
+    Organization(id=UUID('xxxxxxxx-xxxx-74e0-9de7-6e2014821b44'),
+        name='organization-name',
+    """
+
+    def __init__(
+        self,
+        name: str | None = None,
+        *,
+        id: UUID | None = None,
+    ):
+        self._name = name
+        self._id = id
+
+        self.load()
+
+        if name is not None and name.lower() != self.name.lower():
+            msg = f"The provided organization name {name!r} and id {id!r} do not match. The ID is of an organization named {self._name!r}."
+            raise OrganizationResolveError(msg)
+
+    def __repr__(self) -> str:
+        if self._id is None or self._name is None:
+            self.load()
+        return f"{self.__class__.__name__}(id={self._id!r}, name={self._name!r})"
+
+    @classmethod
+    def _from_id_unchecked(cls, organization_id: UUID) -> Self:
+        """Creates an instance of the object without API calls or invariant checks."""
+        self = object.__new__(cls)
+        self._id = organization_id
+        self._name = None
+        return self
+
+    @classmethod
+    def _from_api_model(cls, organization_model: pcr.OrganizationModel) -> Self:
+        """Parse API result into a Python object."""
+        self = object.__new__(cls)
+        self._update_from_api_model(organization_model)
+        return self
+
+    def _update_from_api_model(self, organization_model: pcr.OrganizationModel) -> None:
+        """Update the object from an API result."""
+        self._id = organization_model.id
+        self._name = organization_model.name
+
+    @property
+    def id(self) -> UUID:
+        """Organization id."""
+        if self._id is None:
+            self.load()
+        assert self._id is not None
+        return self._id
+
+    @property
+    def name(self) -> str:
+        """Organization name."""
+        if self._name is None:
+            self.load()
+        assert self._name is not None
+        return self._name
+
+    @classmethod
+    def _parse(
+        cls,
+        organization: str | Organization | UUID | None,
+    ) -> Self:
+        """Create a Workspace based on generic user input."""
+        if isinstance(organization, Organization):
+            return organization  # type: ignore[return-value]
+        elif isinstance(organization, str):
+            return cls(name=organization)
+        elif isinstance(organization, UUID):
+            return cls(id=organization)
+        elif organization is None:
+            return cls()
+        else:
+            msg = f"Unknown type {type(organization)}, expected str | Organization | UUID | None"
+            raise RuntimeError(msg)
+
+    def load(self) -> None:
+        """Load the organization details (e.g. name, status, id) from the control plane.
+
+        .. note::
+
+         Depending on the input `load` will load the `Organization` object by id / name
+        """
+        if self._id is not None:
+            self._load_by_id()
+        elif self._name is not None:
+            self._load_by_name()
+        else:
+            msg = "No organization was set via either ID or name"
+            raise OrganizationResolveError(msg)
+
+    def _load_by_name(self) -> None:
+        """Load the workspace by name."""
+        assert self._name is not None
+
+        name = self._name.lower()
+        organizations = constants.API_CLIENT.get_organizations(name)
+
+        # The API endpoint is a substring search, but we match the (lowercase) org-name
+        matches = [org for org in organizations if org.name.lower() == name]
+
+        if len(matches) == 0:
+            msg = f"Organization {self._name!r} does not exist"
+            raise OrganizationResolveError(msg)
+        elif len(matches) > 1:
+            ids = ", ".join(str(org.id) for org in matches)
+            msg = (
+                f"Multiple organizations with the same name {self._name!r}: {ids}.\n\n"
+                "Hint: Refer to the organization by ID with "
+                "`pn.Organization(id=UUID('...'))`, or rename one of them in the "
+                "dashboard under Organization > Settings."
+            )
+            raise OrganizationResolveError(msg)
+        else:
+            self._update_from_api_model(matches[0])
+
+    def _load_by_id(self) -> None:
+        """Load the workspace by id."""
+        assert self._id is not None
+        organization = constants.API_CLIENT.get_organization(self._id)
+        self._name = organization.name
+
+    def delete(self) -> None:
+        """Delete an organization.
+
+        Examples
+        --------
+        >>> pn.Organization("organization-name").delete()
+        """
+        constants.API_CLIENT.delete_organization(self.id)
+
+    @classmethod
+    def setup(cls, name: str) -> Self:
+        """Create a new organization.
+
+        Parameters
+        ----------
+        name
+            Name of the organization
+
+        Examples
+        --------
+        >>> pn.Organization.setup("organization-name)
+        Organization(id=UUID('xxxxxxxx-xxxx-74e0-9de7-6e2014821b44'),
+            name='organization-name',
+        """
+        organization = constants.API_CLIENT.create_organization(name)
+        return cls._from_api_model(organization)
+
+    @classmethod
+    def list(cls, name: str | None = None) -> list[Organization]:
+        """List all organizations the user has access to.
+
+        Parameters
+        ----------
+        name
+            Filter organizations by name prefix.
+
+        Examples
+        --------
+        >>> pn.Organization.list()
+        [Organization(id=UUID('xxxxxxxx-xxxx-4d10-a8ee-8f63329329dc'),
+            name='organization-name', ,
+        Organization(id=UUID('xxxxxxxx-xxxx-7863-80d6-fb4959c59856'),
+            name='different-organization',]
+        """
+        return [
+            cls._from_api_model(s) for s in constants.API_CLIENT.get_organizations(name)
+        ]
