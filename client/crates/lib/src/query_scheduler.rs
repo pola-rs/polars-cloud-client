@@ -4,12 +4,12 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::anyhow;
 use client_core::constants::SERVICE_NAME;
-use client_core::error::ApiResult;
-use client_core::{ApiError, ControlPlaneClient, PolarsCloudConfig, RUNTIME};
+use client_core::error::{ApiResult, ObservatoryTransportError, SchedulerTransportError};
+use client_core::{ApiError, ClientConfig, ControlPlaneClient, RUNTIME};
 use pc_observatory_models::QueryDetailModel;
 use pc_observatory_models::stages::StageGraphVisualizationData;
 use polars_axum_models::QueryStatusCodeModel;
@@ -42,7 +42,10 @@ use tokio_rustls::rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use tokio_rustls::rustls::{DigitallySignedStruct, SignatureScheme};
 use tonic::Status;
 use tower::ServiceBuilder;
+use tower::retry::backoff::ExponentialBackoffMaker;
 use tower::util::BoxCloneSyncService;
+use tower::util::rng::HasherRng;
+use tower_grpc_retry::{HttpRetry, Params, RetryUnavailable};
 use tower_http::auth::{AsyncAuthorizeRequest, AsyncRequireAuthorizationLayer};
 use tower_http::set_header::HeaderMetadata;
 use tower_http::set_header::request::SetMultipleRequestHeadersLayer;
@@ -62,14 +65,34 @@ use crate::{CTRL_PLN_CLIENT_GLOBAL, VERSIONS};
 type SchedulerChannel =
     BoxCloneSyncService<http::Request<Body>, http::Response<Body>, tonic::transport::Error>;
 
-type SchedulerGRPCClient = ClientServiceClient<SchedulerChannel>;
+type SchedulerGRPCClient = ClientServiceClient<
+    BoxCloneSyncService<http::Request<Body>, http::Response<Body>, SchedulerTransportError>,
+>;
 
-const POLAR_CLOUD_VERSION_HEADER_NAME: HeaderName = HeaderName::from_static("x-client-version");
-const POLAR_VERSION_HEADER_NAME: HeaderName = HeaderName::from_static("x-polars-version");
+const CLIENT_VERSION_HEADER_NAME: HeaderName = HeaderName::from_static("x-client-version");
+const POLARS_VERSION_HEADER_NAME: HeaderName = HeaderName::from_static("x-polars-version");
 const GRPC_RETRY_CONNECTION_DEADLINE: Duration = Duration::from_secs(60);
 
 const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(20);
-const LONG_POLL_RETRY_BACKOFF: Duration = Duration::from_secs(1);
+
+/// Retries a request that failed with `Unavailable`, which is how an unreachable scheduler
+/// shows up. The backoff adds up to about a minute, like [`GRPC_RETRY_CONNECTION_DEADLINE`].
+fn unavailable_retry_params() -> Params {
+    Params {
+        max_retries: 6,
+        // Buffer that holds the request body for a retry; a larger body is not retried.
+        max_request_bytes: 4 * 1024 * 1024,
+        backoff: Some(Arc::new(
+            ExponentialBackoffMaker::new(
+                Duration::from_secs(1),
+                Duration::from_secs(30),
+                0.05,
+                HasherRng::new(),
+            )
+            .unwrap(),
+        )),
+    }
+}
 
 #[derive(Clone)]
 struct SchedulerGrpcClient {
@@ -80,11 +103,11 @@ fn connect_scheduler(
     options: &ClientOptions,
     token_provider: Option<TokenProvider>,
 ) -> ApiResult<SchedulerChannel> {
-    let channel = RUNTIME.block_on(async { create_channel(options).await })??;
+    let channel = RUNTIME.block_on(create_channel(options))??;
 
     let version_layers = version_header_layers();
 
-    Ok(BoxCloneSyncService::new(
+    let stack =
         ServiceBuilder::new()
             .layer(tower_otel::OtelLayer::client(SERVICE_NAME))
             .layer(SetMultipleRequestHeadersLayer::overriding(version_layers))
@@ -98,8 +121,9 @@ fn connect_scheduler(
             .option_layer(token_provider.map(|token_provider| {
                 AsyncRequireAuthorizationLayer::new(Authorize(token_provider))
             }))
-            .service(channel),
-    ))
+            .service(channel);
+
+    Ok(BoxCloneSyncService::new(stack))
 }
 
 #[derive(Clone)]
@@ -130,8 +154,16 @@ impl<B: Send + 'static> AsyncAuthorizeRequest<B> for Authorize {
 
 impl SchedulerGrpcClient {
     fn new(channel: SchedulerChannel) -> Self {
+        let retrying = ServiceBuilder::new()
+            .map_err(SchedulerTransportError)
+            .map_request(|mut req: http::Request<Body>| {
+                req.extensions_mut()
+                    .insert(RetryUnavailable::new(unavailable_retry_params()));
+                req
+            })
+            .service(HttpRetry::<RetryUnavailable, _>::new(channel));
         Self {
-            inner: ClientServiceClient::new(channel)
+            inner: ClientServiceClient::new(BoxCloneSyncService::new(retrying))
                 .max_encoding_message_size(MAX_MESSAGE_LENGTH_UNLIMITED)
                 .max_decoding_message_size(MAX_MESSAGE_LENGTH_UNLIMITED),
         }
@@ -188,11 +220,39 @@ impl reqwest_middleware::Middleware for AuthorizeMiddleware {
     }
 }
 
+/// Wraps failures to reach the observatory in [`ObservatoryTransportError`]. Responses, including
+/// error statuses, pass through unchanged.
+struct ObservatoryContextMiddleware;
+
+#[async_trait::async_trait]
+impl reqwest_middleware::Middleware for ObservatoryContextMiddleware {
+    async fn handle(
+        &self,
+        req: reqwest::Request,
+        extensions: &mut http::Extensions,
+        next: reqwest_middleware::Next<'_>,
+    ) -> reqwest_middleware::Result<reqwest::Response> {
+        let url = req.url().clone();
+        next.run(req, extensions)
+            .await
+            .map_err(|error| match error {
+                reqwest_middleware::Error::Reqwest(source)
+                    if source.is_connect() || source.is_timeout() || source.is_request() =>
+                {
+                    reqwest_middleware::Error::middleware(ObservatoryTransportError { url, source })
+                },
+                error => error,
+            })
+    }
+}
+
 #[pyclass(from_py_object, eq, eq_int)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PlanFormatPy {
     Dot,
     Explain,
+    /// The stage graph serialized as JSON; only supported for the physical plan.
+    Json,
 }
 
 #[pyclass(skip_from_py_object, get_all)]
@@ -265,6 +325,8 @@ impl ObservatoryRestClient {
         if let Some(token_provider) = token_provider {
             client = client.with(AuthorizeMiddleware(token_provider));
         }
+        // Last, so it only sees transport failures and not e.g. a failure to get a token.
+        let client = client.with(ObservatoryContextMiddleware);
 
         Ok(Self {
             inner: client.build(),
@@ -287,6 +349,18 @@ impl ObservatoryRestClient {
 
     pub fn get(&self, path: &str) -> reqwest_middleware::RequestBuilder {
         self.request(reqwest::Method::GET, path)
+    }
+
+    /// GETs `path` and decodes the JSON body. Error statuses become [`ApiError::StatusError`].
+    async fn get_json<T: serde::de::DeserializeOwned>(&self, path: &str) -> ApiResult<T> {
+        let response = self.get(path).send().await?;
+        let status = response.status();
+        if !status.is_success() {
+            let url = response.url().clone();
+            let body = response.text().await.unwrap_or_default();
+            return Err(ApiError::StatusError { status, url, body });
+        }
+        Ok(response.json().await?)
     }
 }
 
@@ -332,18 +406,23 @@ impl SchedulerClient {
     }
 
     pub fn cancel_direct_query(&self, py: Python, query_id: Uuid) -> ApiResult<()> {
-        let _ = py.enter_rust(|| {
+        let result = py.enter_rust(|| {
             RUNTIME.block_on(async move {
                 let query_id = QueryIdentifier::from(query_id);
                 let req = Request::new(query_id.into());
                 self.scheduler_client.inner.clone().cancel_query(req).await
             })
         })?;
-        Ok(())
+        match result {
+            Ok(_) => Ok(()),
+            // A finished query has nothing left to cancel.
+            Err(status) if status.code() == Code::NotFound => Ok(()),
+            Err(status) => Err(status.into()),
+        }
     }
 
     pub fn delete_direct_query_result(&self, py: Python, query_id: Uuid) -> ApiResult<()> {
-        let _ = py.enter_rust(|| {
+        let result = py.enter_rust(|| {
             RUNTIME.block_on(async move {
                 let query_id = QueryIdentifier::from(query_id);
                 let req = Request::new(query_id.into());
@@ -354,7 +433,12 @@ impl SchedulerClient {
                     .await
             })
         })?;
-        Ok(())
+        match result {
+            Ok(_) => Ok(()),
+            // A result that is already gone needs no deleting.
+            Err(status) if status.code() == Code::NotFound => Ok(()),
+            Err(status) => Err(status.into()),
+        }
     }
 
     pub fn get_direct_query_status(
@@ -395,43 +479,24 @@ impl SchedulerClient {
         query_id: Uuid,
         timeout_ms: u64,
     ) -> ApiResult<QueryInfoPy> {
+        let timed_out = || {
+            ApiError::PyErr(PyTimeoutError::new_err(
+                "timed out waiting for the query result",
+            ))
+        };
         py.detach(|| {
             let query_id = QueryIdentifier::from(query_id);
             RUNTIME.block_on(async move {
-                let deadline = Instant::now() + Duration::from_millis(timeout_ms);
-                loop {
-                    let remaining = deadline.saturating_duration_since(Instant::now());
-                    if remaining.is_zero() {
-                        return Err(ApiError::PyErr(PyTimeoutError::new_err(
-                            "timed out waiting for the query result",
-                        )));
-                    }
+                let timeout = Duration::from_millis(timeout_ms);
+                let mut req = Request::new(query_id.into());
+                req.set_timeout(timeout);
+                let mut client = self.scheduler_client.inner.clone();
 
-                    let mut req = Request::new(query_id.into());
-                    req.set_timeout(remaining);
-
-                    let mut client = self.scheduler_client.inner.clone();
-                    match tokio::time::timeout(remaining, client.get_query_result(req)).await {
-                        Ok(Ok(response)) => {
-                            return Ok::<_, ApiError>(response.into_inner().into());
-                        },
-                        Ok(Err(status)) if status.code() == Code::Unavailable => {
-                            let backoff = LONG_POLL_RETRY_BACKOFF
-                                .min(deadline.saturating_duration_since(Instant::now()));
-                            tokio::time::sleep(backoff).await;
-                        },
-                        Ok(Err(status)) if status.code() == Code::DeadlineExceeded => {
-                            return Err(ApiError::PyErr(PyTimeoutError::new_err(
-                                "timed out waiting for the query result",
-                            )));
-                        },
-                        Ok(Err(status)) => return Err(ApiError::from(status)),
-                        Err(_) => {
-                            return Err(ApiError::PyErr(PyTimeoutError::new_err(
-                                "timed out waiting for the query result",
-                            )));
-                        },
-                    }
+                match tokio::time::timeout(timeout, client.get_query_result(req)).await {
+                    Ok(Ok(response)) => Ok(GetQueryResultResponse::from(response.into_inner())),
+                    Ok(Err(status)) if status.code() == Code::DeadlineExceeded => Err(timed_out()),
+                    Ok(Err(status)) => Err(ApiError::from(status)),
+                    Err(_) => Err(timed_out()),
                 }
             })
         })?
@@ -483,8 +548,7 @@ impl SchedulerClient {
         })?
     }
 
-    #[pyo3(signature = (plan, settings, username=None, labels=None, execution_id=None, lineage_context=None))]
-    #[expect(clippy::too_many_arguments)]
+    #[pyo3(signature = (plan, settings, username=None, labels=None, lineage_context=None))]
     pub fn do_query(
         &self,
         py: Python<'_>,
@@ -492,14 +556,12 @@ impl SchedulerClient {
         settings: PyQuerySettings,
         username: Option<String>,
         labels: Option<Vec<String>>,
-        execution_id: Option<String>,
         lineage_context: Option<PyLineageContext>,
     ) -> ApiResult<Uuid> {
         py.enter_rust(|| {
             let request = SubmitQueryRequest {
                 query_info: QueryInfo {
                     labels: labels.unwrap_or_default(),
-                    execution_id,
                     lineage_context: lineage_context.map(protos_common::LineageContext::from),
                 },
                 plan: plan.into(),
@@ -508,7 +570,7 @@ impl SchedulerClient {
 
             RUNTIME.block_on(async move {
                 let mut req = Request::new(request.into());
-                if let Some(username) = username.or_else(PolarsCloudConfig::resolve_username) {
+                if let Some(username) = username.or_else(ClientConfig::resolve_username) {
                     let shortened_username: String = username.chars().take(64).collect();
                     let metadata = MetadataValue::from_str(&shortened_username)
                         .map_err(|_e| PyValueError::new_err("Invalid username"))?;
@@ -529,28 +591,12 @@ impl SchedulerClient {
 
     pub fn get_query_details(&self, py: Python<'_>, query_id: Uuid) -> ApiResult<QueryDetailPy> {
         py.enter_rust(|| {
-            RUNTIME.block_on(async move {
-                let response = self
-                    .observatory_client_rest
-                    .get(&format!("{query_id}"))
-                    .send()
-                    .await
-                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-
-                if !response.status().is_success() {
-                    return Err(ApiError::PyErr(PyRuntimeError::new_err(format!(
-                        "Request failed with status: {}",
-                        response.status()
-                    ))));
-                }
-
-                response
-                    .json::<QueryDetailModel>()
-                    .await
-                    .map(QueryDetailPy::from)
-                    .map_err(|e| ApiError::PyErr(PyRuntimeError::new_err(e.to_string())))
-            })
+            RUNTIME.block_on(
+                self.observatory_client_rest
+                    .get_json::<QueryDetailModel>(&query_id.to_string()),
+            )
         })?
+        .map(QueryDetailPy::from)
     }
 
     #[pyo3(signature = (query_id, phys = None, ir = false))]
@@ -570,6 +616,7 @@ impl SchedulerClient {
                 };
                 RUNTIME.block_on(async move {
                     let mut client = self.scheduler_client.inner.clone();
+                    // The scheduler answers with `FailedPrecondition` until planning is done.
                     retry!(
                         Exponential::new(Duration::from_millis(50))
                             .maximum(Duration::from_millis(250)),
@@ -583,7 +630,7 @@ impl SchedulerClient {
                             );
                             match client.get_query_plans(req).await {
                                 Ok(r) => utils::OperationResult::Ok(r),
-                                Err(s) if s.code() == Code::Unavailable => {
+                                Err(s) if s.code() == Code::FailedPrecondition => {
                                     utils::OperationResult::Retry(s)
                                 },
                                 Err(s) => utils::OperationResult::Err(s),
@@ -592,7 +639,6 @@ impl SchedulerClient {
                         tokio::time::sleep
                     )
                     .await
-                    .map_err(ApiError::from)
                 })
             })??
             .into_inner()
@@ -612,11 +658,14 @@ impl SchedulerClient {
             (Some(phys), Some(stage_graph)) => {
                 let stage_graph: StageGraphVisualizationData = rmp_serde::from_slice(&stage_graph)
                     .map_err(|e| {
-                        PyRuntimeError::new_err(format!("failed to read the stage graph: {e}"))
+                        PyValueError::new_err(format!("failed to read the stage graph: {e}"))
                     })?;
                 Some(match phys {
                     PlanFormatPy::Dot => stage_graph.display_dot().to_string(),
                     PlanFormatPy::Explain => stage_graph.explain().to_string(),
+                    PlanFormatPy::Json => serde_json::to_string(&stage_graph).map_err(|e| {
+                        PyValueError::new_err(format!("failed to serialize the stage graph: {e}"))
+                    })?,
                 })
             },
             _ => None,
@@ -803,7 +852,8 @@ async fn create_channel(options: &ClientOptions) -> ApiResult<Channel> {
                     "server.address" = uri.host(),
                     "server.port" = uri.port_u16(),
                 ))
-                .await?;
+                .await
+                .map_err(SchedulerTransportError)?;
 
             Ok::<_, ApiError>(res)
         },
@@ -816,17 +866,230 @@ fn version_header_layers() -> Vec<HeaderMetadata<http::Request<tonic::body::Body
     let (_, versions) = VERSIONS.get().unwrap().clone().unwrap();
 
     vec![
-        (POLAR_CLOUD_VERSION_HEADER_NAME, Some(versions.polars_cloud)).into(),
-        (POLAR_VERSION_HEADER_NAME, Some(versions.polars)).into(),
+        (CLIENT_VERSION_HEADER_NAME, Some(versions.client)).into(),
+        (POLARS_VERSION_HEADER_NAME, Some(versions.polars)).into(),
     ]
 }
 
 #[cfg(test)]
 mod tests {
+    use std::error::Error;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use protos_common::tonic::transport::Uri;
     use reqwest::Method;
 
     use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn unavailable_scheduler_reports_connection_guidance() {
+        let channel = BoxCloneSyncService::new(
+            Channel::from_shared(closed_port_uri())
+                .unwrap()
+                .connect_lazy(),
+        );
+        let mut client = SchedulerGrpcClient::new(channel).inner;
+
+        // The middleware must add context before the Python API sees the error,
+        // without changing the status code used by retry logic.
+        let status = client
+            .get_compute_versions(Request::new(GetComputeVersionsRequest {}.into()))
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), Code::Unavailable);
+        assert!(status.source().unwrap().to_string().contains("scheduler"));
+        Python::attach(|py| assert_connection_guidance(py, ApiError::from(status).into()));
+
+        // Awaiting a result gives up once the retries run out, well before its own timeout.
+        let timeout = Duration::from_secs(3600);
+        let started = tokio::time::Instant::now();
+        let mut req = Request::new(QueryIdentifier::from(Uuid::nil()).into());
+        req.set_timeout(timeout);
+        let status = client.get_query_result(req).await.unwrap_err();
+        assert_eq!(status.code(), Code::Unavailable);
+        assert!(started.elapsed() < timeout);
+    }
+
+    #[test]
+    fn scheduler_transport_errors_report_connection_guidance() {
+        let uri = closed_port_uri();
+
+        for wrapped_in_status in [false, true] {
+            let transport_error = RUNTIME
+                .0
+                .block_on(Channel::from_shared(uri.clone()).unwrap().connect())
+                .unwrap_err();
+            let transport_error = SchedulerTransportError(transport_error);
+            assert!(
+                transport_error
+                    .source()
+                    .unwrap()
+                    .is::<tonic::transport::Error>()
+            );
+            let error = if wrapped_in_status {
+                // Unknown statuses also retain the context through their source.
+                let mut status = Status::unknown("transport error");
+                status.set_source(Arc::new(transport_error));
+                ApiError::from(status)
+            } else {
+                ApiError::from(transport_error)
+            };
+
+            Python::attach(|py| assert_connection_guidance(py, error.into()));
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn scheduler_application_errors_are_preserved() {
+        for code in [
+            Code::Unauthenticated,
+            Code::PermissionDenied,
+            Code::InvalidArgument,
+            Code::Internal,
+            Code::Unknown,
+            Code::Unavailable,
+        ] {
+            let channel = BoxCloneSyncService::new(tower::service_fn(move |_request| async move {
+                Ok::<_, tonic::transport::Error>(
+                    Status::with_details(
+                        code,
+                        "original error",
+                        "ValueError: invalid query".into(),
+                    )
+                    .into_http(),
+                )
+            }));
+            let mut client = SchedulerGrpcClient::new(channel);
+            let error = client
+                .inner
+                .get_compute_versions(Request::new(GetComputeVersionsRequest {}.into()))
+                .await
+                .unwrap_err();
+            assert_eq!(error.code(), code);
+            assert_eq!(error.message(), "original error");
+            assert_eq!(error.details(), b"ValueError: invalid query");
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn unavailable_is_retried() {
+        let params = unavailable_retry_params();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let counted = calls.clone();
+        let channel = BoxCloneSyncService::new(tower::service_fn(move |_request| {
+            counted.fetch_add(1, Ordering::Relaxed);
+            async {
+                Ok::<_, tonic::transport::Error>(
+                    Status::unavailable("connection refused").into_http(),
+                )
+            }
+        }));
+        let mut client = SchedulerGrpcClient::new(channel).inner;
+
+        let status = client
+            .get_compute_versions(Request::new(GetComputeVersionsRequest {}.into()))
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), Code::Unavailable);
+        assert_eq!(calls.load(Ordering::Relaxed), params.max_retries + 1);
+    }
+
+    #[test]
+    fn unreachable_observatory_reports_its_address() {
+        let uri = closed_port_uri();
+        let client = ObservatoryRestClient::build(&options(&uri, None).unwrap(), None).unwrap();
+
+        let error: PyErr = RUNTIME
+            .0
+            .block_on(client.get_json::<QueryDetailModel>(&Uuid::nil().to_string()))
+            .expect_err("a closed port should fail")
+            .into();
+
+        Python::attach(|py| {
+            assert!(error.is_instance_of::<PyRuntimeError>(py));
+            let message = cause_chain(py, error);
+            assert!(
+                message.contains(&format!(
+                    "Could not reach the cluster's observatory at {uri}"
+                )),
+                "{message}"
+            );
+            assert!(message.contains("error sending request"), "{message}");
+        });
+    }
+
+    #[test]
+    fn observatory_error_statuses_show_the_server_message() {
+        let not_found = serve_once(
+            "404 Not Found",
+            r#"{"message": "Query not found", "errors": {}}"#,
+        );
+        let server_error = serve_once(
+            "500 Internal Server Error",
+            r#"{"message": "Internal_server_error", "errors": {}}"#,
+        );
+
+        Python::attach(|py| {
+            for (uri, message) in [
+                (not_found, "Query not found"),
+                (server_error, "Internal_server_error"),
+            ] {
+                let client =
+                    ObservatoryRestClient::build(&options(&uri, None).unwrap(), None).unwrap();
+                let error = py.detach(|| {
+                    RUNTIME
+                        .0
+                        .block_on(client.get_json::<QueryDetailModel>("id"))
+                        .expect_err("an error status should fail")
+                });
+                assert!(matches!(error, ApiError::StatusError { .. }));
+                let error = error.to_string();
+                assert!(error.starts_with(message), "{error}");
+                // A response means the observatory was reached.
+                assert!(!error.contains("Could not reach"), "{error}");
+            }
+        });
+    }
+
+    /// A local HTTP server that answers a single request with `status` and a JSON `body`.
+    fn serve_once(status: &'static str, body: &'static str) -> String {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let uri = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let _ = stream.read(&mut [0; 4096]);
+            let response = format!(
+                "HTTP/1.1 {status}\r\nContent-Type: application/json\r\n\
+                 Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+        });
+        uri
+    }
+
+    fn cause_chain(py: Python<'_>, error: PyErr) -> String {
+        std::iter::successors(Some(error), |e| e.cause(py))
+            .map(|e| e.to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// A URI for a local port that nothing is listening on.
+    fn closed_port_uri() -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        format!("http://{}", listener.local_addr().unwrap())
+    }
+
+    /// Asserts the scheduler guidance is raised with the transport failure in its cause chain.
+    fn assert_connection_guidance(py: Python<'_>, error: PyErr) {
+        assert!(error.is_instance_of::<PyRuntimeError>(py));
+        let message = cause_chain(py, error);
+        assert!(message.contains("cluster is running"), "{message}");
+        assert!(message.contains("transport error"), "{message}");
+    }
 
     fn options(uri: &str, domain_name: Option<String>) -> Result<ClientOptions, PyErr> {
         let parsed_uri = uri.parse::<Uri>().unwrap().try_into()?;

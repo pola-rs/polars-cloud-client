@@ -2,7 +2,7 @@
 ProxyQuery
 ================
 
-.. currentmodule:: polars_cloud
+.. currentmodule:: polars_nanook
 
 .. autoclass:: ProxyQuery
     :members:

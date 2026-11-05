@@ -8,15 +8,15 @@ publish.workspace = true
 repository.workspace = true
 
 [lib]
-name = "polars_cloud"
+name = "polars_nanook"
 crate-type = ["cdylib"]
 
 [dependencies]
 anyhow = { workspace = true }
-arrow-array = { version = "59", features = ["ffi"] }
-arrow-flight = "59"
-arrow-ipc = { version = "59", features = ["zstd"] }
-arrow-schema = "59"
+arrow-array = { version = "60", features = ["ffi"] }
+arrow-flight = "60"
+arrow-ipc = { version = "60", features = ["zstd"] }
+arrow-schema = "60"
 async-trait = { workspace = true }
 chrono = { workspace = true }
 client-cli = { workspace = true }
@@ -38,6 +38,7 @@ reqwest = { workspace = true }
 reqwest-middleware = { workspace = true }
 reqwest-otel = { workspace = true }
 rmp-serde = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 strum_macros = { workspace = true }
 tokio = { workspace = true }
@@ -67,6 +68,7 @@ otlp = [
 
 [dev-dependencies]
 pyo3 = { workspace = true, features = ["auto-initialize"] }
+tokio = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

@@ -1,5 +1,6 @@
 mod cloud_export;
 mod entry;
+mod ffi_stream;
 mod flight;
 pub mod query_scheduler;
 mod query_settings;
@@ -8,24 +9,27 @@ mod tracing;
 mod utils;
 mod wrapped_client;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use client_core::utils::{polars_version, py_is_token_expired, python_version};
 use client_core::{
     AuthLoadError, AutoRefreshApiControlPlaneClient, ComputeClusterMisspecified,
-    ComputeContextSpecs, EncodedPolarsError, NotFoundError, RUNTIME, VERSIONS, get_versions,
+    ComputeContextSpecs, EncodedPolarsError, NotFoundError, RENAMED_ENV_VARS, RUNTIME, VERSIONS,
+    get_versions, legacy_env_var, legacy_env_var_warnings,
 };
 use polars_axum_models::{
     AwsConnectionStatusModel, ClusterDeploymentModel, ComputeClusterEndpointModel,
-    ComputeClusterNodeInfoModel, ComputeClusterPublicInfoModel, ComputeModel, ComputeStatusModel,
-    DBCPUArchitectureModel, DBClusterModeModel, DeleteWorkspaceModel, FileTypeModel, LogLevelModel,
-    ManifestModel, OrganizationModel, OrganizationSubscriptionStateModel, OrganizationTierModel,
-    QueryEngineModel, QueryExecuteUntilModel, QueryModel, QueryStateTimingModel,
-    QueryStatusCodeModel, QueryTypeModel, QueryWithStateTimingAndResultModel, ResultModel,
-    StatusModel, TerminationModel, TerminationReasonModel, UserModel, WorkspaceAPITokenModel,
-    WorkspaceApiTokenWithNameModel, WorkspaceAwsConnectionModel, WorkspaceAwsStackModel,
-    WorkspaceClusterDefaultsModel, WorkspaceDeploymentModel, WorkspaceModel,
-    WorkspaceSetupUrlModel, WorkspaceStateModel, WorkspaceWithUrlModel,
+    ComputeClusterNodeInfoModel, ComputeClusterPublicInfoModel, ComputeModel, ComputeProviderModel,
+    ComputeStatusModel, DBCPUArchitectureModel, DBClusterModeModel, DeleteWorkspaceModel,
+    FileTypeModel, LogLevelModel, ManifestModel, OrganizationModel, OrganizationPlanModel,
+    OrganizationSubscriptionStateModel, OrganizationTierModel, QueryEngineModel,
+    QueryExecuteUntilModel, QueryModel, QueryStateTimingModel, QueryStatusCodeModel,
+    QueryTypeModel, QueryWithStateTimingAndResultModel, ResultModel, StatusModel, TerminationModel,
+    TerminationReasonModel, UserModel, WorkspaceAPITokenModel, WorkspaceApiTokenWithNameModel,
+    WorkspaceAwsConnectionModel, WorkspaceAwsStackModel, WorkspaceClusterDefaultsModel,
+    WorkspaceDeploymentModel, WorkspaceModel, WorkspaceSetupUrlModel, WorkspaceStateModel,
+    WorkspaceWithUrlModel,
 };
 use pyo3::exceptions::PySystemExit;
 use pyo3::prelude::*;
@@ -48,7 +52,7 @@ pub static CTRL_PLN_CLIENT_GLOBAL: std::sync::LazyLock<Arc<AutoRefreshApiControl
     });
 
 #[pymodule]
-fn polars_cloud(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
+fn polars_nanook(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     init_from_env();
 
     let mut err = Ok(());
@@ -69,6 +73,7 @@ fn polars_cloud(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<ComputeClusterPublicInfoModel>()?;
     m.add_class::<ComputeContextSpecs>()?;
     m.add_class::<ComputeModel>()?;
+    m.add_class::<ComputeProviderModel>()?;
     m.add_class::<ComputeStatusModel>()?;
     m.add_class::<ComputeVersionsPy>()?;
     m.add_class::<DBCPUArchitectureModel>()?;
@@ -82,6 +87,7 @@ fn polars_cloud(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<OrganizationModel>()?;
     m.add_class::<OrganizationSubscriptionStateModel>()?;
     m.add_class::<OrganizationTierModel>()?;
+    m.add_class::<OrganizationPlanModel>()?;
     m.add_class::<PlanFormatPy>()?;
     m.add_class::<TraceSpan>()?;
     m.add_class::<PyLineageContext>()?;
@@ -135,11 +141,18 @@ fn polars_cloud(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
         m.py().get_type::<ComputeClusterMisspecified>(),
     )?;
 
+    m.add("LEGACY_ENV_VARS", legacy_env_var_warnings())?;
+    m.add(
+        "RENAMED_ENV_VARS",
+        RENAMED_ENV_VARS.iter().copied().collect::<HashMap<_, _>>(),
+    )?;
+
     m.add_function(wrap_pyfunction!(serde_types::serialize_query_settings, m)?)?;
     m.add_function(wrap_pyfunction!(flush_traces, m)?)?;
     m.add_function(wrap_pyfunction!(py_is_token_expired, m)?)?;
     m.add_function(wrap_pyfunction!(polars_version, m)?)?;
     m.add_function(wrap_pyfunction!(python_version, m)?)?;
+    m.add_function(wrap_pyfunction!(legacy_env_var, m)?)?;
     m.add_function(wrap_pyfunction!(utils::resolve_compute_context_specs, m)?)?;
 
     m.add_function(wrap_pyfunction!(cli_main, m)?)?;
@@ -154,5 +167,6 @@ fn cli_main(py: Python) -> PyResult<()> {
         .getattr("argv")?
         .extract::<Vec<String>>()?;
     let result = py.detach(move || client_cli::entrypoint(args));
-    result.map_err(|e| PySystemExit::new_err(format!("{e}")))
+    // The CLI prints no traceback, so render the whole `source()` chain in the message.
+    result.map_err(|e| PySystemExit::new_err(format!("{e:?}")))
 }

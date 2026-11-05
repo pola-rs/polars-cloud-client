@@ -26,19 +26,11 @@ pub enum LicenseTypeModel {
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
-pub struct ScratchpadConfigModel {
-    pub local_scheduler_port: Option<u16>,
-    pub local_observatory_port: Option<u16>,
-}
-
-#[derive(Clone, Debug, Serialize, PartialEq)]
-#[cfg_attr(feature = "server", derive(JsonSchema))]
 pub struct ClusterModel {
     pub scheduler_started_at: DateTime<Utc>,
     pub node_count: Option<NonZeroU32>,
     pub region: Option<String>,
     pub mode: ClusterModeModel,
-    pub scratchpad_config: Option<ScratchpadConfigModel>,
     pub license_type: Option<LicenseTypeModel>,
 }
 

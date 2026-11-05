@@ -56,22 +56,18 @@ message SingleOpts {}
 
 message DistributedOpts {
   ShuffleOpts shuffle_opts = 1;
-  bool allow_pre_aggregation = 2;
-  bool allow_partitioned_sort = 3;
+  reserved 2; // Deprecated `bool allow_pre_aggregation`, now in `dev_opts`
+  reserved 3; // Deprecated `bool allow_partitioned_sort`, now in `dev_opts`
   uint64 allow_equi_join_broadcast_limit = 4;
   optional uint32 partitions_per_worker = 5;
   reserved 6; // Deprecated `bool cost_based_planner`
   reserved 7; // Deprecated `bool allow_expression_extraction`
   optional SingleWorkerOps single_worker_ops = 8;
   optional bool allow_expression_lowering = 9;
-  optional Planner planner = 10;
-}
-
-enum Planner {
-  PLANNER_UNSPECIFIED = 0;
-  PLANNER_AUTO = 1;
-  PLANNER_NAIVE = 2;
-  PLANNER_MISO = 3;
+  reserved 10; // Deprecated `Planner planner`, now in `dev_opts`
+  // Unstable planner options, keyed by name. Each value is JSON encoded.
+  // The compute plane decides which options exist.
+  map<string, string> dev_opts = 11;
 }
 
 enum GraphFormat {

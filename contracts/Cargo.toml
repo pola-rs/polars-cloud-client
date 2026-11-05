@@ -26,6 +26,8 @@ jsonwebtoken = "10.3.0"
 opentelemetry = { version = "0.32.0" }
 opentelemetry-http = { version = "0.32.0" }
 opentelemetry-semantic-conventions = { version = "0.32.0", features = ["semconv_experimental"] }
+pc-mcp = { path = "crates/pc-mcp" }
+pc-observatory-api = { path = "crates/pc-observatory-api" }
 pc-observatory-database = { path = "crates/pc-observatory-database" }
 pc-observatory-models = { path = "crates/pc-observatory-models" }
 pc-observatory-types = { path = "crates/pc-observatory-types" }
@@ -42,14 +44,20 @@ protos-client-compute = { path = "crates/protos-client-compute" }
 protos-common = { path = "crates/protos-common" }
 protos-compute-internal = { path = "crates/protos-compute-internal" }
 protos-compute-license = { path = "crates/protos-compute-license" }
-pyo3 = { version = "0.29.0", features = ["abi3-py310", "chrono", "uuid"] }
+pyo3 = { version = "0.29.0", features = ["abi3-py311", "chrono", "uuid"] }
 quote = "1.0"
 rcgen = { version = "0.14", default-features = false, features = ["aws_lc_rs", "pem", "x509-parser"] }
+redact = "0.1"
 regex = { version = "1.11" }
 reqwest = { version = "0.13", default-features = false, features = ["json", "http2"] }
 reqwest-middleware = "0.5.1"
 reqwest-otel = { path = "crates/reqwest-otel" }
 reqwest-retry = { version = "0.9.1", default-features = false }
+rmcp = { version = "3.4", default-features = false, features = [
+  "server",
+  "macros",
+  "transport-streamable-http-server",
+] }
 schemars = { version = "0.9.0", features = ["uuid1", "chrono04"] }
 semver = { version = "1.0.27", features = ["serde"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
@@ -75,6 +83,7 @@ tower-http = { version = "0.6", default-features = false, features = [
 tracing = "0.1.41"
 tracing-opentelemetry = "0.33"
 trait-variant = "0.1.2"
+utils = { path = "crates/utils" }
 uuid = { version = "1.23", features = ["v4", "v7", "serde"] }
 version-number = { path = "crates/version-number" }
 x509-parser = { version = "0.18.1" }

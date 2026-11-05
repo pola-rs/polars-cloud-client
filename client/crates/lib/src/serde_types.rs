@@ -25,26 +25,22 @@ use tonic::codegen::http::uri::Authority;
 use tower_http::set_header::HeaderMetadata;
 
 use crate::query_settings::{
-    PyEngine, PyExecuteUntil, PyNumWorkers, PyPlanner, PyQuerySettings, PyQueryType, PyShuffleOpts,
+    PyEngine, PyExecuteUntil, PyNumWorkers, PyQuerySettings, PyQueryType, PyShuffleOpts,
     PySingleWorkerOps, PySinkOptions,
 };
 
 pub struct DistributedSettings {
-    sort_partitioned: bool,
-    pre_aggregation: bool,
     expression_lowering: Option<bool>,
     equi_join_broadcast_limit: u64,
     partitions_per_worker: Option<u32>,
     single_worker_ops: PySingleWorkerOps,
-    planner: PyPlanner,
+    dev_opts: HashMap<String, String>,
 }
 
 impl<'a, 'py> FromPyObject<'a, 'py> for DistributedSettings {
     type Error = PyErr;
 
     fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
-        let sort_partitioned = obj.getattr("sort_partitioned")?.extract()?;
-        let pre_aggregation = obj.getattr("pre_aggregation")?.extract()?;
         let expression_lowering = obj.getattr("expression_lowering")?.extract()?;
         let equi_join_broadcast_limit = obj.getattr("equi_join_broadcast_limit")?.extract()?;
         let partitions_per_worker = obj.getattr("partitions_per_worker")?.extract()?;
@@ -57,24 +53,14 @@ impl<'a, 'py> FromPyObject<'a, 'py> for DistributedSettings {
                 return Err(PyValueError::new_err(msg));
             },
         };
-        let planner = match obj.getattr("planner")?.extract::<&str>()? {
-            "auto" => PyPlanner::Auto,
-            "naive" => PyPlanner::Naive,
-            "miso" => PyPlanner::Miso,
-            v => {
-                let msg = format!("expected one of {{'auto', 'naive', 'miso'}}, got {v}",);
-                return Err(PyValueError::new_err(msg));
-            },
-        };
+        let dev_opts = obj.getattr("dev_opts")?.extract()?;
 
         Ok(DistributedSettings {
-            sort_partitioned,
-            pre_aggregation,
             expression_lowering,
             equi_join_broadcast_limit,
             partitions_per_worker,
             single_worker_ops,
-            planner,
+            dev_opts,
         })
     }
 }
@@ -100,13 +86,11 @@ pub fn serialize_query_settings(
         None => PyQueryType::Single(),
         Some(settings) => PyQueryType::Distributed {
             shuffle_opts,
-            pre_aggregation: settings.pre_aggregation,
             expression_lowering: settings.expression_lowering,
-            sort_partitioned: settings.sort_partitioned,
             equi_join_broadcast_limit: settings.equi_join_broadcast_limit,
             partitions_per_worker: settings.partitions_per_worker,
             single_worker_ops: settings.single_worker_ops,
-            planner: settings.planner,
+            dev_opts: settings.dev_opts,
         },
     };
 

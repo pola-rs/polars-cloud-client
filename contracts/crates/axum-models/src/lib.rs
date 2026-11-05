@@ -5,6 +5,7 @@
 mod aws;
 mod common;
 mod compute;
+mod compute_telemetry;
 mod error_response;
 mod label;
 mod manifest;
@@ -28,6 +29,7 @@ mod workspace_token;
 pub use aws::*;
 pub use common::*;
 pub use compute::*;
+pub use compute_telemetry::*;
 pub use error_response::*;
 pub use label::*;
 pub use manifest::*;

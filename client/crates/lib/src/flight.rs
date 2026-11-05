@@ -1,8 +1,7 @@
 use std::collections::VecDeque;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use arrow_array::ffi_stream::FFI_ArrowArrayStream;
 use arrow_array::{RecordBatch, RecordBatchReader};
 use arrow_flight::error::FlightError;
 use arrow_flight::flight_service_client::FlightServiceClient;
@@ -22,6 +21,8 @@ use tower::Service;
 use tower::retry::backoff::ExponentialBackoffMaker;
 use tower::util::rng::HasherRng;
 use tower_grpc_retry::{HttpRetry, Params, RetryUnavailable};
+
+use crate::ffi_stream::ArrowArrayStream;
 
 pub(crate) struct AddPolicyService<S> {
     inner: S,
@@ -55,7 +56,7 @@ where
             Params {
                 max_retries: 5,
                 max_request_bytes: 4 * 1024 * 1024,
-                backoff: Some(
+                backoff: Some(Arc::new(
                     ExponentialBackoffMaker::new(
                         Duration::from_secs(1),
                         Duration::from_secs(60),
@@ -63,7 +64,7 @@ where
                         HasherRng::new(),
                     )
                     .unwrap(),
-                ),
+                )),
             },
         ));
         self.inner.call(req)
@@ -269,7 +270,7 @@ where
 
     pub(crate) async fn scan_flight(&self, query_id: QueryIdentifier) -> ApiResult<FlightResult> {
         let reader = self.scan_flight_impl(query_id).await.map_err(|e| match e {
-            FlightError::Tonic(status) => ApiError::GRPCError(status),
+            FlightError::Tonic(status) => ApiError::from(*status),
             e => ApiError::Other(e.into()),
         })?;
         Ok(FlightResult(Mutex::new(Some(reader))))
@@ -291,7 +292,7 @@ impl FlightResult {
         let reader = self.0.lock().unwrap().take().ok_or_else(|| {
             PyRuntimeError::new_err("__arrow_c_stream called more than once on FlightResult")
         })?;
-        let reader = FFI_ArrowArrayStream::new(Box::new(reader));
+        let reader = ArrowArrayStream::new(Box::new(reader));
         PyCapsule::new_with_value(py, reader, c"arrow_array_stream")
     }
 }

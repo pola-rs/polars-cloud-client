@@ -13,7 +13,7 @@ pub type ControlPlaneGRPCClient = ClientServiceClient<
     InterceptedService<OtelService<Channel>, fn(Request<()>) -> tonic::Result<Request<()>>>,
 >;
 
-/// `api_addr` must come from [`crate::PolarsCloudConfig::resolve_api_addr`], which only returns
+/// `api_addr` must come from [`crate::ClientConfig::resolve_api_addr`], which only returns
 /// addresses that parse as an endpoint.
 pub fn get_control_plane_client(api_addr: &str) -> ControlPlaneGRPCClient {
     let endpoint: Endpoint = api_addr
@@ -28,7 +28,7 @@ pub fn get_control_plane_client(api_addr: &str) -> ControlPlaneGRPCClient {
                 .as_ref()
                 .map(|(_, versions)| versions),
         ))
-        .unwrap_or_else(|e| panic!("invalid Polars Cloud API address {api_addr:?} ({e})"))
+        .unwrap_or_else(|e| panic!("invalid Polars Nanook API address {api_addr:?} ({e})"))
         .tls_config(ClientTlsConfig::new().with_native_roots())
         .unwrap_or_else(|e| panic!("could not configure TLS for {api_addr:?} ({e})"))
         .connect_lazy();
@@ -49,7 +49,7 @@ fn version_interceptor(
     let metadata = request.metadata_mut();
     metadata.insert(
         "x-client-version",
-        versions.polars_cloud.as_bytes().try_into().unwrap(),
+        versions.client.as_bytes().try_into().unwrap(),
     );
     metadata.insert(
         "x-polars-version",

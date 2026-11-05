@@ -10,6 +10,6 @@ message Label {
 
 message QueryInfo {
   repeated Label labels = 1;
-  optional string execution_id = 2;
+  reserved 2;
   optional polars_cloud.common.LineageContext lineage_context = 3;
 }

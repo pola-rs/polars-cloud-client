@@ -141,6 +141,7 @@ impl Display for NodeLabel<'_> {
                 P::IEJoin { .. } => f.write_str("IEJOIN"),
                 P::Invalid => f.write_str("INVALID"),
                 P::Join { how, .. } => write!(f, "{how} JOIN"),
+                P::RangeJoin { .. } => f.write_str("RANGE JOIN"),
                 P::MapFunction { function } => write!(f, "{function}"),
                 P::MergeSorted { maintain_order, .. } => {
                     write!(f, "MERGE SORTED[maintain_order: {maintain_order}]")
@@ -150,6 +151,7 @@ impl Display for NodeLabel<'_> {
                 },
                 P::PythonScan { .. } => f.write_str("PYTHON SCAN"),
                 P::RemoveOverlap => f.write_str("REMOVE PARTITION OVERLAP"),
+                P::AddOrderTag => f.write_str("ADD ORDER TAG"),
                 P::Window { .. } => f.write_str("WINDOW"),
                 P::RollingGroupBy {
                     agg_kind, period, ..
@@ -172,22 +174,26 @@ impl Display for NodeLabel<'_> {
                 P::ShuffleWrite {
                     shuffle_number,
                     partitioning,
-                    add_order_tag,
                     ..
-                } => {
-                    write!(f, "SHUFFLE WRITE ({shuffle_number})\n[")?;
-                    if *add_order_tag {
-                        write!(f, "add_order_tag: true, ")?;
-                    }
-                    write!(f, "partitioning: {partitioning}]")
-                },
+                } => write!(
+                    f,
+                    "SHUFFLE WRITE ({shuffle_number})\n[partitioning: {partitioning}]"
+                ),
                 P::SimpleProjection { .. } => f.write_str("simple π"),
                 P::Sink { sink_type, .. } | P::Sink2 { sink_type, .. } => {
                     write!(f, "SINK ({sink_type})")
                 },
                 P::SinkMultiple { .. } => f.write_str("SINK_MULTIPLE"),
                 P::Slice { offset, len } => write!(f, "SLICE[offset: {offset}, len: {len}]"),
-                P::Sort { maintain_order, .. } => {
+                P::Sort {
+                    slice: Some((offset, len, _)),
+                    ..
+                } => write!(f, "TOP K[offset: {offset}, len: {len}]"),
+                P::Sort {
+                    maintain_order,
+                    slice: None,
+                    ..
+                } => {
                     write!(f, "SORT[maintain_order: {maintain_order}]")
                 },
                 P::Union { maintain_order, .. } => {
@@ -261,6 +267,7 @@ mod tests {
             title: None,
             subtitle: subtitle.map(str::to_owned),
             properties,
+            origin_node_id: None,
         };
         let stage = |stage_number, nodes, edges| PhysStageInfo {
             stage_number,
@@ -271,7 +278,7 @@ mod tests {
                 nodes,
                 edges,
             },
-            properties: PhysStageProperties {},
+            properties: PhysStageProperties::default(),
             explain_ir: None,
         };
 
@@ -291,7 +298,6 @@ mod tests {
                                     by: "col(\"category\")".to_owned(),
                                 },
                                 collect_samples_col: None,
-                                add_order_tag: false,
                             },
                         ),
                         node(

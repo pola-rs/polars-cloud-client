@@ -23,7 +23,7 @@ pub struct QueryCloudObserver {
 #[pymethods]
 impl QueryCloudObserver {
     /// `workspace_id` is the workspace query profiles are exported to. Use
-    /// `polars_cloud.QueryCloudObserver` from Python, which resolves a workspace
+    /// `polars_nanook.QueryCloudObserver` from Python, which resolves a workspace
     /// given by name or id (or the account default) before constructing this.
     #[new]
     fn new(py: Python<'_>, workspace_id: Uuid) -> PyResult<Self> {

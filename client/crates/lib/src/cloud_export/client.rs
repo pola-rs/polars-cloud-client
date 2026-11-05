@@ -37,7 +37,7 @@ impl CloudApiClient {
         self.client
             .observe_query_started(self.workspace_id, query_id, QueryStartedArgs { timestamp })
             .await
-            .map_err(|e| anyhow::anyhow!("failed to register query: {e:#}"))
+            .context("failed to register query")
     }
 
     pub async fn submit_plan(
@@ -68,7 +68,7 @@ impl CloudApiClient {
         self.client
             .observe_query_update(self.workspace_id, query_id, update)
             .await
-            .map_err(|e| anyhow::anyhow!("failed to submit plan: {e:#}"))
+            .context("failed to submit plan")
     }
 
     pub async fn submit_metrics(
@@ -88,7 +88,7 @@ impl CloudApiClient {
         self.client
             .observe_query_update(self.workspace_id, query_id, update)
             .await
-            .map_err(|e| anyhow::anyhow!("failed to submit metrics: {e:#}"))
+            .context("failed to submit metrics")
     }
 
     pub async fn submit_failed(
@@ -104,7 +104,7 @@ impl CloudApiClient {
                 QueryFailedArgs { timestamp, error },
             )
             .await
-            .map_err(|e| anyhow::anyhow!("failed to mark query failed: {e:#}"))
+            .context("failed to mark query failed")
     }
 }
 

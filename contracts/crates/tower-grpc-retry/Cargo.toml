@@ -12,9 +12,11 @@ http = { workspace = true }
 http-body = { workspace = true }
 http-body-util = { workspace = true }
 pin-project-lite = { workspace = true }
+tokio = { workspace = true, features = ["time"] }
 tonic = { workspace = true }
 tower = { workspace = true, features = ["retry"] }
 tracing = { workspace = true }
+utils = { workspace = true }
 
 [dev-dependencies]
 http-body-util = { workspace = true, features = ["channel"] }

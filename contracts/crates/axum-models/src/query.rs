@@ -132,6 +132,8 @@ pub enum QueryTypeModel {
 pub enum QueryEngineModel {
     InMemory,
     Streaming,
+    /// Run on GPUs through cudf-polars.
+    Gpu,
 }
 
 /// How far through the pipeline a query was asked to run.
@@ -157,7 +159,11 @@ pub struct QueryWithStatusAndResultModel {
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
-#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[cfg_attr(
+    feature = "server",
+    derive(Validate, JsonSchema),
+    garde(allow_unvalidated)
+)]
 pub struct GetQueryArgs {
     pub cluster_id: Option<Uuid>,
     pub user_id: Option<Uuid>,
@@ -167,7 +173,11 @@ pub struct GetQueryArgs {
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
-#[cfg_attr(feature = "server", derive(JsonSchema))]
+#[cfg_attr(
+    feature = "server",
+    derive(Validate, JsonSchema),
+    garde(allow_unvalidated)
+)]
 pub struct QueryCountArgs {
     pub cluster_id: Option<Uuid>,
 }

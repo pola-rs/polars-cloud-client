@@ -1,19 +1,23 @@
 pub mod peek_trailers;
 pub mod replay;
 
+use std::fmt;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
-use futures_util::{FutureExt as _, StreamExt as _, TryFutureExt as _, future, stream};
+use futures_util::future::BoxFuture;
+use futures_util::{FutureExt as _, TryFutureExt as _, future};
 use tonic::{Code, Status};
 use tower::retry::backoff::{Backoff, ExponentialBackoffMaker, MakeBackoff};
 pub use tower::retry::budget::Budget;
 use tower::util::rng::HasherRng;
 use tower::{Layer, Service, ServiceExt};
 use tracing::{debug, trace};
+use utils::retry::Linear;
 
 pub use self::peek_trailers::PeekTrailersBody;
 pub use self::replay::ReplayBody;
@@ -81,11 +85,34 @@ impl Policy<tonic::transport::Error> for RetryUnavailable {
     }
 }
 
+pub trait RetryBackoff: Send + Sync + fmt::Debug {
+    fn make(&self) -> Box<dyn FnMut() -> BoxFuture<'static, ()> + Send>;
+}
+
+impl RetryBackoff for ExponentialBackoffMaker {
+    fn make(&self) -> Box<dyn FnMut() -> BoxFuture<'static, ()> + Send> {
+        let mut backoff = self.clone().make_backoff();
+        Box::new(move || backoff.next_backoff().boxed())
+    }
+}
+
+impl RetryBackoff for Linear {
+    fn make(&self) -> Box<dyn FnMut() -> BoxFuture<'static, ()> + Send> {
+        let linear = *self;
+        let mut attempt = 0u32;
+        Box::new(move || {
+            let delay = linear.delay(attempt);
+            attempt = attempt.saturating_add(1);
+            tokio::time::sleep(delay).boxed()
+        })
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Params {
     pub max_retries: usize,
     pub max_request_bytes: usize,
-    pub backoff: Option<ExponentialBackoffMaker>,
+    pub backoff: Option<Arc<dyn RetryBackoff>>,
 }
 
 impl Default for Params {
@@ -100,7 +127,7 @@ impl Default for Params {
         Self {
             max_retries: usize::MAX,
             max_request_bytes: usize::MAX,
-            backoff: Some(backoff),
+            backoff: Some(Arc::new(backoff)),
         }
     }
 }
@@ -262,13 +289,10 @@ async fn send_req_with_retries<
 
     // The response was retryable, so continue trying to dispatch backup
     // requests.
-    let mut backoff = params.backoff.map(|mut b| {
-        let mut backoff = b.make_backoff();
-        stream::repeat_with(move || backoff.next_backoff())
-    });
+    let mut next_backoff = params.backoff.map(|maker| maker.make());
     for n in 1..=params.max_retries {
-        if let Some(backoff) = backoff.as_mut() {
-            backoff.next().await;
+        if let Some(next_backoff) = next_backoff.as_mut() {
+            next_backoff().await;
         }
 
         // The service must be buffered to be cloneable; so if it's not ready,

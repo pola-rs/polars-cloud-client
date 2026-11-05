@@ -3,8 +3,9 @@ use std::io::Write;
 use std::sync::Arc;
 
 use clap::builder::{NonEmptyStringValueParser, TypedValueParser, ValueParser};
-use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
+use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use client_core::{AutoRefreshApiControlPlaneClient, Client, RUNTIME};
+use polars_axum_models::DBClusterModeModel;
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
@@ -59,8 +60,8 @@ struct WorkspaceRef {
 }
 
 #[derive(Parser)]
-#[command(name = "pc")]
-#[command(about = "Command line interface for Polars Cloud", long_about = None)]
+#[command(name = "nanook")]
+#[command(about = "Command line interface for Polars Nanook", long_about = None)]
 #[command(version)]
 #[command(arg_required_else_help = true)]
 struct Cli {
@@ -79,17 +80,17 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Authenticate with Polars Cloud
+    /// Authenticate with Polars Nanook
     Authenticate,
     /// Login through the browser
     Login,
-    /// Manage Polars Cloud organizations
+    /// Manage Polars Nanook organizations
     Organization(OrganizationArgs),
-    /// Manage Polars Cloud workspaces
+    /// Manage Polars Nanook workspaces
     Workspace(WorkspaceArgs),
-    /// Manage Polars Cloud compute clusters
+    /// Manage Polars Nanook compute clusters
     Compute(ComputeArgs),
-    /// Manage Polars Cloud service accounts
+    /// Manage Polars Nanook service accounts
     ServiceAccount(ServiceAccountArgs),
 }
 
@@ -225,6 +226,21 @@ fn parse_env_override() -> ValueParser {
         .into()
 }
 
+#[derive(Clone, Copy, ValueEnum)]
+enum ConnectionMode {
+    Direct,
+    Proxy,
+}
+
+impl From<ConnectionMode> for DBClusterModeModel {
+    fn from(mode: ConnectionMode) -> Self {
+        match mode {
+            ConnectionMode::Direct => Self::Direct,
+            ConnectionMode::Proxy => Self::Proxy,
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum ComputeCommands {
     /// List available compute clusters
@@ -252,6 +268,13 @@ enum ComputeCommands {
         env_override: Vec<(String, String)>,
         #[arg(long)]
         wait: bool,
+        #[arg(
+            long,
+            value_enum,
+            default_value_t = ConnectionMode::Direct,
+            help = "How to connect to the cluster"
+        )]
+        connection_mode: ConnectionMode,
     },
     /// Stop a compute cluster
     Stop {
@@ -379,7 +402,7 @@ async fn async_main(args: Vec<String>) -> anyhow::Result<()> {
                 },
             },
             WorkspaceCommands::Verify(workspace) => {
-                warn_deprecated("pc workspace verify", "pc workspace aws verify");
+                warn_deprecated("nanook workspace verify", "nanook workspace aws verify");
                 workspace_aws::verify(
                     &client,
                     workspace.organization_name,
@@ -430,6 +453,7 @@ async fn async_main(args: Vec<String>) -> anyhow::Result<()> {
                 cluster_size,
                 env_override,
                 wait,
+                connection_mode,
             } => {
                 start_compute_cluster(
                     &client,
@@ -442,6 +466,7 @@ async fn async_main(args: Vec<String>) -> anyhow::Result<()> {
                     cluster_size,
                     env_override.into_iter().collect(),
                     wait,
+                    connection_mode.into(),
                 )
                 .await?
             },
@@ -485,7 +510,7 @@ mod tests {
     /// `-o` is a disambiguator everywhere, including here -- it used to be the one required one.
     #[test]
     fn test_workspace_create_infers_the_organization() {
-        let cli = Cli::parse_from(["pc", "workspace", "create", "-w", "my-ws"]);
+        let cli = Cli::parse_from(["nanook", "workspace", "create", "-w", "my-ws"]);
         let Some(Commands::Workspace(WorkspaceArgs {
             command: WorkspaceCommands::Create { workspace, .. },
         })) = cli.command
@@ -499,7 +524,7 @@ mod tests {
     #[test]
     fn test_parse_workspace_create() {
         let cli = Cli::parse_from([
-            "pc",
+            "nanook",
             "workspace",
             "create",
             "-w",
@@ -528,10 +553,13 @@ mod tests {
     #[test]
     fn test_parse_workspace_aws_subcommands() {
         for (args, expect_no_verify) in [
-            (vec!["pc", "workspace", "aws", "connect", "-w", "ws"], false),
+            (
+                vec!["nanook", "workspace", "aws", "connect", "-w", "ws"],
+                false,
+            ),
             (
                 vec![
-                    "pc",
+                    "nanook",
                     "workspace",
                     "aws",
                     "connect",
@@ -555,7 +583,7 @@ mod tests {
             assert_eq!(no_verify, expect_no_verify);
         }
 
-        let cli = Cli::parse_from(["pc", "workspace", "aws", "disconnect", "-w", "ws"]);
+        let cli = Cli::parse_from(["nanook", "workspace", "aws", "disconnect", "-w", "ws"]);
         assert!(matches!(
             cli.command,
             Some(Commands::Workspace(WorkspaceArgs {
@@ -565,7 +593,7 @@ mod tests {
             }))
         ));
 
-        let cli = Cli::parse_from(["pc", "workspace", "aws", "verify", "-w", "ws"]);
+        let cli = Cli::parse_from(["nanook", "workspace", "aws", "verify", "-w", "ws"]);
         let Some(Commands::Workspace(WorkspaceArgs {
             command:
                 WorkspaceCommands::Aws(WorkspaceAwsArgs {
@@ -581,7 +609,7 @@ mod tests {
     #[test]
     fn test_parse_env_vars() {
         let cli = Cli::parse_from([
-            "pc",
+            "nanook",
             "compute",
             "start",
             "-w",
@@ -605,5 +633,19 @@ mod tests {
                 ("TEST_ARG2".into(), "hello".into())
             ]
         )
+    }
+
+    #[test]
+    fn test_compute_start_defaults_to_direct() {
+        let cli = Cli::parse_from(["nanook", "compute", "start", "-w", "my-ws"]);
+        let Some(Commands::Compute(ComputeArgs {
+            command: ComputeCommands::Start {
+                connection_mode, ..
+            },
+        })) = cli.command
+        else {
+            panic!();
+        };
+        assert!(matches!(connection_mode, ConnectionMode::Direct));
     }
 }

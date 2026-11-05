@@ -14,7 +14,7 @@ use crate::client_trait::ControlPlaneClient;
 use crate::constants::{
     ACCESS_TOKEN_FILENAME, API_ADDR_ENV, API_DOMAIN_PREFIX_ENV, DEFAULT_API_DOMAIN_PREFIX,
     DEFAULT_DOMAIN, DEFAULT_ORGANIZATION_ID_ENV, DEFAULT_WORKSPACE_ID_ENV, DOMAIN_ENV,
-    REFRESH_TOKEN_FILENAME, USER_NAME_ENV,
+    REFRESH_TOKEN_FILENAME, USER_NAME_ENV, legacy_env_var,
 };
 use crate::error::ApiError;
 use crate::{ACCESS_TOKEN_PATH_ENV, AuthError};
@@ -23,7 +23,7 @@ const CONFIG_FILENAME: &str = "config.toml";
 
 #[derive(Default, Clone, Serialize, Deserialize)]
 #[serde(default)]
-pub struct PolarsCloudConfig {
+pub struct ClientConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_workspace_id: Option<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -51,24 +51,43 @@ pub struct AuthConfig {
     pub refresh_token: Option<String>,
 }
 
-static CONFIG: LazyLock<RwLock<PolarsCloudConfig>> = LazyLock::new(|| {
-    RwLock::new(PolarsCloudConfig::read_from_dir_and_migrate(
+static CONFIG: LazyLock<RwLock<ClientConfig>> = LazyLock::new(|| {
+    RwLock::new(ClientConfig::read_from_dir_and_migrate(
         &resolve_config_dir(),
     ))
 });
 
-/// The directory named by `POLARS_CLOUD_CONFIG_DIR`, or the platform config directory.
+/// The directory named by `NANOOK_CONFIG_DIR`, or the platform config directory.
 fn resolve_config_dir() -> PathBuf {
-    std::env::var(ACCESS_TOKEN_PATH_ENV)
-        .ok()
+    legacy_env_var(ACCESS_TOKEN_PATH_ENV)
         .map(PathBuf::from)
         .unwrap_or_else(|| {
-            BaseDirs::new()
+            let base = BaseDirs::new()
                 .ok_or_else(|| anyhow!("Unable to determine user's config directory"))
                 .unwrap()
                 .config_dir()
-                .join("polars_cloud")
+                .to_path_buf();
+            migrate_legacy_config_dir(&base.join("polars_cloud"), base.join("polars_nanook"))
         })
+}
+
+fn migrate_legacy_config_dir(legacy: &Path, dir: PathBuf) -> PathBuf {
+    if dir.exists() || !legacy.exists() {
+        return dir;
+    }
+    match fs::rename(legacy, &dir) {
+        Ok(()) => dir,
+        // Another process moved it first.
+        Err(e) if e.kind() == ErrorKind::NotFound && dir.exists() => dir,
+        Err(e) => {
+            warn_user(format!(
+                "could not move the config directory {} to {} ({e}); keeping the old one",
+                legacy.display(),
+                dir.display()
+            ));
+            legacy.to_path_buf()
+        },
+    }
 }
 
 /// Warn the user about a config problem. Falls back to stderr when nothing is installed to
@@ -76,16 +95,16 @@ fn resolve_config_dir() -> PathBuf {
 fn warn_user(message: impl Display) {
     tracing::warn!("{message}");
     if !tracing::dispatcher::has_been_set() {
-        eprintln!("polars_cloud: warning: {message}");
+        eprintln!("polars_nanook: warning: {message}");
     }
 }
 
-impl PolarsCloudConfig {
-    pub fn global() -> RwLockReadGuard<'static, PolarsCloudConfig> {
+impl ClientConfig {
+    pub fn global() -> RwLockReadGuard<'static, ClientConfig> {
         CONFIG.read().unwrap()
     }
 
-    pub fn global_mut() -> RwLockWriteGuard<'static, PolarsCloudConfig> {
+    pub fn global_mut() -> RwLockWriteGuard<'static, ClientConfig> {
         CONFIG.write().unwrap()
     }
 
@@ -125,7 +144,7 @@ impl PolarsCloudConfig {
             },
         };
 
-        PolarsCloudConfig {
+        ClientConfig {
             config_dir: dir.to_path_buf(),
             ..config
         }
@@ -159,7 +178,7 @@ impl PolarsCloudConfig {
     }
 
     /// Read the persisted tokens, re-reading the `auth` section from disk so a login that
-    /// happened after this process started (`pc login` in another terminal) is picked up.
+    /// happened after this process started (`nanook login` in another terminal) is picked up.
     /// Every other field keeps its in-memory value.
     pub fn load_auth() -> AuthConfig {
         let mut config = Self::global_mut();
@@ -242,31 +261,26 @@ impl PolarsCloudConfig {
 }
 
 /// Order of resolution = (explicit) argument -> env -> config -> (if available) server or hardcoded default
-impl PolarsCloudConfig {
+impl ClientConfig {
     pub fn resolve_username() -> Option<String> {
-        std::env::var(USER_NAME_ENV)
-            .ok()
-            .or_else(|| Self::global().username.clone())
+        legacy_env_var(USER_NAME_ENV).or_else(|| Self::global().username.clone())
     }
 
     /// use [`resolve_default_workspace_id`] if you want to also check the server default
     pub fn default_workspace_id() -> Option<Uuid> {
-        std::env::var(DEFAULT_WORKSPACE_ID_ENV)
-            .ok()
+        legacy_env_var(DEFAULT_WORKSPACE_ID_ENV)
             .and_then(|value| Uuid::parse_str(value.trim()).ok())
             .or_else(|| Self::global().default_workspace_id)
     }
 
     pub fn default_organization_id() -> Option<Uuid> {
-        std::env::var(DEFAULT_ORGANIZATION_ID_ENV)
-            .ok()
+        legacy_env_var(DEFAULT_ORGANIZATION_ID_ENV)
             .and_then(|value| Uuid::parse_str(value.trim()).ok())
             .or_else(|| Self::global().default_organization_id)
     }
 
     pub fn resolve_domain() -> String {
-        std::env::var(DOMAIN_ENV)
-            .ok()
+        legacy_env_var(DOMAIN_ENV)
             .or_else(|| Self::global().domain.clone())
             .unwrap_or_else(|| DEFAULT_DOMAIN.to_owned())
     }
@@ -276,12 +290,10 @@ impl PolarsCloudConfig {
     }
 
     pub fn resolve_api_addr() -> String {
-        std::env::var(API_ADDR_ENV)
-            .ok()
+        legacy_env_var(API_ADDR_ENV)
             .or_else(|| Self::global().api_addr.clone())
             .unwrap_or_else(|| {
-                let prefix = std::env::var(API_DOMAIN_PREFIX_ENV)
-                    .ok()
+                let prefix = legacy_env_var(API_DOMAIN_PREFIX_ENV)
                     .or_else(|| Self::global().api_domain_prefix.clone())
                     .unwrap_or_else(|| DEFAULT_API_DOMAIN_PREFIX.to_owned());
                 format!("https://{prefix}.{}:443", Self::resolve_domain())
@@ -339,7 +351,7 @@ impl PolarsCloudConfig {
     }
 }
 
-impl PolarsCloudConfig {
+impl ClientConfig {
     async fn organization_id_by_name(
         client: &dyn ControlPlaneClient,
         name: String,
@@ -437,7 +449,7 @@ impl WorkspaceRef {
                     Some(organization) => Some(organization.resolve_id(client).await?),
                     None => None,
                 };
-                PolarsCloudConfig::workspace_id_by_name(client, name, organization_id).await
+                ClientConfig::workspace_id_by_name(client, name, organization_id).await
             },
         }
     }
@@ -461,7 +473,27 @@ impl OrganizationRef {
     async fn resolve_id(self, client: &dyn ControlPlaneClient) -> Result<Uuid, ApiError> {
         match self {
             Self::Id(id) => Ok(id),
-            Self::Name(name) => PolarsCloudConfig::organization_id_by_name(client, name).await,
+            Self::Name(name) => ClientConfig::organization_id_by_name(client, name).await,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn migrates_legacy_config_dir() {
+        let base = std::env::temp_dir().join(format!("client-config-{}", std::process::id()));
+        let legacy = base.join("polars_cloud");
+        let dir = base.join("polars_nanook");
+        fs::create_dir_all(&legacy).unwrap();
+        fs::write(legacy.join(CONFIG_FILENAME), "username = \"x\"").unwrap();
+
+        assert_eq!(migrate_legacy_config_dir(&legacy, dir.clone()), dir);
+        assert!(dir.join(CONFIG_FILENAME).exists());
+        assert!(!legacy.exists());
+
+        fs::remove_dir_all(base).unwrap();
     }
 }

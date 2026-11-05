@@ -1,10 +1,11 @@
+use pc_observatory_types::{PhysNodeId, StageNumber};
 #[cfg(feature = "server")]
 use schemars::JsonSchema;
 use serde::Serialize;
 
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
-pub struct AggregatedPhysicalMetricFieldsModel {
+pub struct AggregatedPhysicalNodeMetricFieldsModel {
     pub total_polls: i64,
     pub total_stolen_polls: i64,
     pub total_poll_time_ns: i64,
@@ -50,4 +51,12 @@ pub struct CustomPhysicalMetricModel {
     pub key: String,
     pub unit: PhysicalMetricUnitModel,
     pub value: i64,
+}
+
+/// One plan node's metrics in the latest attempt of its stage.
+#[derive(Clone, Debug, Serialize)]
+pub struct StagePhysicalNodeMetricsModel {
+    pub stage_number: StageNumber,
+    pub physical_node_id: PhysNodeId,
+    pub metrics: AggregatedPhysicalNodeMetricFieldsModel,
 }

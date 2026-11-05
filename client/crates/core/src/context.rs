@@ -2,7 +2,8 @@ use std::time::Duration;
 
 use anyhow::anyhow;
 use polars_axum_models::{
-    ComputeStatusModel, DBCPUArchitectureModel, InstanceSpecsModel, WorkspaceClusterDefaultsModel,
+    ComputeProviderModel, ComputeStatusModel, DBCPUArchitectureModel, InstanceSpecsModel,
+    WorkspaceClusterDefaultsModel,
 };
 use pyo3::{pyclass, pymethods};
 use uuid::Uuid;
@@ -159,6 +160,7 @@ pub async fn resolve_compute_context_specs(
         storage: storage_resolved,
         big_instance_storage,
         cluster_size: cluster_size_resolved,
+        provider: None,
     })
 }
 
@@ -225,12 +227,14 @@ pub struct ComputeContextSpecs {
     pub storage: Option<u32>,
     pub big_instance_storage: Option<u32>,
     pub cluster_size: u32,
+    #[pyo3(set)]
+    pub provider: Option<ComputeProviderModel>,
 }
 
 #[pymethods]
 impl ComputeContextSpecs {
     #[new]
-    #[pyo3(signature=(*, cpus=None, memory=None, cpu_architectures=None, instance_type=None, big_instance_type=None, big_instance_multiplier=None, storage=None, big_instance_storage=None, cluster_size)
+    #[pyo3(signature=(*, cpus=None, memory=None, cpu_architectures=None, instance_type=None, big_instance_type=None, big_instance_multiplier=None, storage=None, big_instance_storage=None, cluster_size, provider=None)
     )]
     #[expect(clippy::too_many_arguments)]
     pub fn new(
@@ -243,6 +247,7 @@ impl ComputeContextSpecs {
         storage: Option<u32>,
         big_instance_storage: Option<u32>,
         cluster_size: u32,
+        provider: Option<ComputeProviderModel>,
     ) -> Self {
         Self {
             cpus,
@@ -254,6 +259,7 @@ impl ComputeContextSpecs {
             storage,
             big_instance_storage,
             cluster_size,
+            provider,
         }
     }
 }

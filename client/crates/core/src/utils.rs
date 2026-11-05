@@ -1,7 +1,7 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
-use base64::engine::general_purpose::STANDARD_NO_PAD;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use polars_axum_models::PythonVersion;
 use pyo3::exceptions::PyValueError;
 use pyo3::{PyResult, Python, pyfunction};
@@ -9,7 +9,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::constants::{ACCESS_TOKEN_ENV, LOGIN_CLIENT_ID};
-use crate::{AuthError, PolarsCloudConfig, TOKEN_EXPIRATION_BUFFER, VERSIONS};
+use crate::{AuthError, ClientConfig, TOKEN_EXPIRATION_BUFFER, VERSIONS, legacy_env_var};
 
 #[derive(Deserialize)]
 pub struct Tokens {
@@ -24,14 +24,14 @@ pub struct AccessToken {
 
 /// Get an auth header from the cloud access token environment variable if it exists
 pub fn get_auth_header_from_access_token_env() -> Result<Option<String>, AuthError> {
-    if let Ok(token) = std::env::var(ACCESS_TOKEN_ENV) {
+    if let Some(token) = legacy_env_var(ACCESS_TOKEN_ENV) {
         return token_from_environment(token).map(Some);
     };
     Ok(None)
 }
 
 pub fn write_tokens(access_token: &str, refresh_token: &str) -> Result<(), AuthError> {
-    let mut config = PolarsCloudConfig::global_mut();
+    let mut config = ClientConfig::global_mut();
     config.auth.access_token = Some(access_token.to_owned());
     config.auth.refresh_token = Some(refresh_token.to_owned());
     config.flush()
@@ -44,14 +44,14 @@ pub async fn get_access_token_for_service_account(
 ) -> Result<String, AuthError> {
     let url = format!(
         "https://{}/realms/Polars/protocol/openid-connect/token",
-        PolarsCloudConfig::resolve_auth_domain()
+        ClientConfig::resolve_auth_domain()
     );
 
     let data = json!({
         "username": format!("{}@sa.cloud.pola.rs",username),
         "password": password,
         "grant_type": "password",
-        "client_id": "PolarsCloud",
+        "client_id": LOGIN_CLIENT_ID,
     });
 
     let token = connection_pool
@@ -77,7 +77,7 @@ pub async fn use_refresh_token(
 
     let url = format!(
         "https://{}/realms/Polars/protocol/openid-connect/token",
-        PolarsCloudConfig::resolve_auth_domain()
+        ClientConfig::resolve_auth_domain()
     );
 
     let data = json!({
@@ -131,7 +131,7 @@ pub fn is_token_expired(
         .ok_or_else(|| AuthError::new("No payload in token."))?
         .to_string();
 
-    let payload = STANDARD_NO_PAD
+    let payload = URL_SAFE_NO_PAD
         .decode(payload)
         .map_err(|_| AuthError::new("Invalid token payload."))?;
 
@@ -195,4 +195,17 @@ pub fn python_version(py: Python<'_>) -> String {
         patch: version.patch,
     }
     .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decodes_base64url_token_payload() {
+        // "ë" encodes to a `_`, which only base64url accepts.
+        let payload = URL_SAFE_NO_PAD.encode(r#"{"name":"Zoë","exp":4102444800}"#);
+        let token = format!("header.{payload}.");
+        assert!(!is_token_expired(&token, None).unwrap());
+    }
 }

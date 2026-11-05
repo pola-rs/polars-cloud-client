@@ -74,7 +74,7 @@ pub async fn create_workspace(
         workspace_aws::connect_by_id(client, workspace.id, verify).await?;
     } else {
         println!(
-            "Run `pc workspace aws connect -w {}` to connect an AWS account to it.",
+            "Run `nanook workspace aws connect -w {}` to connect an AWS account to it.",
             workspace.name
         );
     }
@@ -119,12 +119,12 @@ pub async fn print_workspaces(client: &Client, organization_name: Option<String>
     if workspaces.is_empty() {
         match &organization {
             Some(organization) => println!(
-                "Organization {} has no workspaces yet. Run `pc workspace create -o {} -w <name>` \
+                "Organization {} has no workspaces yet. Run `nanook workspace create -o {} -w <name>` \
                  to create one.",
                 organization.name, organization.name
             ),
             None => println!(
-                "No workspaces yet. Run `pc workspace create -o <org> -w <name>` to create one."
+                "No workspaces yet. Run `nanook workspace create -o <org> -w <name>` to create one."
             ),
         }
         return Ok(());
@@ -223,7 +223,11 @@ mod tests {
         let error = delete_workspace(&client, None, "ws".into())
             .await
             .unwrap_err();
-        assert!(error.to_string().contains("pc workspace aws disconnect"));
+        assert!(
+            error
+                .to_string()
+                .contains("nanook workspace aws disconnect")
+        );
     }
 
     #[tokio::test]
@@ -271,7 +275,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("pc organization setup --name org")
+                .contains("nanook organization setup --name org")
         );
     }
 
@@ -316,7 +320,7 @@ mod tests {
         let error = create_workspace(&client, None, "ws".into(), false, true)
             .await
             .unwrap_err();
-        assert!(error.to_string().contains("pc organization setup"));
+        assert!(error.to_string().contains("nanook organization setup"));
     }
 
     #[tokio::test]

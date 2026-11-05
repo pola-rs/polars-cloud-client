@@ -2,7 +2,7 @@
 WorkspaceProviderAWS
 ====================
 
-.. currentmodule:: polars_cloud
+.. currentmodule:: polars_nanook
 
 .. autoclass:: WorkspaceProviderAWS
     :members:

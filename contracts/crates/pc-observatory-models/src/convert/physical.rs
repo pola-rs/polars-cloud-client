@@ -2,13 +2,12 @@ use std::collections::HashSet;
 use std::num::NonZeroUsize;
 
 use polars_descriptions::{PhysicalNodeDescription, PhysicalPropsDescription};
-use uuid::Uuid;
 
 use crate::Edge;
 use crate::convert::{
     file_provider_str, ineq_str, python_predicate, to_pred_skip, to_sort_columns, warnings_for,
 };
-use crate::phys::models::PhysNodeProperties;
+use crate::phys::models::{PhysNodeProperties, shuffle_path_parts};
 use crate::phys::{PhysNodeInfo, PhysicalPlanVisualizationData};
 
 pub fn description_to_physical_visualization(
@@ -32,6 +31,9 @@ pub fn description_to_physical_visualization(
             PhysNodeInfo {
                 id: n.id,
                 type_id: properties.variant_name(),
+                // In a single-process query the IR is the logical plan, so the IR node id is
+                // already the origin. Distributed workers replace it with the real origin.
+                origin_node_id: n.ir_node_id.map(|id| id as u64),
                 title: None,
                 subtitle,
                 properties,
@@ -48,29 +50,12 @@ pub fn description_to_physical_visualization(
     }
 }
 
-/// Split a shuffle storage path into a worker-invariant display path and the
-/// shuffle id.
-///
-/// Returns `None` for paths that are not shuffle storage, e.g. a user sink
-/// target or a plain file scan.
-fn shuffle_path_parts(path: &str) -> Option<(String, u32)> {
-    let (before, after) = path.split_once("/shuffle=")?;
-
-    // Require a real query id rather than any `query=` text, so a user sink
-    // target that happens to contain these segments is not mistaken for shuffle
-    // storage.
-    let query_id = before.rsplit_once("query=")?.1;
-    Uuid::parse_str(query_id).ok()?;
-
-    let number = after.split('/').next()?;
-    let shuffle_id = number.parse::<u32>().ok()?;
-    Some((format!("query={query_id}/shuffle={number}"), shuffle_id))
-}
-
 fn to_phys_props(props: PhysicalPropsDescription) -> PhysNodeProperties {
     match props {
         PhysicalPropsDescription::Default
         | PhysicalPropsDescription::Other
+        | PhysicalPropsDescription::Recursive { .. }
+        | PhysicalPropsDescription::Reverse
         | PhysicalPropsDescription::Window { .. }
         | PhysicalPropsDescription::RollingFixedWindowFunction { .. } => {
             PhysNodeProperties::Default
@@ -602,5 +587,26 @@ mod tests {
             shuffle_path_parts(&format!("/tmp/query={QUERY}/shuffle=abc")),
             None
         );
+    }
+
+    #[test]
+    fn a_physical_node_carries_the_ir_node_it_was_lowered_from() {
+        let nodes = vec![PhysicalNodeDescription {
+            id: 5,
+            input_ids: vec![],
+            ir_node_id: Some(3),
+            properties: PhysicalPropsDescription::default(),
+        }];
+
+        let data = description_to_physical_visualization(nodes);
+
+        assert_eq!(data.nodes[0].origin_node_id, Some(3));
+    }
+
+    #[test]
+    fn a_physical_node_from_an_older_producer_has_no_logical_node() {
+        let json = r#"{"id":5,"type_id":"Default","title":null,"subtitle":null,"properties":{"type":"Default"},"warnings":[]}"#;
+        let node: PhysNodeInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(node.origin_node_id, None);
     }
 }

@@ -2,7 +2,7 @@
 WorkspaceDefaultComputeSpecs
 ====================================
 
-.. currentmodule:: polars_cloud
+.. currentmodule:: polars_nanook
 
 .. autoclass:: WorkspaceDefaultComputeSpecs
     :members:

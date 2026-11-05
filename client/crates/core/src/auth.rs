@@ -3,12 +3,12 @@ use std::fmt::Formatter;
 
 use pyo3::pyclass;
 
-use crate::constants::ACCESS_TOKEN_ENV;
+use crate::constants::{ACCESS_TOKEN_ENV, CLIENT_ID_ENV, CLIENT_SECRET_ENV};
 use crate::utils::{
     get_access_token_for_service_account, is_token_expired_with_buffer, token_as_header,
     use_refresh_token,
 };
-use crate::{AuthError, PolarsCloudConfig};
+use crate::{AuthError, ClientConfig, legacy_env_var};
 
 #[derive(Clone)]
 pub enum AuthToken {
@@ -94,8 +94,8 @@ impl AuthToken {
     ) -> Result<Self, AuthError> {
         // Check if we can find env var client_id / secret
         if let (Some(client_id), Some(client_secret)) = (
-            std::env::var("POLARS_CLOUD_CLIENT_ID").ok(),
-            std::env::var("POLARS_CLOUD_CLIENT_SECRET").ok(),
+            legacy_env_var(CLIENT_ID_ENV),
+            legacy_env_var(CLIENT_SECRET_ENV),
         ) {
             let token =
                 get_access_token_for_service_account(&client_id, &client_secret, connection_pool)
@@ -184,7 +184,7 @@ impl AuthToken {
     }
 
     fn read_tokens_from_config() -> Result<AuthToken, AuthError> {
-        let auth = PolarsCloudConfig::load_auth();
+        let auth = ClientConfig::load_auth();
         let (Some(token), Some(refresh_token)) = (auth.access_token, auth.refresh_token) else {
             return Err(AuthError::new("Authentication token was not found."));
         };

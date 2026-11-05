@@ -34,9 +34,13 @@ pub struct PhysStageInfo {
     pub explain_ir: Option<String>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Default)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
-pub struct PhysStageProperties {}
+pub struct PhysStageProperties {
+    /// Whether the stage runs as a single task. `None` if unknown.
+    #[serde(default)]
+    pub is_single: Option<bool>,
+}
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]

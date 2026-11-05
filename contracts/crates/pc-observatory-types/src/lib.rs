@@ -11,6 +11,15 @@ pub enum OrderDirection {
     Desc,
 }
 
+/// What the plan nodes are ranked by when only the top ones are read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PhysicalNodeRanking {
+    /// Poll plus state update time.
+    OpTime,
+    /// Bytes received plus bytes sent; nodes without I/O are left out.
+    IoBytes,
+}
+
 pub mod observatory_target;
 
 #[derive(PartialEq, Clone, Copy, Debug, Eq, Hash, Serialize, Deserialize)]
@@ -49,7 +58,7 @@ impl TryFrom<&Vec<u8>> for TraceId {
 #[cfg_attr(feature = "server", derive(JsonSchema, sqlx::Type), sqlx(transparent))]
 pub struct SpanId(pub Vec<u8>);
 
-#[derive(PartialEq, Clone, Copy, Debug, Hash, Eq, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Copy, Debug, Hash, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 #[serde(transparent)]
 pub struct StageNumber(pub u32);
@@ -209,3 +218,7 @@ pub struct OutputRows(pub i64);
 )]
 #[cfg_attr(feature = "server", derive(JsonSchema, sqlx::Type), sqlx(transparent))]
 pub struct PhysNodeId(pub i64);
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "server", derive(JsonSchema))]
+pub struct OriginNodeId(pub u64);

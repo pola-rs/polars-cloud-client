@@ -6,7 +6,9 @@ use client_core::RUNTIME;
 use polars_axum_models::{
     QueryCustomMetricModel, QueryMetricUnitModel, QueryPhysNodeKind, QueryPhysNodeMetricsModel,
 };
-use polars_descriptions::{CustomMetricDescription, MetricUnit, NodeMetricsDescription};
+use polars_descriptions::{
+    CustomMetricDescription, MetricUnit, MetricsSnapshotDescription, NodeMetricsDescription,
+};
 use pyo3::{Py, PyAny, PyResult, Python, pyclass, pymethods};
 use tokio::sync::mpsc::Sender;
 use tokio_util::sync::CancellationToken;
@@ -97,8 +99,8 @@ async fn sample_and_submit(
         },
     };
 
-    let rows: Vec<NodeMetricsDescription> = match rmp_serde::from_slice(&bytes) {
-        Ok(rows) => rows,
+    let rows = match decode_snapshot(&bytes) {
+        Ok(snapshot) => snapshot.nodes,
         Err(error) => {
             tracing::warn!(?error, "failed to deserialize query metrics");
             return;
@@ -147,6 +149,25 @@ async fn sample_and_submit(
     if let Err(error) = result {
         tracing::warn!(?error, "failed to submit query metrics");
     }
+}
+
+/// Polars before pola-rs/polars#29792 sends only the node rows, as a list. Later versions send the
+/// whole snapshot, as a map. The marker tells them apart: a list of rows must not be read as the
+/// snapshot struct, field by field, which turns one bad row into an empty snapshot.
+fn decode_snapshot(bytes: &[u8]) -> Result<MetricsSnapshotDescription, rmp_serde::decode::Error> {
+    if is_msgpack_array(bytes) {
+        Ok(MetricsSnapshotDescription {
+            nodes: rmp_serde::from_slice(bytes)?,
+            ..Default::default()
+        })
+    } else {
+        rmp_serde::from_slice(bytes)
+    }
+}
+
+/// Whether the payload starts with a msgpack array marker: fixarray, array 16 or array 32.
+fn is_msgpack_array(bytes: &[u8]) -> bool {
+    matches!(bytes.first(), Some(0x90..=0x9f | 0xdc | 0xdd))
 }
 
 pub(crate) struct MetricPoller {
@@ -214,5 +235,87 @@ impl IntoModel<QueryMetricUnitModel> for MetricUnit {
             MetricUnit::Bytes => QueryMetricUnitModel::Bytes,
             MetricUnit::DurationNs => QueryMetricUnitModel::DurationNs,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use polars_descriptions::QueryMetricsDescription;
+
+    use super::*;
+
+    fn node(phys_node_key: u64) -> NodeMetricsDescription {
+        NodeMetricsDescription {
+            phys_node_key,
+            rows_sent: 10,
+            ..Default::default()
+        }
+    }
+
+    fn keys(snapshot: &MetricsSnapshotDescription) -> Vec<u64> {
+        snapshot.nodes.iter().map(|n| n.phys_node_key).collect()
+    }
+
+    #[test]
+    fn the_whole_snapshot_decodes() {
+        let snapshot = MetricsSnapshotDescription {
+            query: QueryMetricsDescription {
+                io_rx_active_ns: 5,
+                ..Default::default()
+            },
+            nodes: vec![node(1), node(2)],
+        };
+        let bytes = rmp_serde::to_vec_named(&snapshot).unwrap();
+
+        let decoded = decode_snapshot(&bytes).unwrap();
+
+        assert_eq!(keys(&decoded), [1, 2]);
+        assert_eq!(decoded.query.io_rx_active_ns, 5);
+        assert_eq!(decoded.nodes[0].rows_sent, 10);
+    }
+
+    #[test]
+    fn the_node_rows_of_an_older_polars_decode() {
+        // One row would also decode as the snapshot struct, field by field.
+        for rows in [vec![node(1)], vec![node(1), node(2)], vec![]] {
+            let bytes = rmp_serde::to_vec_named(&rows).unwrap();
+
+            let decoded = decode_snapshot(&bytes).unwrap();
+
+            assert_eq!(
+                keys(&decoded),
+                rows.iter().map(|n| n.phys_node_key).collect::<Vec<_>>()
+            );
+            assert_eq!(decoded.query.io_rx_active_ns, 0);
+        }
+    }
+
+    #[test]
+    fn a_payload_that_is_neither_is_an_error() {
+        let bytes = rmp_serde::to_vec_named(&"not metrics").unwrap();
+
+        assert!(decode_snapshot(&bytes).is_err());
+    }
+
+    #[test]
+    fn a_bad_node_row_reports_its_own_error() {
+        // One row, which would decode as an empty snapshot, field by field.
+        let rows = vec![HashMap::from([("phys_node_key", "not a key")])];
+        let bytes = rmp_serde::to_vec_named(&rows).unwrap();
+
+        let error = decode_snapshot(&bytes).unwrap_err().to_string();
+
+        let rows_error = rmp_serde::from_slice::<Vec<NodeMetricsDescription>>(&bytes).unwrap_err();
+        assert_eq!(error, rows_error.to_string());
+    }
+
+    #[test]
+    fn a_bad_snapshot_reports_its_own_error() {
+        let snapshot = HashMap::from([("query", "not metrics")]);
+        let bytes = rmp_serde::to_vec_named(&snapshot).unwrap();
+
+        let error = decode_snapshot(&bytes).unwrap_err().to_string();
+
+        assert!(error.contains("not metrics"), "{error}");
     }
 }

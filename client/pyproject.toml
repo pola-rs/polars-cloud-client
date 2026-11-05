@@ -3,13 +3,13 @@ requires = ["maturin>=1,<2"]
 build-backend = "maturin"
 
 [project]
-name = "polars-cloud"
+name = "polars-nanook"
 dynamic = ["version"]
 authors = [{ name = "Polars", email = "info@polars.tech" }]
-description = "Run Polars remotely, either in the Cloud or On-Prem"
+description = "Run Polars Nanook queries, managed or on-premises"
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 classifiers = [
   "Development Status :: 1 - Planning",
   "Environment :: Console",
@@ -19,7 +19,6 @@ classifiers = [
   "Programming Language :: Python",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -28,41 +27,61 @@ classifiers = [
 ]
 dependencies = [
   # uncomment if we want a specific commit
-  # "polars[rt64, cloudpickle]@git+https://github.com/pola-rs/polars.git@22a147de3d2bb2e44b97338a2510816c7105c9f2#subdirectory=py-polars",
-  # "polars-runtime-64@git+https://github.com/pola-rs/polars.git@22a147de3d2bb2e44b97338a2510816c7105c9f2#subdirectory=py-polars/runtime/polars-runtime-64",
-  # "polars-runtime-32@git+https://github.com/pola-rs/polars.git@22a147de3d2bb2e44b97338a2510816c7105c9f2#subdirectory=py-polars/runtime/polars-runtime-32",
-  "polars[rt64,cloudpickle] == 2.0.0",
+  # "polars[rt64, cloudpickle]@git+https://github.com/pola-rs/polars.git@7f902bd3ffd27ff82d14278a09a295ff2f7aed92#subdirectory=py-polars",
+  # "polars-runtime-64@git+https://github.com/pola-rs/polars.git@7f902bd3ffd27ff82d14278a09a295ff2f7aed92#subdirectory=py-polars/runtime/polars-runtime-64",
+  # "polars-runtime-32@git+https://github.com/pola-rs/polars.git@7f902bd3ffd27ff82d14278a09a295ff2f7aed92#subdirectory=py-polars/runtime/polars-runtime-32",
+  "polars[rt64,cloudpickle] == 2.1.0",
   # 4.5 is the first release with `deprecated`.
   'typing-extensions >= 4.5; python_version <= "3.12"',
 ]
 
 [project.scripts]
-pc = "polars_cloud:cli_main"
+nanook = "polars_nanook:cli_main"
 
 [project.urls]
-Homepage = "https://cloud.pola.rs/"
+Homepage = "https://pola.rs/nanook"
 
 [tool.maturin]
 manifest-path = "crates/lib/Cargo.toml"
+include = [{ path = "polars_cloud.py", format = ["sdist", "wheel"] }]
+
+[tool.uv]
+# Rebuild the extension module when the Rust sources change
+cache-keys = [
+  { file = "pyproject.toml" },
+  { file = "Cargo.toml" },
+  { file = "Cargo.lock" },
+  { file = "crates/**/*.rs" },
+  { file = "crates/**/Cargo.toml" },
+]
 
 [tool.mypy]
-files = ["$MYPY_CONFIG_FILE_DIR/polars_cloud", "$MYPY_CONFIG_FILE_DIR/tests"]
+mypy_path = "$MYPY_CONFIG_FILE_DIR/polars-cloud-wrapper"
+files = ["$MYPY_CONFIG_FILE_DIR/polars_nanook", "$MYPY_CONFIG_FILE_DIR/tests"]
 exclude = ["^.+_pb2(_grpc)?\\.py(i)?$"]
 strict = true
 enable_error_code = ["redundant-expr", "truthy-bool", "ignore-without-code"]
 
 [[tool.mypy.overrides]]
-module = ["polars_cloud.polars_cloud", "IPython.display"]
+module = ["polars_nanook.polars_nanook", "IPython.display"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+warn_return_any = false
+
 [tool.pytest.ini_options]
+filterwarnings = [
+  # the dev env installs the `polars-cloud` wrapper until polars imports `polars_nanook`
+  "ignore:`polars[-_]cloud` is renamed:FutureWarning",
+]
 addopts = [
   "--tb=short",
   "--strict-config",
   "--strict-markers",
   "--import-mode=importlib",
   # Default to not running monitoring tests as they are hard to setup locally
-  "-m not monitoring and not barebones and not auth",
+  "-m not monitoring and not barebones and not auth and not gpu",
   # co-locate tests on clusters, when possible (-n N).
   "--dist=loadgroup",
 ]
@@ -71,10 +90,14 @@ markers = [
   "auth: Test JWT token authorization",
   "barebones: Test barebones cloudformation workflow",
   "cf_tunnel: Test cloudflare tunnel to observatory API",
+  "gpu: Test starts a GPU cluster, which costs more than the others",
   "local_context: Test using the LocalContext",
   "monitoring: Test that check if metrics are collected",
+  "serverless: Test uses serverless compute",
   "starts_cluster: Test brings up its own EC2 cluster in its body; scheduled early",
   # skip based on version
-  "requires_version_client(spec): skip test if installed polars_cloud version doesn't match the specifier",
-  "requires_version_compute(spec): skip test if polars-on-premises version doesn't match the specifier",
+  "requires_version_client(spec): skip test if installed polars_nanook version doesn't match the specifier",
+  "requires_version_compute(spec): skip test if polars-nanook-compute version doesn't match the specifier",
+  # skip based on options
+  "requires_preconfigured_organization: skip test unless --organization is set, e.g. serverless needs its credits",
 ]

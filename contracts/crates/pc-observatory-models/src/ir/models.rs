@@ -23,10 +23,13 @@ pub struct IRVisualizationData {
     pub edges: Vec<Edge>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Default)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[cfg_attr(feature = "server", derive(JsonSchema))]
 pub struct IRNodeInfo {
     pub id: u64,
+    // None on the logical plan itself, and in plans stored before this field existed.
+    #[serde(default)]
+    pub origin_node_id: Option<u64>,
     pub title: Option<String>,
     pub subtitle: Option<String>,
     #[serde(flatten)]
@@ -193,6 +196,13 @@ pub enum IRNodeProperties {
         suffix: Option<String>,
         slice: Option<(i64, usize)>,
     },
+    RangeJoin {
+        left_on: Vec<String>,
+        right_on: Vec<String>,
+        inequality_operators: Vec<String>,
+        suffix: Option<String>,
+        slice: Option<(i64, usize)>,
+    },
     DynamicGroupBy {
         index_column: String,
         #[serde(flatten)]
@@ -248,8 +258,6 @@ pub enum IRNodeProperties {
         shuffle_number: u32,
         partitioning: PartitioningModel,
         collect_samples_col: Option<String>,
-        #[serde(default)]
-        add_order_tag: bool,
     },
     Sink2 {
         sink_type: String,
@@ -268,9 +276,10 @@ pub enum IRNodeProperties {
         operation: String,
     },
     RemoveOverlap,
+    AddOrderTag,
     Window {
         partition_by: Vec<String>,
-        order_by: Option<SortColumn>,
+        order_by: Vec<SortColumn>,
         exprs: Vec<String>,
         maintain_order: bool,
         ordered_eval: bool,
@@ -295,9 +304,25 @@ pub enum PartitioningModel {
     Local,
     Single,
     Broadcast,
+    // TODO: The python graph matcher relies on the individual keys, so it would
+    // be more convenient if its internal structure was also serialized.
     Hash {
         by: String,
     },
     Range,
     Overlapped,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_stored_ir_node_without_the_field_has_no_logical_node() {
+        let json =
+            r#"{"id":1,"title":null,"subtitle":null,"type_id":"Cache","properties":{"id":"x"}}"#;
+        let node: IRNodeInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(node.origin_node_id, None);
+        assert_eq!(node.id, 1);
+    }
 }

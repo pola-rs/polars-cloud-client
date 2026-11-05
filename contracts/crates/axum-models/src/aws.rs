@@ -1,5 +1,3 @@
-#[cfg(feature = "server")]
-use garde::Validate;
 #[cfg(feature = "pyo3")]
 use pyo3::pyclass;
 #[cfg(feature = "server")]
@@ -13,50 +11,41 @@ fn default_cfn_template_version() -> String {
     "1.0.0".to_string()
 }
 
+/// The properties of the `PhoneHomeCustomResource` in the CloudFormation template
+///
+/// Must stay backwards compatible: every stack ever deployed keeps sending the properties of the
+/// template version it was created with, so never rename or require a property, only add
+/// optional ones or ones with a default
 #[derive(Deserialize, Debug)]
-#[cfg_attr(
-    feature = "server",
-    derive(JsonSchema, Validate),
-    garde(allow_unvalidated)
-)]
+#[serde(rename_all = "PascalCase")]
 pub struct WorkspaceCallbackArgs {
     pub stack_name: String,
-    pub workspace_id: Uuid,
-    pub user_id: Uuid,
-    pub encrypted_external_id: String,
     pub user_initiated_action_role: String,
     pub unattended_role_arn: String,
     pub worker_role_arn: Option<String>,
     pub worker_role_profile_arn: String,
     pub subnet_ids: Vec<String>,
+    #[serde(
+        rename = "PolarsProxySecurityGroup",
+        alias = "PolarsBatchSecurityGroup"
+    )]
     pub proxy_security_group: String,
+    #[serde(
+        rename = "PolarsDirectSecurityGroup",
+        alias = "PolarsInteractiveSecurityGroup"
+    )]
     pub direct_security_group: String,
     pub region: String,
-    #[serde(default = "default_cfn_template_version")]
+    #[serde(rename = "TemplateVersion", default = "default_cfn_template_version")]
     pub cfn_template_version: String,
 }
 
+/// The properties of the `StartCallbackCustomResource` in the CloudFormation template
+///
+/// Must stay backwards compatible with every deployed stack, see [`WorkspaceCallbackArgs`]
 #[derive(Deserialize, Debug)]
-#[cfg_attr(
-    feature = "server",
-    derive(JsonSchema, Validate),
-    garde(allow_unvalidated)
-)]
-pub struct AWSWorkspaceDeleteCallbackArgs {
-    pub workspace_id: Uuid,
-    pub user_id: Uuid,
-    pub encrypted_external_id: String,
-}
-
-#[derive(Deserialize, Debug)]
-#[cfg_attr(
-    feature = "server",
-    derive(JsonSchema, Validate),
-    garde(allow_unvalidated)
-)]
+#[serde(rename_all = "PascalCase")]
 pub struct AWSWorkspaceStartCallbackArgs {
-    pub workspace_id: Uuid,
-    pub user_id: Uuid,
     pub stack_url: Option<String>,
 }
 

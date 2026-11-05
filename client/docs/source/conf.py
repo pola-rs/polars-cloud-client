@@ -11,7 +11,7 @@ import sphinx_autosummary_accessors  # type: ignore[import-untyped]
 
 # -- Project information -----------------------------------------------------
 
-project = "Polars Cloud"
+project = "Polars Nanook"
 author = "Polars"
 copyright = f"2025, {author}"
 
@@ -96,8 +96,6 @@ html_show_sourcelink = False
 
 # key site root paths
 static_assets_root = "https://raw.githubusercontent.com/pola-rs/polars-static/master"
-web_root = "https://docs.pola.rs/polars-cloud"
-docs_root = "https://docs.cloud.pola.rs"
 
 # Specify version for version switcher dropdown menu
 client_version = os.environ.get("POLARS_CLOUD_VERSION", "")
@@ -114,7 +112,7 @@ html_js_files = [
     "js/posthog.js",
     (
         "https://plausible.io/js/script.js",
-        {"data-domain": "docs.cloud.pola.rs", "defer": "defer"},
+        {"data-domain": "docs.nanook.pola.rs", "defer": "defer"},
     ),
 ]
 
@@ -122,7 +120,7 @@ html_theme_options = {
     "external_links": [
         {
             "name": "User guide",
-            "url": f"{web_root}/",
+            "url": "/",
         },
     ],
     "icon_links": [
@@ -147,7 +145,7 @@ html_theme_options = {
         "image_dark": f"{static_assets_root}/logos/polars-logo-dimmed-medium.png",
     },
     "switcher": {
-        "json_url": f"{docs_root}/api/python/stable/_static/version_switcher.json",
+        "json_url": "/api/python/stable/_static/version_switcher.json",
         "version_match": switcher_version,
     },
     "show_version_warning_banner": False,

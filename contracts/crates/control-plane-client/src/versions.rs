@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 use polars_axum_models::{PythonVersion, VersionNumber};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::ffi::c_str;
@@ -18,7 +20,7 @@ impl From<Versions> for VersionHeaders {
     fn from(value: Versions) -> Self {
         VersionHeaders {
             polars: value.polars.to_string().try_into().unwrap(),
-            polars_cloud: value.client.to_string().try_into().unwrap(),
+            client: value.client.to_string().try_into().unwrap(),
         }
     }
 }
@@ -30,14 +32,14 @@ pub fn get_versions(py: Python) -> PyResult<Versions> {
             r#"
 from importlib.metadata import version
 pl_version = version("polars")
-pc_version = version("polars_cloud")
+client_version = version("polars_nanook")
             "#
         ),
         None,
         Some(&locals),
     )?;
-    let polars_cloud_version: Bound<'_, PyString> =
-        locals.get_item("pc_version")?.unwrap().cast_into()?;
+    let client_version: Bound<'_, PyString> =
+        locals.get_item("client_version")?.unwrap().cast_into()?;
     let polars_version: Bound<'_, PyString> =
         locals.get_item("pl_version")?.unwrap().cast_into()?;
 
@@ -50,22 +52,32 @@ pc_version = version("polars_cloud")
         }
     };
 
-    let polars_cloud_version = polars_cloud_version.to_cow()?;
+    let client_version = client_version.to_cow()?;
     let polars_version = polars_version.to_cow()?;
     Ok(Versions {
         python: python_version,
         polars: polars_version.parse().map_err(|_| {
             PyRuntimeError::new_err(format!("Unsupported version of polars: {polars_version}"))
         })?,
-        client: polars_cloud_version.parse().map_err(|_| {
+        client: client_version.parse().map_err(|_| {
             PyRuntimeError::new_err(format!(
-                "Unsupported version of polars_cloud: {polars_cloud_version}"
+                "Unsupported version of polars_nanook: {client_version}"
             ))
         })?,
     })
 }
 
-pub fn get_polars_versions(py: Python) -> PyResult<(PythonVersion, VersionNumber)> {
+static POLARS_VERSIONS: OnceLock<(PythonVersion, VersionNumber)> = OnceLock::new();
+
+pub fn get_polars_versions() -> PyResult<(PythonVersion, VersionNumber)> {
+    if let Some(versions) = POLARS_VERSIONS.get() {
+        return Ok(*versions);
+    }
+    let versions = Python::attach(detect_polars_versions)?;
+    Ok(*POLARS_VERSIONS.get_or_init(|| versions))
+}
+
+fn detect_polars_versions(py: Python) -> PyResult<(PythonVersion, VersionNumber)> {
     let locals = PyDict::new(py);
     py.run(
         c_str!(
